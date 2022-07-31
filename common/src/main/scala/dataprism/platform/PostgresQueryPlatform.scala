@@ -7,69 +7,41 @@ import cats.data.State
 import cats.syntax.all.*
 import dataprism.sql.*
 import perspective.*
+class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
-enum PostgresBinOp[A, B, R] {
-  case Eq[A]()  extends PostgresBinOp[A, A, Boolean]
-  case Neq[A]() extends PostgresBinOp[A, A, Boolean]
-  case And      extends PostgresBinOp[Boolean, Boolean, Boolean]
-  case Or       extends PostgresBinOp[Boolean, Boolean, Boolean]
-}
-
-class PostgresDbPlatform extends DbPlatform {
+  override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
+  extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
 
   enum DbValue[A] {
-    case DbColumn private[PostgresDbPlatform] (column: Column[A])
-    case QueryColumn private[PostgresDbPlatform] (queryName: String, fromName: String)
-    case GroupBy private[PostgresDbPlatform] (value: DbValue[A])
-    case BinOp[A, B, R](lhs: DbValue[A], rhs: DbValue[B], op: PostgresBinOp[A, B, R]) extends DbValue[R]
-    case JoinNullable[A] private[PostgresDbPlatform] (value: DbValue[A])              extends DbValue[Option[A]]
-    case Function(name: String, values: Seq[DbValue[_]])
+    case SqlDbValue(value: platform.SqlDbValue[A])
     case ArrayOf(values: Seq[DbValue[A]]) extends DbValue[Seq[A]]
-    case AddAlias(value: DbValue[A], alias: String)
 
     def render: SqlStr = this match
-      case DbValue.DbColumn(_)                          => throw new IllegalArgumentException("Value not tagged")
-      case DbValue.QueryColumn(queryName, fromName)     => sql"${SqlStr.const(queryName)}.${SqlStr.const(fromName)}"
-      case DbValue.GroupBy(value)                       => value.render
-      case DbValue.BinOp(lhs, rhs, PostgresBinOp.Eq())  => sql"${lhs.render} = ${rhs.render}"
-      case DbValue.BinOp(lhs, rhs, PostgresBinOp.Neq()) => sql"${lhs.render} != ${rhs.render}"
-      case DbValue.BinOp(lhs, rhs, PostgresBinOp.And)   => sql"${lhs.render} AND ${rhs.render}"
-      case DbValue.BinOp(lhs, rhs, PostgresBinOp.Or)    => sql"${lhs.render} OR ${rhs.render}"
-      case DbValue.JoinNullable(value)                  => value.render
-      case DbValue.Function(f, values)    => sql"${SqlStr.const(f)}(${values.map(_.render).intercalate(sql", ")})"
-      case DbValue.ArrayOf(values)        => sql"ARRAY[${values.map(_.render).intercalate(sql", ")}]"
-      case DbValue.AddAlias(value, alias) => sql"${value.render} AS ${SqlStr.const(alias)}"
+      case DbValue.SqlDbValue(value) => value.render
+      case DbValue.ArrayOf(values)   => sql"ARRAY[${values.map(_.render).intercalate(sql", ")}]"
     end render
 
-    private[PostgresDbPlatform] def hasGroupBy: Boolean = this match
-      case DbValue.DbColumn(_)                        => false
-      case DbValue.QueryColumn(queryName, columnName) => false
-      case DbValue.GroupBy(value)                     => true
-      case DbValue.BinOp(lhs, rhs, _)                 => lhs.hasGroupBy || rhs.hasGroupBy
-      case DbValue.JoinNullable(value)                => value.hasGroupBy
-      case DbValue.Function(_, values)                => values.exists(_.hasGroupBy)
-      case DbValue.ArrayOf(values)                    => values.exists(_.hasGroupBy)
-      case DbValue.AddAlias(value, _)                 => value.hasGroupBy
+    private[PostgresQueryPlatform] def hasGroupBy: Boolean = this match
+      case DbValue.SqlDbValue(value) => value.hasGroupBy
+      case DbValue.ArrayOf(values)   => values.exists(_.hasGroupBy)
     end hasGroupBy
   }
 
+  override type AnyDbValue = DbValue[Any]
+
+  extension [A](sqlDbValue: SqlDbValue[A]) def liftSqlDbValue: DbValue[A] = DbValue.SqlDbValue(sqlDbValue)
+
   extension [A](dbVal: DbValue[A])
-    @targetName("dbValEquals") def ===(that: DbValue[A]): DbValue[Boolean] =
-      DbValue.BinOp(dbVal, that, PostgresBinOp.Eq())
-    @targetName("dbValNotEquals") def !==(that: DbValue[A]): DbValue[Boolean] =
-      DbValue.BinOp(dbVal, that, PostgresBinOp.Neq())
+    @targetName("dbValueRender") def render: SqlStr      = dbVal.render
+    @targetName("dbValueRender") def hasGroupBy: Boolean = dbVal.hasGroupBy
 
-    def asc: Ord = Ord.Asc(dbVal)
-
-    def desc: Ord = Ord.Desc(dbVal)
+    @targetName("dbValAsc") def asc: Ord = Ord.Asc(dbVal)
+    @targetName("dbValDesc") def desc: Ord = Ord.Desc(dbVal)
 
     def singletonArray: DbValue[Seq[A]] = DbValue.ArrayOf(Seq(dbVal))
 
-  extension (boolVal: DbValue[Boolean])
-    @targetName("and") def &&(that: DbValue[Boolean]): DbValue[Boolean] =
-      DbValue.BinOp(boolVal, that, PostgresBinOp.And)
-    @targetName("or") def ||(that: DbValue[Boolean]): DbValue[Boolean] =
-      DbValue.BinOp(boolVal, that, PostgresBinOp.Or)
+    @targetName("dbValueAsAnyDbValue") protected inline def asAnyDbVal: AnyDbValue =
+      dbVal.asInstanceOf[DbValue[Any]]
 
   sealed trait OrdSeq {
     def render: SqlStr
@@ -89,16 +61,17 @@ class PostgresDbPlatform extends DbPlatform {
       sql"${init.render}, ${tail.render}"
   }
 
-  extension (ordSeq: OrdSeq) def andThen(ord: Ord): OrdSeq = MultiOrdSeq(ordSeq, ord)
+  extension (ordSeq: OrdSeq)
+    @targetName("ordSeqRender") def render: SqlStr = ordSeq.render
 
-  opaque type Grouped[A] = DbValue[A]
-  opaque type Many[A]    = DbValue[A]
+    @targetName("ordSeqAndThen") def andThen(ord: Ord): OrdSeq = MultiOrdSeq(ordSeq, ord)
 
   extension [A](grouped: Grouped[A])
-    def asMany: Many[A]       = grouped
-    def groupedBy: DbValue[A] = DbValue.GroupBy(grouped)
+    @targetName("groupedGroupedBy") def groupedBy: DbValue[A] = SqlDbValue.GroupBy(grouped.asDbValue).liftSqlDbValue
 
-  extension [A](many: Many[A]) def arrayAgg: DbValue[Seq[A]] = DbValue.Function[Seq[A]]("array_agg", Seq(many))
+  extension [A](many: Many[A])
+    def arrayAgg: DbValue[Seq[A]] =
+      SqlDbValue.Function[Seq[A]]("array_agg", Seq(many.asDbValue.asAnyDbVal)).liftSqlDbValue
 
   enum ValueSource[A[_[_]]] {
     case FromQuery[QValues[_[_]], QGroupBy[_[_]], QMap[_[_]]](q: BaseQuery[QValues, QGroupBy, QMap])
@@ -173,7 +146,8 @@ class PostgresDbPlatform extends DbPlatform {
               [A] =>
                 (column: DbValue[A]) =>
                   column match
-                    case DbValue.AddAlias(_, alias) => DbValue.QueryColumn[A](queryName, alias)
+                    case DbValue.SqlDbValue(SqlDbValue.AddAlias(_, alias)) =>
+                      SqlDbValue.QueryColumn[A](queryName, alias).liftSqlDbValue
                     case _ => throw new IllegalStateException("Values were not given alias in SELECT")
             )
 
@@ -186,7 +160,7 @@ class PostgresDbPlatform extends DbPlatform {
         State { case (tableNum, columnNum) =>
           val queryName = s"${table.tableName}_y$tableNum"
           val values = table.columns.mapK(
-            [A] => (column: Column[A]) => DbValue.QueryColumn[A](queryName, column.nameStr)
+            [A] => (column: Column[A]) => SqlDbValue.QueryColumn[A](queryName, column.nameStr).liftSqlDbValue
           )
 
           ((tableNum + 1, columnNum), (sql"${SqlStr.const(table.tableName)} AS ${SqlStr.const(queryName)}", values))
@@ -200,7 +174,9 @@ class PostgresDbPlatform extends DbPlatform {
 
         lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case ((lfrom, lvalues), (rfrom, rvalues)) =>
           val newLValues =
-            lvalues.mapK[Compose2[DbValue, Option]]([A] => (value: DbValue[A]) => DbValue.JoinNullable(value))
+            lvalues.mapK[Compose2[DbValue, Option]](
+              [A] => (value: DbValue[A]) => SqlDbValue.JoinNullable(value).liftSqlDbValue
+            )
 
           (sql"$lfrom LEFT JOIN $rfrom ON ${on(lvalues, rvalues).render}", (newLValues, rvalues))
         }
@@ -209,12 +185,17 @@ class PostgresDbPlatform extends DbPlatform {
 
         lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case ((lfrom, lvalues), (rfrom, rvalues)) =>
           val newRValues =
-            rvalues.mapK[Compose2[DbValue, Option]]([A] => (value: DbValue[A]) => DbValue.JoinNullable(value))
+            rvalues.mapK[Compose2[DbValue, Option]](
+              [A] => (value: DbValue[A]) => SqlDbValue.JoinNullable(value).liftSqlDbValue
+            )
 
           (sql"$lfrom LEFT JOIN $rfrom ON ${on(lvalues, rvalues).render}", (lvalues, newRValues))
         }
     end fromPartAndValues
   }
+
+  private def anyDefined(options: Option[_]*): Boolean =
+    options.exists(_.isDefined)
 
   object ValueSource {
     def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A] = query match
@@ -231,9 +212,6 @@ class PostgresDbPlatform extends DbPlatform {
         then ValueSource.FromQuery(baseQuery)
         else baseQuery.values.asInstanceOf
   }
-
-  private def anyDefined(options: Option[_]*): Boolean =
-    options.exists(_.isDefined)
 
   sealed trait Query[A[_[_]]] {
     def selectRenderAndValues: TagState[(SqlStr, A[DbValue])]
@@ -267,7 +245,7 @@ class PostgresDbPlatform extends DbPlatform {
       given FunctorKC[Values] = FVA
 
       groupBy.fold(values.asInstanceOf[GroupBy[DbValue]])(f =>
-        f(values.mapK([A] => (value: DbValue[A]) => value: Grouped[A]))
+        f(values.mapK([A] => (value: DbValue[A]) => value.asGrouped))
       )
 
     def mapValues(values: GroupBy[DbValue]): Map[DbValue] =
@@ -454,7 +432,7 @@ class PostgresDbPlatform extends DbPlatform {
 
           val (newColumnNum, tags) = columnNumState.run(columnNum).value
           val retagedValues = values.map2K(tags)(
-            [A] => (value: DbValue[A], tag: Int) => DbValue.AddAlias[A](value, s"x$tag")
+            [A] => (value: DbValue[A], tag: Int) => SqlDbValue.AddAlias[A](value, s"x$tag").liftSqlDbValue
           )
 
           ((tableNum, newColumnNum), retagedValues)
@@ -474,7 +452,10 @@ class PostgresDbPlatform extends DbPlatform {
           val groupByPart = groupBy.fold(sql"")(f =>
             sql"GROUP BY ${collectGroupBys(groupByValues).map(_.render).intercalate(sql", ")} "
           )
-          val havingPart  = having.fold(sql"")(f => sql"HAVING ${f(groupByValues).render} ")
+          val havingPart = having.fold(sql"") { f =>
+            given FunctorKC[GroupBy] = summon[ApplicativeKC[GroupBy]]
+            sql"HAVING ${f(groupByValues.mapK([A] => (dbVal: DbValue[A]) => dbVal.asGrouped)).render} "
+          }
           val selectPart  = sql"SELECT ${renderValues(retagedValues)} "
           val orderByPart = orderBy.fold(sql"")(f => sql"ORDER BY ${f(selectValues).render} ")
           val limitPart   = limit.fold(sql"")(n => sql"LIMIT ${n.as(DbType.int32)} ")
@@ -489,44 +470,55 @@ class PostgresDbPlatform extends DbPlatform {
   }
 
   extension [A[_[_]]](query: Query[A])
+    @targetName("queryFilter")
     def filter(f: A[DbValue] => DbValue[Boolean]): Query[A] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addFilter(f)
 
+    @targetName("queryMap")
     def map[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addMap(f)
 
+    @targetName("queryJoin")
     def join[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addFullJoin(that, on)
 
+    @targetName("queryLeftJoin")
     def leftJoin[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[LeftJoin[A, B]] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addLeftJoin(that, on)
 
+    @targetName("queryRightJoin")
     def rightJoin[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[RightJoin[A, B]] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addRightJoin(that, on)
 
+    @targetName("queryGroupBy")
     def groupBy[B[_[_]]](f: A[Grouped] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addGroupBy(f)
 
+    @targetName("queryHaving")
     def having(f: A[Grouped] => DbValue[Boolean]): Query[A] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addHaving(f)
 
+    @targetName("queryOrderBy")
     def orderBy(f: A[DbValue] => OrdSeq): Query[A] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addOrderBy(f)
 
+    @targetName("queryLimit")
     def limit(n: Int): Query[A] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addLimit(n)
 
+    @targetName("queryOffset")
     def offset(n: Int): Query[A] = query match
       case baseQuery: BaseQuery[v, g, m] => baseQuery.addOffset(n)
 
   override type QueryCompanion = Query.type
   extension (q: QueryCompanion)
+    @targetName("queryCompanionFrom")
     def from[A[_[_]]](table: Table[A])(using TraverseKC[A]): Query[A] =
       import table.given
       BaseQuery[A, A, A](ValueSource.FromTable(table))
