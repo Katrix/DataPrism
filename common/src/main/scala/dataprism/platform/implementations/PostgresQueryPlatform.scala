@@ -1,14 +1,15 @@
-package dataprism.platform
-
-import scala.annotation.targetName
-import scala.concurrent.Future
+package dataprism.platform.implementations
 
 import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
+import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sharedast.{AstRenderer, PostgresAstRenderer, SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
+
+import scala.annotation.targetName
+import scala.concurrent.Future
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
 class PostgresQueryPlatform extends SqlQueryPlatform { platform =>

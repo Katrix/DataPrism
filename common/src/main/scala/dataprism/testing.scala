@@ -1,9 +1,8 @@
 package dataprism
 
+import dataprism.platform.implementations.PostgresQueryPlatform
 import java.time.Instant
 import java.util.UUID
-
-import dataprism.platform.PostgresQueryPlatform
 import dataprism.sql.*
 
 case class HomeK[F[_]](
@@ -107,6 +106,10 @@ object Testing {
 
     printQuery(
       Query.from(HomeK.table).join(ResidentK.table)((h, r) => h.owner === r.owner && h.name === r.homeName)
+    )
+
+    printQuery(
+      Query.from(HomeK.table).map(home => home)
     )
 
     printQuery(

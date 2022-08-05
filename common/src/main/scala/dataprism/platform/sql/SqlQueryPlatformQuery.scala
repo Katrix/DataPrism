@@ -1,297 +1,15 @@
-package dataprism.platform
-
-import java.util.UUID
+package dataprism.platform.sql
 
 import scala.annotation.targetName
 
-import cats.Applicative
 import cats.data.State
+import cats.Applicative
 import cats.syntax.all.*
-import dataprism.sharedast
-import dataprism.sharedast.SelectAst.Data
-import dataprism.sharedast.{AstRenderer, SelectAst, SqlExpr}
-import dataprism.sql.*
+import dataprism.sharedast.{SelectAst, SqlExpr}
+import dataprism.sql.{Column, Table}
 import perspective.*
 
-//noinspection SqlNoDataSourceInspection,ScalaUnusedSymbol
-trait SqlQueryPlatform extends QueryPlatform { platform =>
-
-  val sqlRenderer: AstRenderer
-
-  trait SqlBinOpBase {
-    def ast: SqlExpr.BinaryOperation
-  }
-
-  type BinOp[LHS, RHS, R] <: SqlBinOpBase
-  enum SqlBinOp[LHS, RHS, R](op: SqlExpr.BinaryOperation) extends SqlBinOpBase {
-    case Eq[A]()  extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Eq)
-    case Neq[A]() extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Neq)
-    case And      extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolAnd)
-    case Or       extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolOr)
-
-    override def ast: SqlExpr.BinaryOperation = op
-  }
-  extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R]
-
-  trait SqlDbValueBase[A] {
-
-    def ast: SqlExpr
-
-    def hasGroupBy: Boolean
-
-    def asSqlDbVal: Option[SqlDbValue[A]]
-  }
-
-  override type DbValue[A] <: SqlDbValueBase[A]
-  type AnyDbValue <: DbValue[Any]
-
-  enum SqlDbValue[A] extends SqlDbValueBase[A] {
-    case DbColumn(column: Column[A], id: UUID)
-    case QueryColumn(queryName: String, fromName: String)
-    case GroupBy(value: DbValue[A])
-    case JoinNullable[A](value: DbValue[A])                                            extends SqlDbValue[Option[A]]
-    case BinOp[A, B, R](lhs: DbValue[A], rhs: DbValue[B], op: platform.BinOp[A, B, R]) extends SqlDbValue[R]
-    case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue])
-
-    override def ast: SqlExpr = this match
-      case SqlDbValue.DbColumn(_, _)                   => throw new IllegalArgumentException("Value not tagged")
-      case SqlDbValue.QueryColumn(queryName, fromName) => SqlExpr.QueryRef(fromName, queryName)
-      case SqlDbValue.GroupBy(value)                   => value.ast
-      case SqlDbValue.BinOp(lhs, rhs, op)              => SqlExpr.BinOp(lhs.ast, rhs.ast, op.ast)
-      case SqlDbValue.JoinNullable(value)              => value.ast
-      case SqlDbValue.Function(f, values)              => SqlExpr.FunctionCall(f, values.map(_.ast))
-    end ast
-
-    override def hasGroupBy: Boolean = this match
-      case SqlDbValue.DbColumn(_, _)      => false
-      case SqlDbValue.QueryColumn(_, _)   => false
-      case SqlDbValue.GroupBy(_)          => true
-      case SqlDbValue.BinOp(lhs, rhs, _)  => lhs.hasGroupBy || rhs.hasGroupBy
-      case SqlDbValue.JoinNullable(value) => value.hasGroupBy
-      case SqlDbValue.Function(_, values) => values.exists(_.hasGroupBy)
-    end hasGroupBy
-
-    override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
-  }
-  extension [A](sqlDbValue: SqlDbValue[A]) def liftSqlDbValue: DbValue[A]
-
-  extension [A](dbVal: DbValue[A])
-
-    @targetName("dbValEquals") def ===(that: DbValue[A]): DbValue[Boolean] =
-      SqlDbValue.BinOp(dbVal, that, SqlBinOp.Eq().liftSqlBinOp).liftSqlDbValue
-    @targetName("dbValNotEquals") def !==(that: DbValue[A]): DbValue[Boolean] =
-      SqlDbValue.BinOp(dbVal, that, SqlBinOp.Neq().liftSqlBinOp).liftSqlDbValue
-
-    @targetName("dbValAsGrouped") protected[platform] inline def asGrouped: Grouped[A] = dbVal
-
-    @targetName("dbValAsMany") protected[platform] inline def dbValAsMany: Many[A] = dbVal
-
-    @targetName("dbValAsAnyDbVal") protected[platform] def asAnyDbVal: AnyDbValue
-
-  extension (boolVal: DbValue[Boolean])
-    @targetName("dbValBooleanAnd") def &&(that: DbValue[Boolean]): DbValue[Boolean] =
-      SqlDbValue.BinOp(boolVal, that, SqlBinOp.And.liftSqlBinOp).liftSqlDbValue
-
-    @targetName("dbValBooleanOr") def ||(that: DbValue[Boolean]): DbValue[Boolean] =
-      SqlDbValue.BinOp(boolVal, that, SqlBinOp.Or.liftSqlBinOp).liftSqlDbValue
-
-  trait SqlOrdSeqBase {
-    def ast: Seq[SelectAst.OrderExpr]
-  }
-
-  type OrdSeq <: SqlOrdSeqBase
-
-  opaque type Grouped[A] = DbValue[A]
-  opaque type Many[A]    = DbValue[A]
-
-  extension [A](grouped: Grouped[A])
-    @targetName("groupedAsMany")
-    inline def asMany: Many[A] = grouped
-
-    @targetName("groupedAsDbValue") protected[platform] inline def asDbValue: DbValue[A] = grouped
-
-  extension [A](many: Many[A]) @targetName("manyAsDbValue") protected[platform] inline def asDbValue: DbValue[A] = many
-
-  trait SqlValueSourceBase[A[_[_]]] {
-    def functorKC: FunctorKC[A]
-
-    given FunctorKC[A] = functorKC
-
-    def fromPartAndValues: TagState[(SelectAst.From, A[DbValue])]
-  }
-
-  type ValueSource[A[_[_]]] <: SqlValueSourceBase[A]
-  type ValueSourceCompanion
-  val ValueSource: ValueSourceCompanion
-
-  enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
-    case FromQuery(q: Query[A])
-    case FromTable(t: Table[A])
-    case InnerJoin[A[_[_]], B[_[_]]](
-        lhs: ValueSource[A],
-        rhs: ValueSource[B],
-        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ) extends SqlValueSource[[F[_]] =>> (A[F], B[F])]
-    case CrossJoin[A[_[_]], B[_[_]]](
-        lhs: ValueSource[A],
-        rhs: ValueSource[B]
-    ) extends SqlValueSource[[F[_]] =>> (A[F], B[F])]
-    case LeftJoin[A[_[_]], B[_[_]]](
-        lhs: ValueSource[A],
-        rhs: ValueSource[B],
-        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ) extends SqlValueSource[[F[_]] =>> (A[Compose2[F, Option]], B[F])]
-    case RightJoin[A[_[_]], B[_[_]]](
-        lhs: ValueSource[A],
-        rhs: ValueSource[B],
-        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ) extends SqlValueSource[[F[_]] =>> (A[F], B[Compose2[F, Option]])]
-    case FullJoin[A[_[_]], B[_[_]]](
-        lhs: ValueSource[A],
-        rhs: ValueSource[B],
-        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ) extends SqlValueSource[[F[_]] =>> (A[Compose2[F, Option]], B[Compose2[F, Option]])]
-
-    private def mapOptCompose[F[_[_]], A[_], B[_]](fa: F[Compose2[A, Option]])(f: A ~>: B)(
-        using F: FunctorKC[F]
-    ): F[Compose2[B, Option]] =
-      fa.mapK([Z] => (v: A[Option[Z]]) => f[Option[Z]](v))
-
-    def functorKC: FunctorKC[A] = this match
-      case SqlValueSource.FromQuery(q)     => q.applicativeK
-      case SqlValueSource.FromTable(table) => table.FA
-      case SqlValueSource.InnerJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[F], rt[F])] {
-          extension [X[_], C](fa: (lt[X], rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Y]) =
-              (fa._1.mapK(f), fa._2.mapK(f))
-        }
-      case SqlValueSource.CrossJoin(l: ValueSource[lt], r: ValueSource[rt]) =>
-        given FunctorKC[lt] = l.functorKC
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[F], rt[F])] {
-          extension [X[_], C](fa: (lt[X], rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Y]) =
-              (fa._1.mapK(f), fa._2.mapK(f))
-        }
-      case SqlValueSource.LeftJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[Compose2[F, Option]], rt[F])] {
-          extension [X[_], C](fa: (lt[Compose2[X, Option]], rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Compose2[Y, Option]], rt[Y]) =
-              val l: lt[Compose2[X, Option]] = fa._1
-              (mapOptCompose(fa._1)(f), fa._2.mapK(f))
-        }
-      case SqlValueSource.RightJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[F], rt[Compose2[F, Option]])] {
-          extension [X[_], C](fa: (lt[X], rt[Compose2[X, Option]]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Compose2[Y, Option]]) =
-              (fa._1.mapK(f), mapOptCompose(fa._2)(f))
-        }
-      case SqlValueSource.FullJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[Compose2[F, Option]], rt[Compose2[F, Option]])] {
-          extension [X[_], C](fa: (lt[Compose2[X, Option]], rt[Compose2[X, Option]]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Compose2[Y, Option]], rt[Compose2[Y, Option]]) =
-              (mapOptCompose(fa._1)(f), mapOptCompose(fa._2)(f))
-        }
-    end functorKC
-
-    private def fromPartJoin[A[_[_]], B[_[_]], R](
-        lhs: ValueSource[A],
-        rhs: ValueSource[B],
-        on: (A[DbValue], B[DbValue]) => DbValue[Boolean],
-        make: (SelectAst.From, SelectAst.From, SqlExpr) => SelectAst.From,
-        doJoin: (A[DbValue], B[DbValue]) => R
-    ): TagState[(SelectAst.From, R)] =
-      lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case ((lfrom, lvalues), (rfrom, rvalues)) =>
-        (make(lfrom, rfrom, on(lvalues, rvalues).ast), doJoin(lvalues, rvalues))
-      }
-
-    private def mapJoinNullable[A[_[_]]: FunctorKC](values: A[DbValue]): A[Compose2[DbValue, Option]] =
-      values.mapK([X] => (value: DbValue[X]) => SqlDbValue.JoinNullable(value).liftSqlDbValue)
-
-    def fromPartAndValues: TagState[(SelectAst.From, A[DbValue])] = this match
-      case SqlValueSource.FromQuery(q) =>
-        q.selectAstAndValues.flatMap { case (queryAst, aliases, _) =>
-          State { st =>
-            val queryNum  = st.queryNum
-            val queryName = s"y$queryNum"
-
-            val newValues =
-              aliases.mapK([X] => (alias: String) => SqlDbValue.QueryColumn[X](alias, queryName).liftSqlDbValue)
-
-            (st.withNewQueryNum(queryNum + 1), (SelectAst.From.FromQuery(queryAst, queryName), newValues))
-          }
-        }
-
-      case SqlValueSource.FromTable(table) =>
-        State { st =>
-          given FunctorKC[A] = table.FA
-
-          val queryNum  = st.queryNum
-          val queryName = s"${table.tableName}_y$queryNum"
-
-          val values = table.columns.mapK(
-            [X] => (column: Column[X]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName).liftSqlDbValue
-          )
-
-          (st.withNewQueryNum(queryNum + 1), (SelectAst.From.FromTable(table.tableName, Some(queryName)), values))
-        }
-      case SqlValueSource.InnerJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
-        fromPartJoin(lhs, rhs, on, SelectAst.From.InnerJoin.apply, (a, b) => (a, b))
-      case SqlValueSource.CrossJoin(lhs: ValueSource[l], rhs: ValueSource[r]) =>
-        lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case ((lfrom, lvalues), (rfrom, rvalues)) =>
-          (SelectAst.From.CrossJoin(lfrom, rfrom), (lvalues, rvalues))
-        }
-      case SqlValueSource.LeftJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
-        import lhs.given
-        fromPartJoin(lhs, rhs, on, SelectAst.From.LeftOuterJoin.apply, (a, b) => (mapJoinNullable(a), b))
-      case SqlValueSource.RightJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
-        import rhs.given
-        fromPartJoin(lhs, rhs, on, SelectAst.From.RightOuterJoin.apply, (a, b) => (a, mapJoinNullable(b)))
-      case SqlValueSource.FullJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
-        import lhs.given
-        import rhs.given
-        fromPartJoin(
-          lhs,
-          rhs,
-          on,
-          SelectAst.From.FullOuterJoin.apply,
-          (a, b) => (mapJoinNullable[l](a), mapJoinNullable[r](b))
-        )
-    end fromPartAndValues
-  }
-
-  extension [A[_[_]]](sqlValueSource: SqlValueSource[A]) def liftSqlValueSource: ValueSource[A]
-
-  extension (c: ValueSourceCompanion)
-    @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A]
-
-  trait SqlTaggedState {
-    def queryNum: Int
-
-    def columnNum: Int
-
-    def withNewQueryNum(newQueryNum: Int): TaggedState
-
-    def withNewColumnNum(newColumnNum: Int): TaggedState
-  }
-  type TaggedState <: SqlTaggedState
-  protected def freshTaggedState: TaggedState
-
-  type TagState[A] = State[TaggedState, A]
+trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   trait SqlQueryBase[A[_[_]]] {
 
@@ -332,11 +50,14 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
     def selectAst: SelectAst = selectAstAndValues.runA(freshTaggedState).value._1
 
     def applicativeK: ApplicativeKC[A]
+
     given ApplicativeKC[A] = applicativeK
 
     def traverseK: TraverseKC[A]
+
     given TraverseKC[A] = traverseK
   }
+
   type Query[A[_[_]]] <: SqlQueryBase[A]
 
   sealed trait SqlQuery[A[_[_]]] extends SqlQueryBase[A] {
@@ -378,6 +99,7 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
 
     def addOffset(i: Int): Query[A] = nested.addOffset(i)
   }
+
   object SqlQuery {
     private def tagValues[A[_[_]]](
         values: A[DbValue]
@@ -671,11 +393,17 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
         having: Option[A[DbValue] => DbValue[Boolean]] = None
     )(using val applicativeK: ApplicativeKC[B], val traverseK: TraverseKC[B])
         extends SqlQuery[B] {
+
       import query.given
 
+      private def valuesAsGrouped[C[_[_]]: ApplicativeKC](values: C[DbValue]): C[Grouped] =
+        values.asInstanceOf[C[Grouped]] // Safe as Grouped is an opaque type in another file
+
       override def addFilter(f: B[DbValue] => DbValue[Boolean]): Query[B] =
-        val cond = (values: A[Grouped]) =>
-          val newBool = f(groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(values)))
+        val cond = (values: A[DbValue]) =>
+          val newBool = f(
+            groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(valuesAsGrouped(values)))
+          )
           filter.fold(newBool)(old => old(values) && newBool)
 
         copy(having = Some(cond)).liftSqlQuery
@@ -683,23 +411,20 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
       override def addGroupBy[C[_[_]]](
           f: B[Grouped] => C[DbValue]
       )(using FA: ApplicativeKC[C], FT: TraverseKC[C]): Query[C] =
-        given FunctorKC[B] = applicativeK
         copy(groupBy =
           Some(
-            groupBy.fold(f.asInstanceOf[A[DbValue] => C[DbValue]])(oldGroupBy =>
-              oldGroupBy.andThen(bValues => f(bValues.mapK([X] => (value: DbValue[X]) => value.asGrouped)))
+            groupBy.fold(f.asInstanceOf[A[Grouped] => C[DbValue]])(oldGroupBy =>
+              oldGroupBy.andThen(bValues => f(valuesAsGrouped(bValues)))
             )
           )
         ).liftSqlQuery
 
       override def addHaving(f: B[Grouped] => DbValue[Boolean]): Query[B] =
-        given FunctorKC[B] = applicativeK
-
-        val cond = (values: A[Grouped]) =>
+        val cond = (values: A[DbValue]) =>
           val newBool = f(
-            groupBy
-              .fold(values.asInstanceOf[B[DbValue]])(f => f(values))
-              .mapK([A] => (value: DbValue[A]) => value.asGrouped)
+            valuesAsGrouped(
+              groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(valuesAsGrouped(values)))
+            )
           )
           having.fold(newBool)(old => old(values) && newBool)
 
@@ -722,12 +447,14 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
 
       override def selectAstAndValues: TagState[(SelectAst, B[Const[String]], B[DbValue])] =
         query.selectAstAndValues.flatMap { case (selectAst, _, values) =>
-          val groupedValues = this.groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(values))
+          given FunctorKC[A] = query.applicativeK
+
+          val groupedValues = this.groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(valuesAsGrouped(values)))
 
           tagValues(groupedValues).map { case (aliases, exprWithAliases) =>
             val newSelectAst = selectAst.copy(
               data = selectAst.data match
-                case from: Data.SelectFrom =>
+                case from: SelectAst.Data.SelectFrom =>
                   val filterAst = this.filter.map(f => f(values).ast)
                   val havingAst = this.having.map(f => f(values).ast)
 
@@ -743,14 +470,15 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
                     )
                   }
 
-                  from.copy(
-                    selectExprs = exprWithAliases,
-                    where = astAnd(from.where, filterAst),
-                    groupBy = optGroupBys.map(SelectAst.GroupBy.apply),
-                    having = astAnd(from.having, havingAst)
-                  )
+                  from
+                    .copy(
+                      selectExprs = exprWithAliases,
+                      where = astAnd(from.where, filterAst),
+                      groupBy = optGroupBys.map(SelectAst.GroupBy.apply),
+                      having = astAnd(from.having, havingAst)
+                    )
 
-                case data: Data.SetOperatorData => data
+                case data: SelectAst.Data.SetOperatorData => data
             )
 
             (newSelectAst, aliases, groupedValues)
@@ -791,6 +519,7 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
         }
     }
   }
+
   extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A]
 
   extension (q: QueryCompanion)
@@ -835,22 +564,22 @@ trait SqlQueryPlatform extends QueryPlatform { platform =>
       query.addGroupBy(f)
 
     @targetName("queryJoin") def join[B[_[_]]](that: Table[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[InnerJoin[A, B]] = query.join(Query.from(that))(on)
 
     @targetName("queryCrossJoin") def crossJoin[B[_[_]]](that: Table[B])(using TraverseKC[B]): Query[InnerJoin[A, B]] =
       query.crossJoin(Query.from(that))
 
     @targetName("queryLeftJoin") def leftJoin[B[_[_]]](that: Table[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[LeftJoin[A, B]] = query.leftJoin(Query.from(that))(on)
 
     @targetName("queryRightJoin") def rightJoin[B[_[_]]](that: Table[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[RightJoin[A, B]] = query.rightJoin(Query.from(that))(on)
 
     @targetName("queryFullJoin") def fullJoin[B[_[_]]](that: Table[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[FullJoin[A, B]] = query.fullJoin(Query.from(that))(on)
 
     @targetName("queryHaving")

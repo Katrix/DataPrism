@@ -1,8 +1,7 @@
-package dataprism.platform
+package dataprism.platform.base
 
 import scala.annotation.targetName
 
-import dataprism.sql.Table
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 
