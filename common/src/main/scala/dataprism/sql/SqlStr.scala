@@ -4,6 +4,10 @@ import cats.Monoid
 
 case class SqlStr(str: String, args: Seq[SqlArg]) {
 
+  def isEmpty: Boolean  = str.isEmpty
+
+  def nonEmpty: Boolean = str.nonEmpty
+
   def stripMargin: SqlStr = copy(str = str.stripMargin)
 }
 object SqlStr {

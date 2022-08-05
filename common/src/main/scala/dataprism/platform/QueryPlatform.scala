@@ -15,7 +15,7 @@ trait QueryPlatform {
 
   extension (ordSeq: OrdSeq) @targetName("ordSeqAndThen") def andThen(ord: Ord): OrdSeq
 
-  extension[A] (dbVal: DbValue[A])
+  extension [A](dbVal: DbValue[A])
     @targetName("dbValEquals") def ===(that: DbValue[A]): DbValue[Boolean]
     @targetName("dbValNotEquals") def !==(that: DbValue[A]): DbValue[Boolean]
 
@@ -26,22 +26,25 @@ trait QueryPlatform {
   type Grouped[A]
   type Many[A]
 
-  extension[A] (grouped: Grouped[A])
+  extension [A](grouped: Grouped[A])
     @targetName("groupedAsMany") def asMany: Many[A]
     @targetName("groupedGroupedBy") def groupedBy: DbValue[A]
 
-  type FullJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[F], B[F])
-  type LeftJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[Compose2[F, Option]], B[F])
+  type InnerJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[F], B[F])
+  type LeftJoin[A[_[_]], B[_[_]]]  = [F[_]] =>> (A[Compose2[F, Option]], B[F])
   type RightJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[F], B[Compose2[F, Option]])
+  type FullJoin[A[_[_]], B[_[_]]]  = [F[_]] =>> (A[Compose2[F, Option]], B[Compose2[F, Option]])
 
   type Query[A[_[_]]]
 
-  extension[A[_[_]]] (query: Query[A])
+  extension [A[_[_]]](query: Query[A])
     @targetName("queryFilter") def filter(f: A[DbValue] => DbValue[Boolean]): Query[A]
 
-    @targetName("queryMap") def map[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B]
+    @targetName("queryMap") def map[B[_[_]]](
+        f: A[DbValue] => B[DbValue]
+    )(using ApplicativeKC[B], TraverseKC[B]): Query[B]
     @targetName("queryMapT") inline def mapT[T <: NonEmptyTuple](f: A[DbValue] => T)(
-      using ev: Tuple.IsMappedBy[DbValue][T]
+        using ev: Tuple.IsMappedBy[DbValue][T]
     ): Query[ProductKPar[T]] =
       given ValueOf[Tuple.Size[T]] = new ValueOf(scala.compiletime.constValue[Tuple.Size[T]])
 
@@ -51,20 +54,29 @@ trait QueryPlatform {
       )
 
     @targetName("queryJoin") def join[B[_[_]]](that: Query[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ): Query[FullJoin[A, B]]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+    ): Query[InnerJoin[A, B]]
+
+    @targetName("queryJoin") def crossJoin[B[_[_]]](that: Query[B]): Query[InnerJoin[A, B]]
 
     @targetName("queryLeftJoin") def leftJoin[B[_[_]]](that: Query[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[LeftJoin[A, B]]
 
     @targetName("queryRightJoin") def rightJoin[B[_[_]]](that: Query[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[RightJoin[A, B]]
 
-    @targetName("queryGroupBy") def groupBy[B[_[_]]](f: A[Grouped] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B]
+    @targetName("queryFullJoin") def fullJoin[B[_[_]]](that: Query[B])(
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+    ): Query[FullJoin[A, B]]
+
+    @targetName("queryGroupBy") def groupBy[B[_[_]]](
+        f: A[Grouped] => B[DbValue]
+    )(using ApplicativeKC[B], TraverseKC[B]): Query[B]
+
     @targetName("queryGroupByT") inline def groupByT[T <: NonEmptyTuple](f: A[Grouped] => T)(
-      using ev: Tuple.IsMappedBy[DbValue][T]
+        using ev: Tuple.IsMappedBy[DbValue][T]
     ): Query[ProductKPar[T]] =
       given ValueOf[Tuple.Size[T]] = new ValueOf(scala.compiletime.constValue[Tuple.Size[T]])
 
@@ -83,6 +95,4 @@ trait QueryPlatform {
 
   type QueryCompanion
   val Query: QueryCompanion
-
-  extension (q: QueryCompanion) @targetName("queryCompanionFrom") def from[A[_[_]]](table: Table[A])(using TraverseKC[A]): Query[A]
 }
