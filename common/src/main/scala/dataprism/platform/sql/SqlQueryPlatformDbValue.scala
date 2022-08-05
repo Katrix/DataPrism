@@ -1,10 +1,10 @@
 package dataprism.platform.sql
 
-import scala.annotation.targetName
-
 import dataprism.sharedast.{SelectAst, SqlExpr}
-import dataprism.sql.Column
+import dataprism.sql.{Column, DbType, SqlArg}
 import perspective.*
+
+import scala.annotation.targetName
 
 trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
@@ -15,10 +15,14 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   type BinOp[LHS, RHS, R] <: SqlBinOpBase
 
   enum SqlBinOp[LHS, RHS, R](op: SqlExpr.BinaryOperation) extends SqlBinOpBase {
-    case Eq[A]()  extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Eq)
-    case Neq[A]() extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Neq)
-    case And      extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolAnd)
-    case Or       extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolOr)
+    case Eq[A]()             extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Eq)
+    case Neq[A]()            extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Neq)
+    case And                 extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolAnd)
+    case Or                  extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolOr)
+    case LessThan[A]()       extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.LessThan)
+    case LessOrEqual[A]()    extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.LessOrEq)
+    case GreaterThan[A]()    extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.GreaterThan)
+    case GreaterOrEqual[A]() extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.GreaterOrEq)
 
     override def ast: SqlExpr.BinaryOperation = op
   }
@@ -44,6 +48,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case JoinNullable[A](value: DbValue[A])                                            extends SqlDbValue[Option[A]]
     case BinOp[A, B, R](lhs: DbValue[A], rhs: DbValue[B], op: platform.BinOp[A, B, R]) extends SqlDbValue[R]
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue])
+    case Placeholder(value: A, tpe: DbType[A])
 
     override def ast: SqlExpr = this match
       case SqlDbValue.DbColumn(_)                      => throw new IllegalArgumentException("Value not tagged")
@@ -52,6 +57,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.BinOp(lhs, rhs, op)              => SqlExpr.BinOp(lhs.ast, rhs.ast, op.ast)
       case SqlDbValue.JoinNullable(value)              => value.ast
       case SqlDbValue.Function(f, values)              => SqlExpr.FunctionCall(f, values.map(_.ast))
+      case SqlDbValue.Placeholder(value, tpe)          => SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe))
     end ast
 
     override def hasGroupBy: Boolean = this match
@@ -61,12 +67,15 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.BinOp(lhs, rhs, _)  => lhs.hasGroupBy || rhs.hasGroupBy
       case SqlDbValue.JoinNullable(value) => value.hasGroupBy
       case SqlDbValue.Function(_, values) => values.exists(_.hasGroupBy)
+      case SqlDbValue.Placeholder(_, _)   => false
     end hasGroupBy
 
     override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
   }
 
   extension [A](sqlDbValue: SqlDbValue[A]) def liftSqlDbValue: DbValue[A]
+
+  extension [A](v: A) def as(tpe: DbType[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).liftSqlDbValue
 
   extension [A](dbVal: DbValue[A])
 
@@ -87,6 +96,16 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     @targetName("dbValBooleanOr") def ||(that: DbValue[Boolean]): DbValue[Boolean] =
       SqlDbValue.BinOp(boolVal, that, SqlBinOp.Or.liftSqlBinOp).liftSqlDbValue
+
+  extension (intVal: DbValue[Int])
+    @targetName("dbValIntLessThan") def <(that: DbValue[Int]): DbValue[Boolean] =
+      SqlDbValue.BinOp(intVal, that, SqlBinOp.LessThan().liftSqlBinOp).liftSqlDbValue
+    @targetName("dbValIntLessOrEqual") def <=(that: DbValue[Int]): DbValue[Boolean] =
+      SqlDbValue.BinOp(intVal, that, SqlBinOp.LessOrEqual().liftSqlBinOp).liftSqlDbValue
+    @targetName("dbValIntGreaterThan") def >(that: DbValue[Int]): DbValue[Boolean] =
+      SqlDbValue.BinOp(intVal, that, SqlBinOp.GreaterThan().liftSqlBinOp).liftSqlDbValue
+    @targetName("dbValIntGreaterOrEqual") def >=(that: DbValue[Int]): DbValue[Boolean] =
+      SqlDbValue.BinOp(intVal, that, SqlBinOp.GreaterOrEqual().liftSqlBinOp).liftSqlDbValue
 
   trait SqlOrdSeqBase {
     def ast: Seq[SelectAst.OrderExpr]

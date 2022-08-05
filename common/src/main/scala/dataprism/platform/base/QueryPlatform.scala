@@ -39,18 +39,37 @@ trait QueryPlatform {
   extension [A[_[_]]](query: Query[A])
     @targetName("queryFilter") def filter(f: A[DbValue] => DbValue[Boolean]): Query[A]
 
-    @targetName("queryMap") def map[B[_[_]]](
+    @targetName("queryWithFilter") inline def withFilter(f: A[DbValue] => DbValue[Boolean]): Query[A] =
+      filter(f)
+
+    @targetName("queryMap") inline def map[R](f: A[DbValue] => R)(using res: MapRes[DbValue, R]): Query[res.K] =
+      mapK(values => res.toK(f(values)))(using res.applicativeKC, res.traverseKC)
+
+    @targetName("queryMapK") def mapK[B[_[_]]](
         f: A[DbValue] => B[DbValue]
     )(using ApplicativeKC[B], TraverseKC[B]): Query[B]
+
     @targetName("queryMapT") inline def mapT[T <: NonEmptyTuple](f: A[DbValue] => T)(
         using ev: Tuple.IsMappedBy[DbValue][T]
-    ): Query[ProductKPar[T]] =
-      given ValueOf[Tuple.Size[T]] = new ValueOf(scala.compiletime.constValue[Tuple.Size[T]])
+    ): Query[ProductKPar[Tuple.InverseMap[T, DbValue]]] =
+      given ValueOf[Tuple.Size[Tuple.InverseMap[T, DbValue]]] = new ValueOf(
+        scala.compiletime.constValue[Tuple.Size[Tuple.InverseMap[T, DbValue]]]
+      )
 
-      map[ProductKPar[T]](f.andThen(t => ProductK.of[DbValue, T](t.asInstanceOf[Tuple.Map[T, DbValue]])))(
+      mapK[ProductKPar[Tuple.InverseMap[T, DbValue]]](
+        f.andThen(t =>
+          ProductK.of[DbValue, Tuple.InverseMap[T, DbValue]](
+            t
+          )
+        )
+      )(
         using ProductK.productKInstance,
         ProductK.productKInstance
       )
+
+    @targetName("queryFlatmap") def flatMap[B[_[_]]](
+        f: A[DbValue] => Query[B]
+    )(using ApplicativeKC[B], TraverseKC[B]): Query[B]
 
     @targetName("queryJoin") def join[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -70,7 +89,7 @@ trait QueryPlatform {
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]]
 
-    @targetName("queryGroupBy") def groupBy[B[_[_]]](
+    @targetName("queryGroupBy") def groupByK[B[_[_]]](
         f: A[Grouped] => B[DbValue]
     )(using ApplicativeKC[B], TraverseKC[B]): Query[B]
 
@@ -79,7 +98,7 @@ trait QueryPlatform {
     ): Query[ProductKPar[T]] =
       given ValueOf[Tuple.Size[T]] = new ValueOf(scala.compiletime.constValue[Tuple.Size[T]])
 
-      groupBy[ProductKPar[T]](f.andThen(t => ProductK.of[DbValue, T](t.asInstanceOf[Tuple.Map[T, DbValue]])))(
+      groupByK[ProductKPar[T]](f.andThen(t => ProductK.of[DbValue, T](t.asInstanceOf[Tuple.Map[T, DbValue]])))(
         using ProductK.productKInstance,
         ProductK.productKInstance
       )
@@ -88,9 +107,9 @@ trait QueryPlatform {
 
     @targetName("queryOrderBy") def orderBy(f: A[DbValue] => OrdSeq): Query[A]
 
-    @targetName("queryLimit") def limit(n: Int): Query[A]
+    @targetName("queryLimit") def take(n: Int): Query[A]
 
-    @targetName("queryOffset") def offset(n: Int): Query[A]
+    @targetName("queryOffset") def drop(n: Int): Query[A]
 
   type QueryCompanion
   val Query: QueryCompanion

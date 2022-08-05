@@ -1,9 +1,11 @@
 package dataprism
 
-import dataprism.platform.implementations.PostgresQueryPlatform
 import java.time.Instant
 import java.util.UUID
+
+import dataprism.platform.implementations.PostgresQueryPlatform
 import dataprism.sql.*
+import perspective.derivation.{ProductK, ProductKPar}
 
 case class HomeK[F[_]](
     owner: F[UUID],
@@ -79,6 +81,29 @@ object ResidentK {
   given KMacros.RepresentableTraverseKC[ResidentK] = KMacros.deriveRepresentableTraverseKC[ResidentK]
 }
 
+case class People[F[_]](name: F[String], age: F[Int])
+object People {
+
+  val table: Table[People] = Table(
+    "people",
+    People(
+      Column("name", DbType.text),
+      Column("age", DbType.int32)
+    )
+  )
+
+  given People[DbType] = Table.tableDbTypes(table)
+
+  given KMacros.RepresentableTraverseKC[People] = KMacros.deriveRepresentableTraverseKC[People]
+}
+
+case class Names[F[_]](name: F[String])
+object Names {
+  given Names[DbType] = Names(DbType.text)
+
+  given KMacros.RepresentableTraverseKC[Names] = KMacros.deriveRepresentableTraverseKC[Names]
+}
+
 object Testing {
 
   @main def testingDef: Unit =
@@ -89,6 +114,7 @@ object Testing {
       println(platform.sqlRenderer.renderSelect(q.selectAst).str)
       println()
 
+    /*
     printQuery(Query.from(HomeK.table).mapT(homes => (homes.owner, homes.name)))
     printQuery(
       Query
@@ -124,5 +150,13 @@ object Testing {
             homes.z.asMany.arrayAgg
           )
         )
+    )
+     */
+
+
+    printQuery(
+      for
+        home <- Query.from(HomeK.table)
+      yield home.owner
     )
 }

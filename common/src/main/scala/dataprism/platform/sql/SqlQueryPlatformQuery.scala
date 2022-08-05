@@ -2,12 +2,14 @@ package dataprism.platform.sql
 
 import scala.annotation.targetName
 
-import cats.data.State
 import cats.Applicative
+import cats.data.State
 import cats.syntax.all.*
+import dataprism.sharedast.SelectAst.Data
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.{Column, Table}
 import perspective.*
+import perspective.derivation.ProductKPar
 
 trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
@@ -16,6 +18,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def addFilter(f: A[DbValue] => DbValue[Boolean]): Query[A]
 
     def addMap[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B]
+
+    def addFlatMap[B[_[_]]](f: A[DbValue] => Query[B])(using ApplicativeKC[B], TraverseKC[B]): Query[B]
 
     def addInnerJoin[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -69,6 +73,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     def addMap[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B] =
       nested.addMap(f)
+
+    def addFlatMap[B[_[_]]](f: A[DbValue] => Query[B])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+      SqlQuery.SqlQueryFlatMap(this.liftSqlQuery, f).liftSqlQuery
 
     def addInnerJoin[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -518,6 +525,48 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           (selectAst.copy(orderLimit = newOrderLimit), aliases, values)
         }
     }
+
+    case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => Query[B])(
+        using val applicativeK: ApplicativeKC[B],
+        val traverseK: TraverseKC[B]
+    ) extends SqlQuery[B] {
+      override def selectAstAndValues: TagState[(SelectAst, B[Const[String]], B[DbValue])] =
+        query.selectAstAndValues.flatMap { case (selectAstA, aliasesA, valuesA) =>
+          val stNewValuesAndAstA: TagState[(Option[SelectAst.From], Option[SqlExpr], A[DbValue])] =
+            if selectAstA.orderLimit.isEmpty && (selectAstA.data match
+                case from: SelectAst.Data.SelectFrom =>
+                  from.distinct.isEmpty && from.groupBy.isEmpty && from.having.isEmpty
+                case _ => false
+              )
+            then
+              val selectFrom = selectAstA.data.asInstanceOf[SelectAst.Data.SelectFrom]
+              State.pure((selectFrom.from, selectFrom.where, valuesA))
+            else SqlValueSource.FromQuery(query).fromPartAndValues.map(t => (Some(t._1), None, t._2))
+
+          def combineOption[A](optA: Option[A], optB: Option[A])(combine: (A, A) => A): Option[A] = (optA, optB) match
+            case (Some(a), Some(b)) => Some(combine(a, b))
+            case (Some(a), None)    => Some(a)
+            case (None, Some(b))    => Some(b)
+            case (None, None)       => None
+
+          stNewValuesAndAstA.flatMap { case (fromAOpt, whereExtra, newValuesA) =>
+            f(newValuesA).selectAstAndValues.map { case (selectAstB, aliasesB, valuesB) =>
+              val newSelectAstB = selectAstB.copy(
+                data = selectAstB.data match
+                  case from: Data.SelectFrom =>
+                    from.copy(
+                      from = combineOption(fromAOpt, from.from)(SelectAst.From.FromMulti.apply),
+                      where = combineOption(whereExtra, from.where)((a, b) => SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd))
+                    )
+
+                  case data: Data.SetOperatorData => ???
+              )
+
+              (newSelectAstB, aliasesB, valuesB)
+            }
+          }
+        }
+    }
   }
 
   extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A]
@@ -535,9 +584,26 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def filter(f: A[DbValue] => DbValue[Boolean]): Query[A] =
       query.addFilter(f)
 
-    @targetName("queryMap")
-    def map[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+    @targetName("queryWhere")
+    inline def where(f: A[DbValue] => DbValue[Boolean]): Query[A] =
+      filter(f)
+
+    @targetName("queryMapK")
+    def mapK[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
       query.addMap(f)
+
+    @targetName("querySelectK")
+    inline def selectK[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+      mapK(f)
+
+    @targetName("querySelectT") inline def selectT[T <: NonEmptyTuple](f: A[DbValue] => T)(
+      using ev: Tuple.IsMappedBy[DbValue][T]
+    ): Query[ProductKPar[Tuple.InverseMap[T, DbValue]]] = query.mapT(f)
+
+    @targetName("queryFlatmap") def flatMap[B[_[_]]](
+        f: A[DbValue] => Query[B]
+    )(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+      query.addFlatMap(f)
 
     @targetName("queryJoin")
     def join[B[_[_]]](that: Query[B])(on: (A[DbValue], B[DbValue]) => DbValue[Boolean]): Query[InnerJoin[A, B]] =
@@ -559,10 +625,6 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def fullJoin[B[_[_]]](that: Query[B])(on: (A[DbValue], B[DbValue]) => DbValue[Boolean]): Query[FullJoin[A, B]] =
       query.addFullJoin(that)(on)
 
-    @targetName("queryGroupBy")
-    def groupBy[B[_[_]]](f: A[Grouped] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
-      query.addGroupBy(f)
-
     @targetName("queryJoin") def join[B[_[_]]](that: Table[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[InnerJoin[A, B]] = query.join(Query.from(that))(on)
@@ -582,6 +644,10 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[FullJoin[A, B]] = query.fullJoin(Query.from(that))(on)
 
+    @targetName("queryGroupBy")
+    def groupByK[B[_[_]]](f: A[Grouped] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+      query.addGroupBy(f)
+
     @targetName("queryHaving")
     def having(f: A[Grouped] => DbValue[Boolean]): Query[A] = query.addHaving(f)
 
@@ -589,9 +655,13 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def orderBy(f: A[DbValue] => OrdSeq): Query[A] = query.addOrderBy(f)
 
     @targetName("queryLimit")
-    def limit(n: Int): Query[A] = query.addLimit(n)
+    def take(n: Int): Query[A] = query.addLimit(n)
+
+    @targetName("queryLimit") inline def limit(n: Int): Query[A] = take(n)
 
     @targetName("queryOffset")
-    def offset(n: Int): Query[A] = query.addOffset(n)
+    def drop(n: Int): Query[A] = query.addOffset(n)
+
+    @targetName("queryLimit") inline def offset(n: Int): Query[A] = drop(n)
   end extension
 }
