@@ -4,7 +4,9 @@ import java.sql.{JDBCType, PreparedStatement, ResultSet}
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
 import java.util.UUID
 
+import scala.annotation.unused
 import scala.reflect.ClassTag
+import scala.util.NotGiven
 
 case class DbType[A](
     name: String,
@@ -31,4 +33,10 @@ object DbType {
 
   def array[A: ClassTag](inner: DbType[A]): DbType[Seq[A]] =
     DbType(s"ARRAY ${inner.name}", _.getObject(_).asInstanceOf[Array[A]].toSeq, (a, b, c) => a.setObject(b, c.toArray))
+
+  def nullable[A](inner: DbType[A])(using @unused ev: NotGiven[A <:< Option[_]]): DbType[Option[A]] = DbType(
+    inner.name,
+    (a, b) => Option(inner.get(a, b)),
+    (a, b, c) => inner.set(a, b, c.map(_.asInstanceOf[AnyRef]).orNull.asInstanceOf[A])
+  )
 }

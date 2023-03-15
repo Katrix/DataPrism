@@ -28,11 +28,16 @@ trait QueryPlatform {
   extension [A](grouped: Grouped[A])
     @targetName("groupedAsMany") def asMany: Many[A]
     @targetName("groupedGroupedBy") def groupedBy: DbValue[A]
+    
+  type Nullable[A] = A match {
+    case Option[b] => Option[b]
+    case _         => Option[A]
+  }
 
   type InnerJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[F], B[F])
-  type LeftJoin[A[_[_]], B[_[_]]]  = [F[_]] =>> (A[Compose2[F, Option]], B[F])
-  type RightJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[F], B[Compose2[F, Option]])
-  type FullJoin[A[_[_]], B[_[_]]]  = [F[_]] =>> (A[Compose2[F, Option]], B[Compose2[F, Option]])
+  type LeftJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[F], B[Compose2[F, Nullable]])
+  type RightJoin[A[_[_]], B[_[_]]]  = [F[_]] =>> (A[Compose2[F, Nullable]], B[F])
+  type FullJoin[A[_[_]], B[_[_]]]  = [F[_]] =>> (A[Compose2[F, Nullable]], B[Compose2[F, Nullable]])
 
   type Query[A[_[_]]]
 

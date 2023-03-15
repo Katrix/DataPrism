@@ -81,14 +81,14 @@ object ResidentK {
   given KMacros.RepresentableTraverseKC[ResidentK] = KMacros.deriveRepresentableTraverseKC[ResidentK]
 }
 
-case class People[F[_]](name: F[String], age: F[Int])
+case class People[F[_]](name: F[String], age: F[Option[Int]])
 object People {
 
   val table: Table[People] = Table(
     "people",
     People(
       Column("name", DbType.text),
-      Column("age", DbType.int32)
+      Column("age", DbType.nullable(DbType.int32))
     )
   )
 

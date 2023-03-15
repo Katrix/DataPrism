@@ -45,7 +45,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case DbColumn(column: Column[A])
     case QueryColumn(queryName: String, fromName: String)
     case GroupBy(value: DbValue[A])
-    case JoinNullable[A](value: DbValue[A])                                            extends SqlDbValue[Option[A]]
+    case JoinNullable[A](value: DbValue[A])                                            extends SqlDbValue[Nullable[A]]
     case BinOp[A, B, R](lhs: DbValue[A], rhs: DbValue[B], op: platform.BinOp[A, B, R]) extends SqlDbValue[R]
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue])
     case Placeholder(value: A, tpe: DbType[A])
