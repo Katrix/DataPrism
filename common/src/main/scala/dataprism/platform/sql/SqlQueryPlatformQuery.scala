@@ -11,15 +11,18 @@ import dataprism.sql.{Column, Table}
 import perspective.*
 import perspective.derivation.ProductKPar
 
+//noinspection ScalaUnusedSymbol
 trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   trait SqlQueryBase[A[_[_]]] {
 
     def addFilter(f: A[DbValue] => DbValue[Boolean]): Query[A]
 
-    def addMap[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B]
+    def addWhere(f: A[DbValue] => DbValue[Boolean]): Query[A]
 
-    def addFlatMap[B[_[_]]](f: A[DbValue] => Query[B])(using ApplicativeKC[B], TraverseKC[B]): Query[B]
+    def addMap[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B]
+
+    def addFlatMap[B[_[_]]](f: A[DbValue] => Query[B])(using ApplyKC[B], TraverseKC[B]): Query[B]
 
     def addInnerJoin[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -39,9 +42,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]]
 
-    def addGroupBy[B[_[_]]](f: A[Grouped] => B[DbValue])(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B]
-
-    def addHaving(f: A[Grouped] => DbValue[Boolean]): Query[A]
+    def addGroupMapK[B[_[_]]: FoldableKC, C[_[_]]: ApplyKC: TraverseKC](
+        group: A[DbValue] => B[DbValue]
+    )(map: (B[DbValue], A[Many]) => C[DbValue]): QueryGrouped[C]
 
     def addOrderBy(f: A[DbValue] => OrdSeq): Query[A]
 
@@ -53,9 +56,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     def selectAst: SelectAst = selectAstAndValues.runA(freshTaggedState).value._1
 
-    def applicativeK: ApplicativeKC[A]
+    def applyK: ApplyKC[A]
 
-    given ApplicativeKC[A] = applicativeK
+    given ApplyKC[A] = applyK
 
     def traverseK: TraverseKC[A]
 
@@ -64,17 +67,28 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   type Query[A[_[_]]] <: SqlQueryBase[A]
 
+  trait SqlQueryBaseGrouped[A[_[_]]] extends SqlQueryBase[A] {
+
+    def addHaving(f: A[DbValue] => DbValue[Boolean]): QueryGrouped[A]
+  }
+  trait SqlQueryGrouped[A[_[_]]] extends SqlQueryBaseGrouped[A] with SqlQuery[A]
+
+  type QueryGrouped[A[_[_]]] <: SqlQueryBaseGrouped[A]
+
   sealed trait SqlQuery[A[_[_]]] extends SqlQueryBase[A] {
 
     def nested: Query[A] =
       SqlQuery.SqlQueryFromStage(SqlValueSource.FromQuery(this.liftSqlQuery).liftSqlValueSource).liftSqlQuery
 
-    def addFilter(f: A[DbValue] => DbValue[Boolean]): Query[A] = nested.addFilter(f)
+    def addWhere(f: A[DbValue] => DbValue[Boolean]): Query[A] =
+      nested.addWhere(f)
 
-    def addMap[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B] =
+    def addFilter(f: A[DbValue] => DbValue[Boolean]): Query[A] = addWhere(f)
+
+    def addMap[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
       nested.addMap(f)
 
-    def addFlatMap[B[_[_]]](f: A[DbValue] => Query[B])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+    def addFlatMap[B[_[_]]](f: A[DbValue] => Query[B])(using ApplyKC[B], TraverseKC[B]): Query[B] =
       SqlQuery.SqlQueryFlatMap(this.liftSqlQuery, f).liftSqlQuery
 
     def addInnerJoin[B[_[_]]](that: Query[B])(
@@ -95,10 +109,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]] = nested.addFullJoin(that)(on)
 
-    def addGroupBy[B[_[_]]](f: A[Grouped] => B[DbValue])(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B] =
-      nested.addGroupBy(f)
-
-    def addHaving(f: A[Grouped] => DbValue[Boolean]): Query[A] = nested.addHaving(f)
+    def addGroupMapK[B[_[_]]: FoldableKC, C[_[_]]: ApplyKC: TraverseKC](
+        group: A[DbValue] => B[DbValue]
+    )(map: (B[DbValue], A[Many]) => C[DbValue]): QueryGrouped[C] = nested.addGroupMapK(group)(map)
 
     def addOrderBy(f: A[DbValue] => OrdSeq): Query[A] = nested.addOrderBy(f)
 
@@ -110,7 +123,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
   object SqlQuery {
     private def tagValues[A[_[_]]](
         values: A[DbValue]
-    )(using TraverseKC[A], ApplicativeKC[A]): TagState[(A[Const[String]], Seq[SelectAst.ExprWithAlias])] =
+    )(using TraverseKC[A], ApplyKC[A]): TagState[(A[Const[String]], Seq[SelectAst.ExprWithAlias])] =
       State { st =>
         val columnNum = st.columnNum
 
@@ -131,21 +144,20 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       }
 
     case class SqlQueryWithoutFrom[A[_[_]]](values: A[DbValue])(
-        using val applicativeK: ApplicativeKC[A],
+        using val applyK: ApplyKC[A],
         val traverseK: TraverseKC[A]
     ) extends SqlQuery[A] {
       override def selectAstAndValues: TagState[(SelectAst, A[Const[String]], A[DbValue])] =
         tagValues(values).map { case (aliases, exprWithAliases) =>
           val selectAst = SelectAst(
-            SelectAst.Data
-              .SelectFrom(
-                None,
-                exprWithAliases,
-                None,
-                None,
-                None,
-                None
-              ),
+            SelectAst.Data.SelectFrom(
+              None,
+              selectExprs = exprWithAliases,
+              None,
+              None,
+              None,
+              None
+            ),
             SelectAst.OrderLimit(None, None, None)
           )
 
@@ -154,24 +166,20 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def addMap[B[_[_]]](
           f: A[DbValue] => B[DbValue]
-      )(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B] =
+      )(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
         copy(f(values)).liftSqlQuery
     }
 
-    type AppTravKC[A[_[_]]] = ApplicativeKC[A] with TraverseKC[A]
+    type AppTravKC[A[_[_]]] = ApplyKC[A] with TraverseKC[A]
 
     private def innerJoinInstances[MA[_[_]], MB[_[_]]](
-        using AA: ApplicativeKC[MA],
-        BA: ApplicativeKC[MB],
+        using AA: ApplyKC[MA],
+        BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplicativeKC[InnerJoin[MA, MB]] with TraverseKC[InnerJoin[MA, MB]] =
-      new ApplicativeKC[InnerJoin[MA, MB]] with TraverseKC[InnerJoin[MA, MB]] {
+    ): ApplyKC[InnerJoin[MA, MB]] with TraverseKC[InnerJoin[MA, MB]] =
+      new ApplyKC[InnerJoin[MA, MB]] with TraverseKC[InnerJoin[MA, MB]] {
         type F[X[_]] = (MA[X], MB[X])
-
-        extension [A[_]](a: ValueK[A])
-          def pure[C]: F[A] =
-            (a.pure, a.pure)
 
         extension [A[_], C](fa: F[A])
           def map2K[B[_], Z[_]](fb: F[B])(f: [X] => (A[X], B[X]) => Z[X]): F[Z] =
@@ -196,49 +204,41 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       }
 
     private def leftJoinInstances[MA[_[_]], MB[_[_]]](
-        using AA: ApplicativeKC[MA],
-        BA: ApplicativeKC[MB],
+        using AA: ApplyKC[MA],
+        BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplicativeKC[LeftJoin[MA, MB]] with TraverseKC[LeftJoin[MA, MB]] =
-      innerJoinInstances[MA, MB].asInstanceOf[ApplicativeKC[LeftJoin[MA, MB]] with TraverseKC[LeftJoin[MA, MB]]]
+    ): ApplyKC[LeftJoin[MA, MB]] with TraverseKC[LeftJoin[MA, MB]] =
+      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[LeftJoin[MA, MB]] with TraverseKC[LeftJoin[MA, MB]]]
 
     private def rightJoinInstances[MA[_[_]], MB[_[_]]](
-        using AA: ApplicativeKC[MA],
-        BA: ApplicativeKC[MB],
+        using AA: ApplyKC[MA],
+        BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplicativeKC[RightJoin[MA, MB]] with TraverseKC[RightJoin[MA, MB]] =
-      innerJoinInstances[MA, MB].asInstanceOf[ApplicativeKC[RightJoin[MA, MB]] with TraverseKC[RightJoin[MA, MB]]]
+    ): ApplyKC[RightJoin[MA, MB]] with TraverseKC[RightJoin[MA, MB]] =
+      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[RightJoin[MA, MB]] with TraverseKC[RightJoin[MA, MB]]]
 
     private def fullJoinInstances[MA[_[_]], MB[_[_]]](
-        using AA: ApplicativeKC[MA],
-        BA: ApplicativeKC[MB],
+        using AA: ApplyKC[MA],
+        BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplicativeKC[FullJoin[MA, MB]] with TraverseKC[FullJoin[MA, MB]] =
-      innerJoinInstances[MA, MB].asInstanceOf[ApplicativeKC[FullJoin[MA, MB]] with TraverseKC[FullJoin[MA, MB]]]
+    ): ApplyKC[FullJoin[MA, MB]] with TraverseKC[FullJoin[MA, MB]] =
+      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[FullJoin[MA, MB]] with TraverseKC[FullJoin[MA, MB]]]
 
     case class SqlQueryFromStage[A[_[_]]](valueSource: ValueSource[A])(
-        using val applicativeK: ApplicativeKC[A],
+        using val applyK: ApplyKC[A],
         val traverseK: TraverseKC[A]
     ) extends SqlQuery[A] {
 
-      override def addFilter(f: A[DbValue] => DbValue[Boolean]): Query[A] =
-        SqlQueryMapFilterHavingStage(valueSource).addFilter(f)
+      override def addWhere(f: A[DbValue] => DbValue[Boolean]): Query[A] =
+        SqlQueryMapWhereStage(valueSource).addWhere(f)
 
       override def addMap[B[_[_]]](
           f: A[DbValue] => B[DbValue]
-      )(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B] =
-        SqlQueryMapFilterHavingStage(valueSource).addMap(f)
-
-      override def addHaving(f: A[Grouped] => DbValue[Boolean]): Query[A] =
-        SqlQueryMapFilterHavingStage(valueSource).addHaving(f)
-
-      override def addGroupBy[B[_[_]]](
-          f: A[Grouped] => B[DbValue]
-      )(using FA: ApplicativeKC[B], FT: TraverseKC[B]): Query[B] =
-        SqlQueryFilterGroupByHavingStage[A, A](this.liftSqlQuery).addGroupBy(f)
+      )(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
+        SqlQueryMapWhereStage(valueSource).addMap(f)
 
       override def addInnerJoin[B[_[_]]](that: Query[B])(
           on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -288,19 +288,24 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           SqlValueSource.FullJoin(valueSource, ValueSource.getFromQuery(that), on).liftSqlValueSource
         ).liftSqlQuery
 
-      override def addOrderBy(f: A[DbValue] => OrdSeq): Query[A] = SqlQueryOrderedLimitOffsetStage(
-        this.liftSqlQuery,
-        orderBy = Some(f)
-      ).liftSqlQuery
+      override def addGroupMapK[B[_[_]]: FoldableKC, C[_[_]]: ApplyKC: TraverseKC](group: A[DbValue] => B[DbValue])(
+          map: (B[DbValue], A[Many]) => C[DbValue]
+      ): QueryGrouped[C] = SqlQueryGroupedHavingStage(this.liftSqlQuery, group, map).liftSqlQueryGrouped
 
-      override def addLimit(i: Int): Query[A] = SqlQueryOrderedLimitOffsetStage(
+      override def addOrderBy(f: A[DbValue] => OrdSeq): Query[A] =
+        SqlQueryOrderedStage(
+          this.liftSqlQuery,
+          f
+        ).liftSqlQuery
+
+      override def addLimit(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
         limit = Some(i)
       ).liftSqlQuery
 
-      override def addOffset(i: Int): Query[A] = SqlQueryOrderedLimitOffsetStage(
+      override def addOffset(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = Some(i)
+        offset = i
       ).liftSqlQuery
 
       override def selectAstAndValues: TagState[(SelectAst, A[Const[String]], A[DbValue])] =
@@ -316,60 +321,45 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         }
     }
 
-    case class SqlQueryMapFilterHavingStage[A[_[_]], B[_[_]]](
+    case class SqlQueryMapWhereStage[A[_[_]], B[_[_]]](
         valueSource: ValueSource[A],
         map: A[DbValue] => B[DbValue] = identity[A[DbValue]],
-        filter: Option[A[DbValue] => DbValue[Boolean]] = None,
-        having: Option[A[DbValue] => DbValue[Boolean]] = None
+        where: Option[A[DbValue] => DbValue[Boolean]] = None
     )(
-        using FAA: ApplicativeKC[A],
+        using FAA: ApplyKC[A],
         FTA: TraverseKC[A],
-        val applicativeK: ApplicativeKC[B],
+        val applyK: ApplyKC[B],
         val traverseK: TraverseKC[B]
     ) extends SqlQuery[B] {
 
-      override def addFilter(f: B[DbValue] => DbValue[Boolean]): Query[B] =
+      override def addWhere(f: B[DbValue] => DbValue[Boolean]): Query[B] =
         val cond = (values: A[DbValue]) =>
           val newBool = f(map(values))
-          filter.fold(newBool)(old => old(values) && newBool)
+          where.fold(newBool)(old => old(values) && newBool)
 
-        copy(filter = Some(cond)).liftSqlQuery
+        copy(where = Some(cond)).liftSqlQuery
 
       override def addMap[C[_[_]]](
           f: B[DbValue] => C[DbValue]
-      )(using FA: ApplicativeKC[C], FT: TraverseKC[C]): Query[C] =
+      )(using FA: ApplyKC[C], FT: TraverseKC[C]): Query[C] =
         copy(
-          map = this.map.andThen(f),
-          filter = this.filter
+          map = this.map.andThen(f)
         ).liftSqlQuery
 
-      override def addGroupBy[C[_[_]]](
-          f: B[Grouped] => C[DbValue]
-      )(using FA: ApplicativeKC[C], FT: TraverseKC[C]): Query[C] =
-        SqlQueryFilterGroupByHavingStage[B, B](this.liftSqlQuery).addGroupBy(f)
+      override def addOrderBy(f: B[DbValue] => OrdSeq): Query[B] =
+        SqlQueryOrderedStage(
+          this.liftSqlQuery,
+          f
+        ).liftSqlQuery
 
-      override def addHaving(f: B[Grouped] => DbValue[Boolean]): Query[B] =
-        given FunctorKC[B] = applicativeK
-
-        val cond = (values: A[DbValue]) =>
-          val newBool = f(map(values).mapK([A] => (value: DbValue[A]) => value.asGrouped))
-          filter.fold(newBool)(old => old(values) && newBool)
-
-        copy(having = Some(cond)).liftSqlQuery
-
-      override def addOrderBy(f: B[DbValue] => OrdSeq): Query[B] = SqlQueryOrderedLimitOffsetStage(
-        this.liftSqlQuery,
-        orderBy = Some(f)
-      ).liftSqlQuery
-
-      override def addLimit(i: Int): Query[B] = SqlQueryOrderedLimitOffsetStage(
+      override def addLimit(i: Int): Query[B] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
         limit = Some(i)
       ).liftSqlQuery
 
-      override def addOffset(i: Int): Query[B] = SqlQueryOrderedLimitOffsetStage(
+      override def addOffset(i: Int): Query[B] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = Some(i)
+        offset = i
       ).liftSqlQuery
 
       override def selectAstAndValues: TagState[(SelectAst, B[Const[String]], B[DbValue])] =
@@ -381,9 +371,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                 None,
                 exprWithAliases,
                 Some(from),
-                filter.map(f => f(values).ast),
+                where.map(f => f(values).ast),
                 None,
-                having.map(f => f(values).ast)
+                None
               ),
               SelectAst.OrderLimit(None, None, None)
             )
@@ -393,99 +383,80 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         }
     }
 
-    case class SqlQueryFilterGroupByHavingStage[A[_[_]], B[_[_]]](
+    case class SqlQueryGroupedHavingStage[A[_[_]], Gr[_[_]], Ma[_[_]]](
         query: Query[A],
-        groupBy: Option[A[Grouped] => B[DbValue]] = None,
-        filter: Option[A[DbValue] => DbValue[Boolean]] = None,
+        group: A[DbValue] => Gr[DbValue],
+        map: (Gr[DbValue], A[Many]) => Ma[DbValue],
         having: Option[A[DbValue] => DbValue[Boolean]] = None
-    )(using val applicativeK: ApplicativeKC[B], val traverseK: TraverseKC[B])
-        extends SqlQuery[B] {
+    )(
+        using FAA: ApplyKC[A],
+        FTA: TraverseKC[A],
+        GR: FoldableKC[Gr],
+        val applyK: ApplyKC[Ma],
+        val traverseK: TraverseKC[Ma]
+    ) extends SqlQuery[Ma]
+        with SqlQueryGrouped[Ma] {
 
-      import query.given
+      private inline def valuesAsMany(values: A[DbValue]): A[Many] =
+        values.asInstanceOf[A[Many]] // Safe as many is an opaque type in another file
 
-      private def valuesAsGrouped[C[_[_]]: ApplicativeKC](values: C[DbValue]): C[Grouped] =
-        values.asInstanceOf[C[Grouped]] // Safe as Grouped is an opaque type in another file
-
-      override def addFilter(f: B[DbValue] => DbValue[Boolean]): Query[B] =
-        val cond = (values: A[DbValue]) =>
-          val newBool = f(
-            groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(valuesAsGrouped(values)))
-          )
-          filter.fold(newBool)(old => old(values) && newBool)
-
-        copy(having = Some(cond)).liftSqlQuery
-
-      override def addGroupBy[C[_[_]]](
-          f: B[Grouped] => C[DbValue]
-      )(using FA: ApplicativeKC[C], FT: TraverseKC[C]): Query[C] =
-        copy(groupBy =
-          Some(
-            groupBy.fold(f.asInstanceOf[A[Grouped] => C[DbValue]])(oldGroupBy =>
-              oldGroupBy.andThen(bValues => f(valuesAsGrouped(bValues)))
-            )
-          )
+      override def addMap[X[_[_]]](
+          f: Ma[DbValue] => X[DbValue]
+      )(using FA: ApplyKC[X], FT: TraverseKC[X]): Query[X] =
+        copy(
+          map = (gr, a) => f(map(gr, a))
         ).liftSqlQuery
 
-      override def addHaving(f: B[Grouped] => DbValue[Boolean]): Query[B] =
+      override def addHaving(f: Ma[DbValue] => DbValue[Boolean]): QueryGrouped[Ma] =
         val cond = (values: A[DbValue]) =>
-          val newBool = f(
-            valuesAsGrouped(
-              groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(valuesAsGrouped(values)))
-            )
-          )
+          val newBool = f(map(group(values), valuesAsMany(values)))
           having.fold(newBool)(old => old(values) && newBool)
 
-        copy(having = Some(cond)).liftSqlQuery
+        copy(having = Some(cond)).liftSqlQueryGrouped
 
-      override def addOrderBy(f: B[DbValue] => OrdSeq): Query[B] = SqlQueryOrderedLimitOffsetStage(
-        this.liftSqlQuery,
-        orderBy = Some(f)
-      ).liftSqlQuery
+      override def addFilter(f: Ma[DbValue] => DbValue[Boolean]): Query[Ma] = addHaving(f)
 
-      override def addLimit(i: Int): Query[B] = SqlQueryOrderedLimitOffsetStage(
+      override def addOrderBy(f: Ma[DbValue] => OrdSeq): Query[Ma] =
+        SqlQueryOrderedStage(
+          this.liftSqlQuery,
+          f
+        ).liftSqlQuery
+
+      override def addLimit(i: Int): Query[Ma] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
         limit = Some(i)
       ).liftSqlQuery
 
-      override def addOffset(i: Int): Query[B] = SqlQueryOrderedLimitOffsetStage(
+      override def addOffset(i: Int): Query[Ma] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = Some(i)
+        offset = i
       ).liftSqlQuery
 
-      override def selectAstAndValues: TagState[(SelectAst, B[Const[String]], B[DbValue])] =
+      override def selectAstAndValues: TagState[(SelectAst, Ma[Const[String]], Ma[DbValue])] =
         query.selectAstAndValues.flatMap { case (selectAst, _, values) =>
-          given FunctorKC[A] = query.applicativeK
+          val groupedBy  = group(values)
+          val groupByAst = groupedBy.foldMapK([Z] => (dbVal: DbValue[Z]) => List(dbVal.ast))
 
-          val groupedValues = this.groupBy.fold(values.asInstanceOf[B[DbValue]])(f => f(valuesAsGrouped(values)))
+          val groupedValues = map(groupedBy, valuesAsMany(values))
+
+          def astAnd(lhs: Option[SqlExpr], rhs: Option[SqlExpr]): Option[SqlExpr] = (lhs, rhs) match
+            case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
+            case (Some(lhs), None)      => Some(lhs)
+            case (None, Some(rhs))      => Some(rhs)
+            case (None, None)           => None
+          end astAnd
 
           tagValues(groupedValues).map { case (aliases, exprWithAliases) =>
             val newSelectAst = selectAst.copy(
               data = selectAst.data match
-                case from: SelectAst.Data.SelectFrom =>
-                  val filterAst = this.filter.map(f => f(values).ast)
-                  val havingAst = this.having.map(f => f(values).ast)
+                case from: Data.SelectFrom =>
+                  from.copy(
+                    selectExprs = exprWithAliases,
+                    groupBy = Some(SelectAst.GroupBy(groupByAst)),
+                    having = astAnd(from.having, having.map(f => f(values).ast))
+                  )
 
-                  def astAnd(lhs: Option[SqlExpr], rhs: Option[SqlExpr]): Option[SqlExpr] = (lhs, rhs) match
-                    case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
-                    case (Some(lhs), None)      => Some(lhs)
-                    case (None, Some(rhs))      => Some(rhs)
-                    case (None, None)           => None
-
-                  val optGroupBys = this.groupBy.map { _ =>
-                    groupedValues.foldMapK(
-                      [X] => (value: DbValue[X]) => if value.hasGroupBy then List(value.ast) else Nil
-                    )
-                  }
-
-                  from
-                    .copy(
-                      selectExprs = exprWithAliases,
-                      where = astAnd(from.where, filterAst),
-                      groupBy = optGroupBys.map(SelectAst.GroupBy.apply),
-                      having = astAnd(from.having, havingAst)
-                    )
-
-                case data: SelectAst.Data.SetOperatorData => data
+                case data: Data.SetOperatorData => data
             )
 
             (newSelectAst, aliases, groupedValues)
@@ -493,45 +464,77 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         }
     }
 
-    case class SqlQueryOrderedLimitOffsetStage[A[_[_]]](
+    case class SqlQueryOrderedStage[A[_[_]]](
         query: Query[A],
-        orderBy: Option[A[DbValue] => OrdSeq] = None,
-        limit: Option[Int] = None,
-        offset: Option[Int] = None
+        orderBy: A[DbValue] => OrdSeq
     ) extends SqlQuery[A] {
-      export query.{applicativeK, traverseK}
+      export query.{applyK, traverseK}
 
-      override def addOrderBy(f: A[DbValue] => OrdSeq): Query[A] = copy(orderBy = Some(f)).liftSqlQuery
+      override def addOrderBy(f: A[DbValue] => OrdSeq): Query[A] = copy(orderBy = f).liftSqlQuery
 
-      override def addLimit(i: Int): Query[A] = copy(limit = Some(i)).liftSqlQuery
+      override def addLimit(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        limit = Some(i)
+      ).liftSqlQuery
 
-      override def addOffset(i: Int): Query[A] = copy(offset = Some(i)).liftSqlQuery
+      override def addOffset(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        offset = i
+      ).liftSqlQuery
 
       override def selectAstAndValues: TagState[(SelectAst, A[Const[String]], A[DbValue])] =
         query.selectAstAndValues.map { case (selectAst, aliases, values) =>
-          val orderLimit = selectAst.orderLimit
+          val oldOrderLimit = selectAst.orderLimit
 
-          val newOrderLimit =
-            if orderLimit.isEmpty then
-              SelectAst.OrderLimit(
-                orderBy.map(f => SelectAst.OrderBy(f(values).ast)),
-                if limit.isDefined || offset.isDefined then
-                  Some(SelectAst.LimitOffset(limit, offset.getOrElse(0), withTies = false))
-                else None,
-                None
-              )
-            else orderLimit
+          val orderByValuesAst = orderBy(values).ast
+
+          val newOrderLimit = oldOrderLimit.copy(orderBy =
+            Some(
+              oldOrderLimit.orderBy.fold(SelectAst.OrderBy(orderByValuesAst)) { old =>
+                old.copy(exprs = old.exprs ++ orderByValuesAst)
+              }
+            )
+          )
 
           (selectAst.copy(orderLimit = newOrderLimit), aliases, values)
         }
     }
 
+    case class SqlQueryLimitOffsetStage[A[_[_]]](
+        query: Query[A],
+        limit: Option[Int] = None,
+        offset: Int = 0
+    ) extends SqlQuery[A] {
+      export query.{applyK, traverseK}
+
+      override def addLimit(i: Int): Query[A] = copy(limit = Some(i)).liftSqlQuery
+
+      override def addOffset(i: Int): Query[A] = copy(offset = i).liftSqlQuery
+
+      override def selectAstAndValues: TagState[(SelectAst, A[Const[String]], A[DbValue])] =
+        query.selectAstAndValues.map { case (selectAst, aliases, values) =>
+          val oldOrderLimit = selectAst.orderLimit
+
+          val newLimitOffset = oldOrderLimit.limitOffset match {
+            case Some(old: SelectAst.LimitOffset) =>
+              Some(old.copy(limit = limit.orElse(old.limit), offset = if offset != 0 then offset else old.offset))
+
+            case None if limit.isDefined || offset != 0 =>
+              Some(SelectAst.LimitOffset(limit, offset, false))
+
+            case None => None
+          }
+
+          (selectAst.copy(orderLimit = selectAst.orderLimit.copy(limitOffset = newLimitOffset)), aliases, values)
+        }
+    }
+
     case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => Query[B])(
-        using val applicativeK: ApplicativeKC[B],
+        using val applyK: ApplyKC[B],
         val traverseK: TraverseKC[B]
     ) extends SqlQuery[B] {
       override def selectAstAndValues: TagState[(SelectAst, B[Const[String]], B[DbValue])] =
-        query.selectAstAndValues.flatMap { case (selectAstA, aliasesA, valuesA) =>
+        query.selectAstAndValues.flatMap { case (selectAstA, _, valuesA) =>
           val stNewValuesAndAstA: TagState[(Option[SelectAst.From], Option[SqlExpr], A[DbValue])] =
             if selectAstA.orderLimit.isEmpty && (selectAstA.data match
                 case from: SelectAst.Data.SelectFrom =>
@@ -543,7 +546,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
               State.pure((selectFrom.from, selectFrom.where, valuesA))
             else SqlValueSource.FromQuery(query).fromPartAndValues.map(t => (Some(t._1), None, t._2))
 
-          def combineOption[A](optA: Option[A], optB: Option[A])(combine: (A, A) => A): Option[A] = (optA, optB) match
+          def combineOption[C](optA: Option[C], optB: Option[C])(combine: (C, C) => C): Option[C] = (optA, optB) match
             case (Some(a), Some(b)) => Some(combine(a, b))
             case (Some(a), None)    => Some(a)
             case (None, Some(b))    => Some(b)
@@ -556,7 +559,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                   case from: Data.SelectFrom =>
                     from.copy(
                       from = combineOption(fromAOpt, from.from)(SelectAst.From.FromMulti.apply),
-                      where = combineOption(whereExtra, from.where)((a, b) => SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd))
+                      where = combineOption(whereExtra, from.where)((a, b) =>
+                        SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd)
+                      )
                     )
 
                   case data: Data.SetOperatorData => ???
@@ -571,9 +576,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A]
 
+  extension [A[_[_]]](sqlQuery: SqlQueryGrouped[A]) def liftSqlQueryGrouped: QueryGrouped[A]
+
   extension (q: QueryCompanion)
     @targetName("queryCompanionFrom")
-    def from[A[_[_]]](table: Table[A])(using TraverseKC[A]): Query[A] =
+    def from[A[_[_]]](table: Table[A]): Query[A] =
       import table.given
       SqlQuery.SqlQueryFromStage(SqlValueSource.FromTable(table).liftSqlValueSource).liftSqlQuery
     end from
@@ -585,31 +592,27 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       query.addFilter(f)
 
     @targetName("queryWhere")
-    inline def where(f: A[DbValue] => DbValue[Boolean]): Query[A] =
-      filter(f)
+    def where(f: A[DbValue] => DbValue[Boolean]): Query[A] =
+      query.addWhere(f)
 
     @targetName("queryMapK")
-    def mapK[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+    def mapK[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplyKC[B], TraverseKC[B]): Query[B] =
       query.addMap(f)
 
     @targetName("querySelectK")
-    inline def selectK[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+    inline def selectK[B[_[_]]](f: A[DbValue] => B[DbValue])(using ApplyKC[B], TraverseKC[B]): Query[B] =
       mapK(f)
-
-    @targetName("querySelectT") inline def selectT[T <: NonEmptyTuple](f: A[DbValue] => T)(
-      using ev: Tuple.IsMappedBy[DbValue][T]
-    ): Query[ProductKPar[Tuple.InverseMap[T, DbValue]]] = query.mapT(f)
 
     @targetName("queryFlatmap") def flatMap[B[_[_]]](
         f: A[DbValue] => Query[B]
-    )(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
+    )(using ApplyKC[B], TraverseKC[B]): Query[B] =
       query.addFlatMap(f)
 
     @targetName("queryJoin")
     def join[B[_[_]]](that: Query[B])(on: (A[DbValue], B[DbValue]) => DbValue[Boolean]): Query[InnerJoin[A, B]] =
       query.addInnerJoin(that)(on)
 
-    @targetName("queryJoin")
+    @targetName("queryCrossJoin")
     def crossJoin[B[_[_]]](that: Query[B]): Query[InnerJoin[A, B]] =
       query.addCrossJoin(that)
 
@@ -629,27 +632,24 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[InnerJoin[A, B]] = query.join(Query.from(that))(on)
 
-    @targetName("queryCrossJoin") def crossJoin[B[_[_]]](that: Table[B])(using TraverseKC[B]): Query[InnerJoin[A, B]] =
+    @targetName("queryCrossJoin") def crossJoin[B[_[_]]](that: Table[B]): Query[InnerJoin[A, B]] =
       query.crossJoin(Query.from(that))
 
     @targetName("queryLeftJoin") def leftJoin[B[_[_]]](that: Table[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    )(using TraverseKC[B]): Query[LeftJoin[A, B]] = query.leftJoin(Query.from(that))(on)
+    ): Query[LeftJoin[A, B]] = query.leftJoin(Query.from(that))(on)
 
     @targetName("queryRightJoin") def rightJoin[B[_[_]]](that: Table[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    )(using TraverseKC[B]): Query[RightJoin[A, B]] = query.rightJoin(Query.from(that))(on)
+    ): Query[RightJoin[A, B]] = query.rightJoin(Query.from(that))(on)
 
     @targetName("queryFullJoin") def fullJoin[B[_[_]]](that: Table[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    )(using TraverseKC[B]): Query[FullJoin[A, B]] = query.fullJoin(Query.from(that))(on)
+    ): Query[FullJoin[A, B]] = query.fullJoin(Query.from(that))(on)
 
-    @targetName("queryGroupBy")
-    def groupByK[B[_[_]]](f: A[Grouped] => B[DbValue])(using ApplicativeKC[B], TraverseKC[B]): Query[B] =
-      query.addGroupBy(f)
-
-    @targetName("queryHaving")
-    def having(f: A[Grouped] => DbValue[Boolean]): Query[A] = query.addHaving(f)
+    @targetName("queryGroupMapK") def groupMapK[B[_[_]]: FoldableKC, C[_[_]]: ApplyKC: TraverseKC](
+        group: A[DbValue] => B[DbValue]
+    )(map: (B[DbValue], A[Many]) => C[DbValue]): QueryGrouped[C] = query.addGroupMapK(group)(map)
 
     @targetName("queryOrderBy")
     def orderBy(f: A[DbValue] => OrdSeq): Query[A] = query.addOrderBy(f)
@@ -664,4 +664,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     @targetName("queryLimit") inline def offset(n: Int): Query[A] = drop(n)
   end extension
+
+  extension [A[_[_]]](query: QueryGrouped[A])
+    @targetName("queryHaving") def having(f: A[DbValue] => DbValue[Boolean]): QueryGrouped[A] =
+      query.addHaving(f)
 }

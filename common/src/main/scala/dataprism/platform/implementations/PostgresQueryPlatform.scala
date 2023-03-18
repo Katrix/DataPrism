@@ -1,5 +1,8 @@
 package dataprism.platform.implementations
 
+import scala.annotation.targetName
+import scala.concurrent.Future
+
 import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
@@ -7,9 +10,6 @@ import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sharedast.{AstRenderer, PostgresAstRenderer, SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
-
-import scala.annotation.targetName
-import scala.concurrent.Future
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
 class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
@@ -28,11 +28,6 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       case DbValue.ArrayOf(values) =>
         SqlExpr.Custom(values.map(_.ast), args => sql"ARRAY[${args.intercalate(sql", ")}]")
     end ast
-
-    def hasGroupBy: Boolean = this match
-      case DbValue.SqlDbValue(value) => value.hasGroupBy
-      case DbValue.ArrayOf(values)   => values.exists(_.hasGroupBy)
-    end hasGroupBy
 
     def asSqlDbVal: Option[platform.SqlDbValue[A]] = this match
       case DbValue.SqlDbValue(res) => Some(res)
@@ -69,9 +64,6 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
   extension (ordSeq: OrdSeq) @targetName("ordSeqAndThen") def andThen(ord: Ord): OrdSeq = MultiOrdSeq(ordSeq, ord)
 
-  extension [A](grouped: Grouped[A])
-    @targetName("groupedGroupedBy") def groupedBy: DbValue[A] = SqlDbValue.GroupBy(grouped.asDbValue).liftSqlDbValue
-
   extension [A](many: Many[A])
     def arrayAgg: DbValue[Seq[A]] =
       SqlDbValue
@@ -93,12 +85,16 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         case baseQuery: SqlQuery.SqlQueryFromStage[A] => baseQuery.valueSource
         case _                                        => SqlValueSource.FromQuery(query)
 
-  type Query[A[_[_]]] = SqlQuery[A]
+  type Query[A[_[_]]]        = SqlQuery[A]
+  type QueryGrouped[A[_[_]]] = SqlQueryGrouped[A]
 
   val Query: QueryCompanion = SqlQuery
   override type QueryCompanion = SqlQuery.type
 
   extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A] = sqlQuery
+
+  extension [A[_[_]]](sqlQueryGrouped: SqlQueryGrouped[A])
+    def liftSqlQueryGrouped: QueryGrouped[A] = sqlQueryGrouped
 
   case class TaggedState(queryNum: Int, columnNum: Int) extends SqlTaggedState {
     override def withNewQueryNum(newQueryNum: Int): TaggedState = copy(queryNum = newQueryNum)
@@ -109,7 +105,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
   def select[Res[_[_]]](
       query: Query[Res]
-  )(using db: Db, dbTypes: Res[DbType], FA: ApplicativeKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
+  )(using db: Db, dbTypes: Res[DbType], FA: ApplyKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
     db.runIntoRes(sqlRenderer.renderSelect(query.selectAstAndValues.runA(TaggedState(0, 0)).value._1))(
       using dbTypes,
       FA,

@@ -40,7 +40,7 @@ class Db(ds: DataSource & Closeable) extends Closeable:
   def runInto[Res[_[_]]](
       sql: SqlStr,
       dbTypes: Res[DbType]
-  )(using FA: ApplicativeKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] = runIntoRes(sql)(using dbTypes)
+  )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] = runIntoRes(sql)(using dbTypes)
 
   def runIntoSimple[Res](
       sql: SqlStr,
@@ -51,7 +51,7 @@ class Db(ds: DataSource & Closeable) extends Closeable:
 
   def runIntoRes[Res[_[_]]](
       sql: SqlStr
-  )(using dbTypes: Res[DbType], FA: ApplicativeKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
+  )(using dbTypes: Res[DbType], FA: ApplyKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
     makePrepared(sql) { (ps: PreparedStatement) =>
       val rs = ps.executeQuery().acquired
 

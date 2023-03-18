@@ -57,7 +57,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
       fa.mapK([Z] => (v: A[Nullable[Z]]) => f[Nullable[Z]](v))
 
     def functorKC: FunctorKC[A] = this match
-      case SqlValueSource.FromQuery(q)     => q.applicativeK
+      case SqlValueSource.FromQuery(q)     => q.applyK
       case SqlValueSource.FromTable(table) => table.FA
       case SqlValueSource.InnerJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
         given FunctorKC[lt] = l.functorKC

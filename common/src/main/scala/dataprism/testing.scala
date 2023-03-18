@@ -137,21 +137,21 @@ object Testing {
     printQuery(
       Query.from(HomeK.table).map(home => home)
     )
+    */
 
     printQuery(
       Query
         .from(HomeK.table)
-        .groupByT(homes =>
+        .groupMap(homes => (homes.owner, homes.name))((grouped, homes) =>
           (
-            homes.owner.groupedBy,
-            homes.name.groupedBy,
-            homes.x.asMany.arrayAgg,
-            homes.y.asMany.arrayAgg,
-            homes.z.asMany.arrayAgg
+            grouped._1,
+            grouped._2,
+            homes.x.arrayAgg,
+            homes.y.arrayAgg,
+            homes.z.arrayAgg
           )
-        )
+        ).having(t => t.tuple._2 === "foo".as(DbType.text))
     )
-     */
 
 
     printQuery(

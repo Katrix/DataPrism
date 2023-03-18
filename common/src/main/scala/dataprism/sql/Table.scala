@@ -7,7 +7,7 @@ import perspective.*
 case class Table[A[_[_]]](
     tableName: String,
     columns: A[Column]
-)(using val FA: ApplicativeKC[A], val FF: FoldableKC[A]) {
+)(using val FA: ApplyKC[A], val FT: TraverseKC[A]) {
 
   def name: SqlStr = SqlStr(tableName, Nil)
 

@@ -1,10 +1,10 @@
 package dataprism.platform.sql
 
+import scala.annotation.targetName
+
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.{Column, DbType, SqlArg}
 import perspective.*
-
-import scala.annotation.targetName
 
 trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
@@ -33,8 +33,6 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     def ast: SqlExpr
 
-    def hasGroupBy: Boolean
-
     def asSqlDbVal: Option[SqlDbValue[A]]
   }
 
@@ -44,31 +42,19 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   enum SqlDbValue[A] extends SqlDbValueBase[A] {
     case DbColumn(column: Column[A])
     case QueryColumn(queryName: String, fromName: String)
-    case GroupBy(value: DbValue[A])
-    case JoinNullable[A](value: DbValue[A])                                            extends SqlDbValue[Nullable[A]]
-    case BinOp[A, B, R](lhs: DbValue[A], rhs: DbValue[B], op: platform.BinOp[A, B, R]) extends SqlDbValue[R]
+    case JoinNullable[B](value: DbValue[B])                                            extends SqlDbValue[Nullable[B]]
+    case BinOp[B, C, R](lhs: DbValue[B], rhs: DbValue[C], op: platform.BinOp[B, C, R]) extends SqlDbValue[R]
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue])
     case Placeholder(value: A, tpe: DbType[A])
 
     override def ast: SqlExpr = this match
       case SqlDbValue.DbColumn(_)                      => throw new IllegalArgumentException("Value not tagged")
       case SqlDbValue.QueryColumn(queryName, fromName) => SqlExpr.QueryRef(fromName, queryName)
-      case SqlDbValue.GroupBy(value)                   => value.ast
       case SqlDbValue.BinOp(lhs, rhs, op)              => SqlExpr.BinOp(lhs.ast, rhs.ast, op.ast)
       case SqlDbValue.JoinNullable(value)              => value.ast
       case SqlDbValue.Function(f, values)              => SqlExpr.FunctionCall(f, values.map(_.ast))
       case SqlDbValue.Placeholder(value, tpe)          => SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe))
     end ast
-
-    override def hasGroupBy: Boolean = this match
-      case SqlDbValue.DbColumn(_)         => false
-      case SqlDbValue.QueryColumn(_, _)   => false
-      case SqlDbValue.GroupBy(_)          => true
-      case SqlDbValue.BinOp(lhs, rhs, _)  => lhs.hasGroupBy || rhs.hasGroupBy
-      case SqlDbValue.JoinNullable(value) => value.hasGroupBy
-      case SqlDbValue.Function(_, values) => values.exists(_.hasGroupBy)
-      case SqlDbValue.Placeholder(_, _)   => false
-    end hasGroupBy
 
     override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
   }
@@ -83,8 +69,6 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       SqlDbValue.BinOp(dbVal, that, SqlBinOp.Eq().liftSqlBinOp).liftSqlDbValue
     @targetName("dbValNotEquals") def !==(that: DbValue[A]): DbValue[Boolean] =
       SqlDbValue.BinOp(dbVal, that, SqlBinOp.Neq().liftSqlBinOp).liftSqlDbValue
-
-    @targetName("dbValAsGrouped") protected[platform] inline def asGrouped: Grouped[A] = dbVal
 
     @targetName("dbValAsMany") protected[platform] inline def dbValAsMany: Many[A] = dbVal
 
@@ -113,14 +97,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   type OrdSeq <: SqlOrdSeqBase
 
-  opaque type Grouped[A] = DbValue[A]
-  opaque type Many[A]    = DbValue[A]
-
-  extension [A](grouped: Grouped[A])
-    @targetName("groupedAsMany")
-    inline def asMany: Many[A] = grouped
-
-    @targetName("groupedAsDbValue") protected[platform] inline def asDbValue: DbValue[A] = grouped
+  opaque type Many[A] = DbValue[A]
 
   extension [A](many: Many[A]) @targetName("manyAsDbValue") protected[platform] inline def asDbValue: DbValue[A] = many
 }
