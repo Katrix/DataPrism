@@ -13,6 +13,8 @@ object SqlExpr {
   case class IsNull(expr: SqlExpr)                                        extends SqlExpr
   case class Cast(expr: SqlExpr, asType: String)                          extends SqlExpr
 
+  case class SubSelect(selectAst: SelectAst) extends SqlExpr
+
   case class Custom(args: Seq[SqlExpr], render: Seq[SqlStr] => SqlStr) extends SqlExpr
 
   enum UnaryOperation:
@@ -60,6 +62,8 @@ object SqlExpr {
     case Avg
     case Max
     case Min
+    case Count
+    case Sum
 
     case Ln
     case Log
@@ -119,8 +123,10 @@ object SelectAst {
 
   sealed trait From
   object From {
-    case class FromTable(table: String, alias: Option[String])   extends From
-    case class FromQuery(selectAst: SelectAst, alias: String)    extends From
+    case class FromTable(table: String, alias: Option[String]) extends From
+    case class FromQuery(selectAst: SelectAst, alias: String)  extends From
+    case class FromValues(valueExprs: Seq[Seq[SqlExpr]], alias: Option[String], columnAliases: Option[Seq[String]])
+        extends From
     case class FromMulti(fst: From, snd: From)                   extends From
     case class CrossJoin(lhs: From, rhs: From)                   extends From
     case class InnerJoin(lhs: From, rhs: From, on: SqlExpr)      extends From

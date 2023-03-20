@@ -1,7 +1,8 @@
 package dataprism.platform.base
 
-import scala.annotation.targetName
+import cats.Applicative
 
+import scala.annotation.targetName
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 
@@ -72,14 +73,34 @@ trait QueryPlatform {
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]]
 
-    @targetName("queryGroupMapK") def groupMapK[B[_[_]]: FoldableKC, C[_[_]]: ApplyKC: TraverseKC](
+    @targetName("queryGroupMapK") def groupMapK[B[_[_]]: TraverseKC, C[_[_]]: ApplyKC: TraverseKC](
         group: A[DbValue] => B[DbValue]
     )(map: (B[DbValue], A[Many]) => C[DbValue]): QueryGrouped[C]
 
     @targetName("queryGroupMap") inline def groupMap[B, C](group: A[DbValue] => B)(using MRB: MapRes[DbValue, B])(
         map: (B, A[Many]) => C
     )(using MRC: MapRes[DbValue, C]): QueryGrouped[MRC.K] =
-      groupMapK(a => MRB.toK(group(a)))((a, b) => MRC.toK(map(MRB.fromK(a), b)))(using MRB.traverseKC, MRC.applyKC, MRC.traverseKC)
+      groupMapK(a => MRB.toK(group(a)))((a, b) => MRC.toK(map(MRB.fromK(a), b)))(
+        using MRB.traverseKC,
+        MRC.applyKC,
+        MRC.traverseKC
+      )
+
+    @targetName("queryMapSingleGroupedK") def mapSingleGroupedK[B[_[_]]: ApplyKC: TraverseKC](
+        f: A[Many] => B[DbValue]
+    ): QueryGrouped[B] =
+      given TraverseKC[[F[_]] =>> Unit] with {
+        extension [X[__], C](fa: Unit) def foldLeftK[Y](b: Y)(f: Y => X ~>#: Y): Y = b
+
+        extension[X[_], C] (fa: Unit)
+          def traverseK[G[_] : Applicative, Y[_]](f: X ~>: Compose2[G, Y]): G[Unit] = summon[Applicative[G]].unit
+      }
+      groupMapK[[F[_]] =>> Unit, B](_ => ())((_, a) => f(a))
+
+    @targetName("queryMapSingleGrouped") inline def mapSingleGrouped[B](f: A[Many] => B)(
+        using MR: MapRes[DbValue, B]
+    ): QueryGrouped[MR.K] =
+      mapSingleGroupedK(a => MR.toK(f(a)))(using MR.applyKC, MR.traverseKC)
 
     @targetName("queryOrderBy") def orderBy(f: A[DbValue] => OrdSeq): Query[A]
 
@@ -89,7 +110,6 @@ trait QueryPlatform {
   end extension
 
   extension [A[_[_]]](query: QueryGrouped[A])
-
     @targetName("queryHaving") def having(f: A[DbValue] => DbValue[Boolean]): QueryGrouped[A]
 
   type QueryCompanion

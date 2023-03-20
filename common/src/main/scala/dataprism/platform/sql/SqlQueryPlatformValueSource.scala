@@ -4,19 +4,20 @@ import scala.annotation.targetName
 
 import cats.data.State
 import cats.syntax.all.*
-
-import perspective.*
 import dataprism.sharedast.{SelectAst, SqlExpr}
-import dataprism.sql.{Table, Column}
+import dataprism.sql.{Column, Table}
+import perspective.*
 
 trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
+  case class ValueSourceAstMetaData[A[_[_]]](ast: SelectAst.From, values: A[DbValue])
+
   trait SqlValueSourceBase[A[_[_]]] {
-    def functorKC: FunctorKC[A]
+    def applyKC: ApplyKC[A]
 
-    given FunctorKC[A] = functorKC
+    given ApplyKC[A] = applyKC
 
-    def fromPartAndValues: TagState[(SelectAst.From, A[DbValue])]
+    def fromPartAndValues: TagState[ValueSourceAstMetaData[A]]
   }
 
   type ValueSource[A[_[_]]] <: SqlValueSourceBase[A]
@@ -26,6 +27,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
   enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
     case FromQuery(q: Query[A])
     case FromTable(t: Table[A])
+    case FromValues(value: A[DbValue], values: Seq[A[DbValue]], FA: ApplyKC[A], FT: TraverseKC[A])
     case InnerJoin[A[_[_]], B[_[_]]](
         lhs: ValueSource[A],
         rhs: ValueSource[B],
@@ -36,9 +38,9 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
         rhs: ValueSource[B]
     ) extends SqlValueSource[[F[_]] =>> (A[F], B[F])]
     case LeftJoin[A[_[_]], B[_[_]]](
-      lhs: ValueSource[A],
-      rhs: ValueSource[B],
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        lhs: ValueSource[A],
+        rhs: ValueSource[B],
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ) extends SqlValueSource[[F[_]] =>> (A[F], B[Compose2[F, Nullable]])]
     case RightJoin[A[_[_]], B[_[_]]](
         lhs: ValueSource[A],
@@ -51,92 +53,149 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ) extends SqlValueSource[[F[_]] =>> (A[Compose2[F, Nullable]], B[Compose2[F, Nullable]])]
 
-    private def mapOptCompose[F[_[_]], A[_], B[_]](fa: F[Compose2[A, Nullable]])(f: A ~>: B)(
+    private def mapOptCompose[F[_[_]], X[_], Y[_]](fa: F[Compose2[X, Nullable]])(f: X ~>: Y)(
         using F: FunctorKC[F]
-    ): F[Compose2[B, Nullable]] =
-      fa.mapK([Z] => (v: A[Nullable[Z]]) => f[Nullable[Z]](v))
+    ): F[Compose2[Y, Nullable]] =
+      fa.mapK([Z] => (v: X[Nullable[Z]]) => f[Nullable[Z]](v))
 
-    def functorKC: FunctorKC[A] = this match
-      case SqlValueSource.FromQuery(q)     => q.applyK
-      case SqlValueSource.FromTable(table) => table.FA
+    private def map2OptCompose[F[_[_]], X[_], Y[_], Z[_]](fa: F[Compose2[X, Nullable]], fb: F[Compose2[Y, Nullable]])(
+        f: [W] => (X[W], Y[W]) => Z[W]
+    )(using F: ApplyKC[F]): F[Compose2[Z, Nullable]] =
+      fa.map2K(fb)([W] => (v1: X[Nullable[W]], v2: Y[Nullable[W]]) => f[Nullable[W]](v1, v2))
+
+    def makeApplyKC[lt[_[_]]: ApplyKC, rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (lt[F], rt[F])] {
+      extension [X[_], C](fa: (lt[X], rt[X]))
+        def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Y]) =
+          (fa._1.mapK(f), fa._2.mapK(f))
+
+        def map2K[Y[_], Z[_]](fb: (lt[Y], rt[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (lt[Z], rt[Z]) =
+          (fa._1.map2K(fb._1)(f), fa._2.map2K(fb._2)(f))
+    }
+
+    def applyKC: ApplyKC[A] = this match
+      case SqlValueSource.FromQuery(q)            => q.applyK
+      case SqlValueSource.FromTable(table)        => table.FA
+      case SqlValueSource.FromValues(_, _, fa, _) => fa
       case SqlValueSource.InnerJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
+        given ApplyKC[lt] = l.applyKC
+        given ApplyKC[rt] = r.applyKC
 
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[F], rt[F])] {
-          extension [X[_], C](fa: (lt[X], rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Y]) =
+        def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[F], Rt[F])] {
+          extension [X[_], C](fa: (Lt[X], Rt[X]))
+            def mapK[Y[_]](f: X ~>: Y): (Lt[Y], Rt[Y]) =
               (fa._1.mapK(f), fa._2.mapK(f))
+
+            def map2K[Y[_], Z[_]](fb: (Lt[Y], Rt[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (Lt[Z], Rt[Z]) =
+              (fa._1.map2K(fb._1)(f), fa._2.map2K(fb._2)(f))
         }
+
+        make[lt, rt] // Doesn't work otherwise
+
       case SqlValueSource.CrossJoin(l: ValueSource[lt], r: ValueSource[rt]) =>
-        given FunctorKC[lt] = l.functorKC
+        given ApplyKC[lt] = l.applyKC
+        given ApplyKC[rt] = r.applyKC
 
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[F], rt[F])] {
-          extension [X[_], C](fa: (lt[X], rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Y]) =
+        def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[F], Rt[F])] {
+          extension [X[_], C](fa: (Lt[X], Rt[X]))
+            def mapK[Y[_]](f: X ~>: Y): (Lt[Y], Rt[Y]) =
               (fa._1.mapK(f), fa._2.mapK(f))
+
+            def map2K[Y[_], Z[_]](fb: (Lt[Y], Rt[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (Lt[Z], Rt[Z]) =
+              (fa._1.map2K(fb._1)(f), fa._2.map2K(fb._2)(f))
         }
+
+        make[lt, rt] // Doesn't work otherwise
+
       case SqlValueSource.LeftJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
+        given ApplyKC[lt] = l.applyKC
+        given ApplyKC[rt] = r.applyKC
 
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[F], rt[Compose2[F, Nullable]])] {
-          extension[X[_], C] (fa: (lt[X], rt[Compose2[X, Nullable]]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Compose2[Y, Nullable]]) =
+        def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[F], Rt[Compose2[F, Nullable]])] {
+          extension [X[_], C](fa: (Lt[X], Rt[Compose2[X, Nullable]]))
+            def mapK[Y[_]](f: X ~>: Y): (Lt[Y], Rt[Compose2[Y, Nullable]]) =
               (fa._1.mapK(f), mapOptCompose(fa._2)(f))
+
+            def map2K[Y[_], Z[_]](fb: (Lt[Y], Rt[Compose2[Y, Nullable]]))(
+                f: [W] => (X[W], Y[W]) => Z[W]
+            ): (Lt[Z], Rt[Compose2[Z, Nullable]]) =
+              (fa._1.map2K(fb._1)(f), map2OptCompose(fa._2, fb._2)(f))
         }
+
+        make[lt, rt] // Doesn't work otherwise
+
       case SqlValueSource.RightJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
+        given ApplyKC[lt] = l.applyKC
+        given ApplyKC[rt] = r.applyKC
 
-        given FunctorKC[rt] = r.functorKC
-
-        new FunctorKC[[F[_]] =>> (lt[Compose2[F, Nullable]], rt[F])] {
-          extension [X[_], C](fa: (lt[Compose2[X, Nullable]], rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Compose2[Y, Nullable]], rt[Y]) =
-              val l: lt[Compose2[X, Nullable]] = fa._1
+        def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[Compose2[F, Nullable]], Rt[F])] {
+          extension [X[_], C](fa: (Lt[Compose2[X, Nullable]], Rt[X]))
+            def mapK[Y[_]](f: X ~>: Y): (Lt[Compose2[Y, Nullable]], Rt[Y]) =
               (mapOptCompose(fa._1)(f), fa._2.mapK(f))
+
+            def map2K[Y[_], Z[_]](fb: (Lt[Compose2[Y, Nullable]], Rt[Y]))(
+                f: [W] => (X[W], Y[W]) => Z[W]
+            ): (Lt[Compose2[Z, Nullable]], Rt[Z]) =
+              (map2OptCompose(fa._1, fb._1)(f), fa._2.map2K(fb._2)(f))
         }
+
+        make[lt, rt] // Doesn't work otherwise
+
       case SqlValueSource.FullJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
-        given FunctorKC[lt] = l.functorKC
+        given ApplyKC[lt] = l.applyKC
+        given ApplyKC[rt] = r.applyKC
 
-        given FunctorKC[rt] = r.functorKC
+        def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] =
+          new ApplyKC[[F[_]] =>> (Lt[Compose2[F, Nullable]], Rt[Compose2[F, Nullable]])] {
+            extension [X[_], C](fa: (Lt[Compose2[X, Nullable]], Rt[Compose2[X, Nullable]]))
+              def mapK[Y[_]](f: X ~>: Y): (Lt[Compose2[Y, Nullable]], Rt[Compose2[Y, Nullable]]) =
+                (mapOptCompose(fa._1)(f), mapOptCompose(fa._2)(f))
 
-        new FunctorKC[[F[_]] =>> (lt[Compose2[F, Nullable]], rt[Compose2[F, Nullable]])] {
-          extension [X[_], C](fa: (lt[Compose2[X, Nullable]], rt[Compose2[X, Nullable]]))
-            def mapK[Y[_]](f: X ~>: Y): (lt[Compose2[Y, Nullable]], rt[Compose2[Y, Nullable]]) =
-              (mapOptCompose(fa._1)(f), mapOptCompose(fa._2)(f))
-        }
-    end functorKC
+              def map2K[Y[_], Z[_]](fb: (Lt[Compose2[Y, Nullable]], Rt[Compose2[Y, Nullable]]))(
+                  f: [W] => (X[W], Y[W]) => Z[W]
+              ): (Lt[Compose2[Z, Nullable]], Rt[Compose2[Z, Nullable]]) =
+                (map2OptCompose(fa._1, fb._1)(f), map2OptCompose(fa._2, fb._2)(f))
+          }
 
-    private def fromPartJoin[A[_[_]], B[_[_]], R](
+        make[lt, rt]
+    end applyKC
+
+    private def fromPartJoin[A[_[_]], B[_[_]], R[_[_]]](
         lhs: ValueSource[A],
         rhs: ValueSource[B],
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean],
         make: (SelectAst.From, SelectAst.From, SqlExpr) => SelectAst.From,
-        doJoin: (A[DbValue], B[DbValue]) => R
-    ): TagState[(SelectAst.From, R)] =
-      lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case ((lfrom, lvalues), (rfrom, rvalues)) =>
-        (make(lfrom, rfrom, on(lvalues, rvalues).ast), doJoin(lvalues, rvalues))
-      }
+        doJoin: (A[DbValue], B[DbValue]) => R[DbValue]
+    ): TagState[ValueSourceAstMetaData[R]] =
+      for
+        lmeta <- lhs.fromPartAndValues
+        rmeta <- rhs.fromPartAndValues
+        onAst <- on(lmeta.values, rmeta.values).ast
+      yield ValueSourceAstMetaData(
+        make(lmeta.ast, rmeta.ast, onAst),
+        doJoin(lmeta.values, rmeta.values)
+      )
 
     private def mapJoinNullable[A[_[_]]: FunctorKC](values: A[DbValue]): A[Compose2[DbValue, Nullable]] =
       values.mapK([X] => (value: DbValue[X]) => SqlDbValue.JoinNullable(value).liftSqlDbValue)
 
-    def fromPartAndValues: TagState[(SelectAst.From, A[DbValue])] = this match
+    def fromPartAndValues: TagState[ValueSourceAstMetaData[A]] = this match
       case SqlValueSource.FromQuery(q) =>
-        q.selectAstAndValues.flatMap { case (queryAst, aliases, _) =>
+        q.selectAstAndValues.flatMap { meta =>
           State { st =>
             val queryNum  = st.queryNum
             val queryName = s"y$queryNum"
 
             val newValues =
-              aliases.mapK([X] => (alias: String) => SqlDbValue.QueryColumn[X](alias, queryName).liftSqlDbValue)
+              meta.aliases.map2K(meta.values)(
+                [X] =>
+                  (alias: String, value: DbValue[X]) =>
+                    SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).liftSqlDbValue
+              )
 
-            (st.withNewQueryNum(queryNum + 1), (SelectAst.From.FromQuery(queryAst, queryName), newValues))
+            (
+              st.withNewQueryNum(queryNum + 1),
+              ValueSourceAstMetaData(SelectAst.From.FromQuery(meta.ast, queryName), newValues)
+            )
           }
         }
 
@@ -148,16 +207,56 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
           val queryName = s"${table.tableName}_y$queryNum"
 
           val values = table.columns.mapK(
-            [X] => (column: Column[X]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName).liftSqlDbValue
+            [X] =>
+              (column: Column[X]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).liftSqlDbValue
           )
 
-          (st.withNewQueryNum(queryNum + 1), (SelectAst.From.FromTable(table.tableName, Some(queryName)), values))
+          (
+            st.withNewQueryNum(queryNum + 1),
+            ValueSourceAstMetaData(SelectAst.From.FromTable(table.tableName, Some(queryName)), values)
+          )
         }
+
+      case SqlValueSource.FromValues(value, values, _, ft) =>
+        State[TaggedState, TagState[ValueSourceAstMetaData[A]]] { st =>
+          given TraverseKC[A] = ft
+
+          val queryNum  = st.queryNum
+          val queryName = s"y$queryNum"
+
+          val columnName = st.columnNum
+
+          val columnNumState: State[Int, A[[X] =>> (DbValue[X], List[String])]] =
+            value.traverseK(
+              [X] =>
+                (dbVal: DbValue[X]) =>
+                  State[Int, (DbValue[X], List[String])]((acc: Int) =>
+                    val colName = s"x$acc"
+                    (acc + 1, (SqlDbValue.QueryColumn[X](colName, queryName, dbVal.tpe).liftSqlDbValue, List(colName)))
+                )
+            )
+
+          val (newColumnNum, columns) = columnNumState.run(columnName).value
+          val dbValues                = columns.mapK([Z] => (t: (DbValue[Z], List[String])) => t._1)
+          val aliases                 = columns.foldMapK([Z] => (t: (DbValue[Z], List[String])) => t._2)
+
+          val valueExprsSt = (value +: values).traverse(a =>
+            a.traverseK[TagState, Const[SqlExpr]]([Z] => (v: DbValue[Z]) => v.ast).map(_.toListK)
+          )
+
+          (
+            st.withNewQueryNum(queryNum + 1).withNewColumnNum(newColumnNum),
+            valueExprsSt.map(valueExprs =>
+              ValueSourceAstMetaData(SelectAst.From.FromValues(valueExprs, Some(queryName), Some(aliases)), dbValues)
+            )
+          )
+        }.flatMap(identity)
+
       case SqlValueSource.InnerJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         fromPartJoin(lhs, rhs, on, SelectAst.From.InnerJoin.apply, (a, b) => (a, b))
       case SqlValueSource.CrossJoin(lhs: ValueSource[l], rhs: ValueSource[r]) =>
-        lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case ((lfrom, lvalues), (rfrom, rvalues)) =>
-          (SelectAst.From.CrossJoin(lfrom, rfrom), (lvalues, rvalues))
+        lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case (lmeta, rmeta) =>
+          ValueSourceAstMetaData(SelectAst.From.CrossJoin(lmeta.ast, rmeta.ast), (lmeta.values, rmeta.values))
         }
       case SqlValueSource.LeftJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         import rhs.given

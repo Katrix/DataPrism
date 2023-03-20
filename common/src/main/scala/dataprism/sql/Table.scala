@@ -38,7 +38,3 @@ case class Table[A[_[_]]](
       .toListK
       .intercalate(sql", ")
 }
-object Table {
-  def tableDbTypes[A[_[_]]: FunctorKC](table: Table[A]): A[DbType] =
-    table.columns.mapK([A] => (column: Column[A]) => column.tpe)
-}

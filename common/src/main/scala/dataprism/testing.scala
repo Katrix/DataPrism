@@ -46,8 +46,6 @@ object HomeK {
     )
   )
 
-  given HomeK[DbType] = Table.tableDbTypes(table)
-
   given typeclass: KMacros.RepresentableTraverseKC[HomeK] = KMacros.deriveRepresentableTraverseKC[HomeK]
 }
 
@@ -76,8 +74,6 @@ object ResidentK {
     )
   )
 
-  given ResidentK[DbType] = Table.tableDbTypes(table)
-
   given KMacros.RepresentableTraverseKC[ResidentK] = KMacros.deriveRepresentableTraverseKC[ResidentK]
 }
 
@@ -91,8 +87,6 @@ object People {
       Column("age", DbType.nullable(DbType.int32))
     )
   )
-
-  given People[DbType] = Table.tableDbTypes(table)
 
   given KMacros.RepresentableTraverseKC[People] = KMacros.deriveRepresentableTraverseKC[People]
 }

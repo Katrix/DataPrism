@@ -11,7 +11,8 @@ import scala.util.NotGiven
 case class DbType[A](
     name: String,
     get: (ResultSet, Int) => A,
-    set: (PreparedStatement, Int, A) => Unit
+    set: (PreparedStatement, Int, A) => Unit,
+    isNullable: Boolean = false
 )
 object DbType {
   val int8: DbType[Byte]       = DbType("INT8", _.getByte(_), _.setByte(_, _))
@@ -37,6 +38,7 @@ object DbType {
   def nullable[A](inner: DbType[A])(using @unused ev: NotGiven[A <:< Option[_]]): DbType[Option[A]] = DbType(
     inner.name,
     (a, b) => Option(inner.get(a, b)),
-    (a, b, c) => inner.set(a, b, c.map(_.asInstanceOf[AnyRef]).orNull.asInstanceOf[A])
+    (a, b, c) => inner.set(a, b, c.map(_.asInstanceOf[AnyRef]).orNull.asInstanceOf[A]),
+    isNullable = true
   )
 }

@@ -69,10 +69,12 @@ class AstRenderer {
       case SqlExpr.FunctionName.Sin   => normal("sin")
       case SqlExpr.FunctionName.Tan   => normal("tan")
 
-      case SqlExpr.FunctionName.Abs => normal("abs")
-      case SqlExpr.FunctionName.Avg => normal("avg")
-      case SqlExpr.FunctionName.Max => normal("max")
-      case SqlExpr.FunctionName.Min => normal("min")
+      case SqlExpr.FunctionName.Abs   => normal("abs")
+      case SqlExpr.FunctionName.Avg   => normal("avg")
+      case SqlExpr.FunctionName.Max   => normal("max")
+      case SqlExpr.FunctionName.Min   => normal("min")
+      case SqlExpr.FunctionName.Count => normal("count")
+      case SqlExpr.FunctionName.Sum   => normal("sum")
 
       case SqlExpr.FunctionName.Ln      => normal("ln")
       case SqlExpr.FunctionName.Log     => normal("log")
@@ -94,6 +96,7 @@ class AstRenderer {
     case SqlExpr.PreparedArgument(_, arg)         => SqlStr("?", Seq(arg))
     case SqlExpr.IsNull(expr)                     => sql"${renderExpr(expr)} IS NULL"
     case SqlExpr.Cast(expr, asType)               => sql"(CAST (${renderExpr(expr)} AS ${SqlStr.const(asType)}))"
+    case SqlExpr.SubSelect(selectAst)             => sql"(${renderSelect(selectAst)})"
     case SqlExpr.Custom(args, render)             => render(args.map(renderExpr))
 
   protected def spaceConcat(args: SqlStr*): SqlStr =
@@ -101,6 +104,98 @@ class AstRenderer {
 
   def renderSelect(selectAst: SelectAst): SqlStr =
     spaceConcat(renderSelectData(selectAst.data), renderSelectOrderLimit(selectAst.orderLimit))
+
+  def renderUpdate(
+      columnNames: List[SqlStr],
+      valuesAst: SelectAst,
+      returningExprs: List[SqlExpr]
+  ): SqlStr =
+    require(valuesAst.orderLimit.orderBy.isEmpty, "OrderBy in update is not empty")
+    require(valuesAst.orderLimit.limitOffset.isEmpty, "LimitOffset in delete is not empty")
+
+    val (table, alias, fromV, where, exprs) = valuesAst.data match {
+      case SelectAst.Data.SelectFrom(
+            None,
+            exprs,
+            Some(SelectAst.From.FromMulti(SelectAst.From.FromTable(table, alias), usingV)),
+            where,
+            None,
+            None
+          ) =>
+        (table, alias, sql"FROM ${renderFrom(usingV)}", where, exprs)
+
+      case SelectAst.Data.SelectFrom(None, exprs, Some(SelectAst.From.FromTable(table, alias)), where, None, None) =>
+        (table, alias, sql"", where, exprs)
+
+      case _ =>
+        throw new IllegalArgumentException("Can't use any other operator than from stuff and where with renderUpdate")
+    }
+
+    spaceConcat(
+      sql"UPDATE ",
+      SqlStr(table, Nil),
+      sql"AS",
+      alias.fold(sql"")(a => sql"AS ${SqlStr(a, Nil)}"),
+      sql"SET",
+      columnNames.zip(exprs).map((col, e) => sql"$col = ${renderExpr(e.expr)}").intercalate(sql", "),
+      fromV,
+      where.fold(sql"")(renderWhere),
+      if returningExprs.isEmpty then sql"" else sql"RETURNING ${returningExprs.map(renderExpr).intercalate(sql", ")}"
+    )
+
+  def renderInsert(
+      table: SqlStr,
+      columns: List[SqlStr],
+      values: SelectAst,
+      onConflict: List[(SqlStr, SqlExpr)],
+      returning: List[SqlExpr]
+  ): SqlStr =
+    spaceConcat(
+      sql"INSERT INTO",
+      table,
+      sql"(",
+      columns.intercalate(sql", "),
+      sql")",
+      renderSelect(values),
+      if onConflict.isEmpty then sql""
+      else
+        val conflictSets = onConflict.map((col, e) => sql"$col = ${renderExpr(e)}").intercalate(sql", ")
+        sql"ON CONFLICT DO UPDATE SET $conflictSets"
+      ,
+      if returning.isEmpty then sql"" else sql"RETURNING ${returning.map(renderExpr).intercalate(sql",  ")}"
+    )
+
+  def renderDelete(query: SelectAst, returning: Boolean): SqlStr =
+    require(query.orderLimit.orderBy.isEmpty, "OrderBy in delete is not empty")
+    require(query.orderLimit.limitOffset.isEmpty, "LimitOffset in delete is not empty")
+
+    val (table, alias, usingV, where, exprs) = query.data match {
+      case SelectAst.Data.SelectFrom(
+            None,
+            exprs,
+            Some(SelectAst.From.FromMulti(SelectAst.From.FromTable(table, alias), usingV)),
+            where,
+            None,
+            None
+          ) =>
+        (table, alias, sql"USING ${renderFrom(usingV)}", where, exprs)
+
+      case SelectAst.Data.SelectFrom(None, exprs, Some(SelectAst.From.FromTable(table, alias)), where, None, None) =>
+        (table, alias, sql"", where, exprs)
+
+      case _ =>
+        throw new IllegalArgumentException("Can't use any other operator than from stuff and where with renderDelete")
+    }
+
+    spaceConcat(
+      sql"DELETE FROM",
+      SqlStr(table, Nil),
+      alias.fold(sql"")(a => sql"AS ${SqlStr(a, Nil)}"),
+      usingV,
+      where.fold(sql"")(renderWhere),
+      if returning then sql"RETURNING ${exprs.map(renderExprWithAlias).intercalate(sql", ")}" else sql""
+    )
+  end renderDelete
 
   protected def renderSelectData(data: SelectAst.Data): SqlStr = data match
     case d: SelectAst.Data.SelectFrom      => renderSelectFrom(d)
@@ -132,6 +227,11 @@ class AstRenderer {
     case SelectAst.From.FromQuery(query, alias) => sql"(${renderSelect(query)}) ${SqlStr.const(alias)}"
     case SelectAst.From.FromTable(table, alias) =>
       spaceConcat(SqlStr.const(table), alias.fold(sql"")(a => sql"${SqlStr.const(a)}"))
+    case SelectAst.From.FromValues(valueExprs, alias, columnAliases) =>
+      spaceConcat(
+        sql"VALUES ",
+        valueExprs.map(v => sql"(${v.map(renderExpr).intercalate(sql", ")})").intercalate(sql", ")
+      )
     case SelectAst.From.FromMulti(fst, snd) => sql"${renderFrom(fst)}, ${renderFrom(snd)}"
     case SelectAst.From.CrossJoin(lhs, rhs) => sql"${renderFrom(lhs)} CROSS JOIN ${renderFrom(rhs)}"
     case SelectAst.From.InnerJoin(lhs, rhs, on) =>
