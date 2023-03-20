@@ -2,13 +2,13 @@ package dataprism.sql
 
 import scala.collection.mutable
 
-extension [A](a: A)(using SqlInterpolation) def as(tpe: DbType[A]): SqlArg = SqlArg.SqlArgObj(a, tpe)
+extension [A](a: A)(using SqlInterpolation) def asArg(tpe: DbType[A]): SqlArg = SqlArg.SqlArgObj(a, tpe)
 
 //noinspection ScalaFileName
 trait SqlInterpolation
 
 extension (sc: StringContext)
-  def sql(args: SqlInterpolation ?=> (SqlArg | Table[_] | Column[_] | SqlStr)*): SqlStr =
+  def sql(args: SqlInterpolation ?=> (SqlArg | SqlStr)*): SqlStr =
     given sqlInterpolation: SqlInterpolation = new SqlInterpolation {}
     StringContext.checkLengths(args, sc.parts)
 

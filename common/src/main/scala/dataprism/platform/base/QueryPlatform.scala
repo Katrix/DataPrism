@@ -107,6 +107,13 @@ trait QueryPlatform {
     @targetName("queryLimit") def take(n: Int): Query[A]
 
     @targetName("queryOffset") def drop(n: Int): Query[A]
+
+    //TODO: Ensure the type of this will always be Long
+    @targetName("querySize") def size: DbValue[Long]
+
+    @targetName("queryNonEmpty") def nonEmpty: DbValue[Boolean]
+
+    @targetName("queryIsEmpty") def isEmpty: DbValue[Boolean]
   end extension
 
   extension [A[_[_]]](query: QueryGrouped[A])

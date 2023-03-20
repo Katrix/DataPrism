@@ -133,6 +133,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue], override val tpe: DbType[A])
     case Placeholder(value: A, override val tpe: DbType[A])
     case SubSelect(query: Query[[F[_]] =>> F[A]])
+    case QueryCount extends SqlDbValue[Long]
 
     override def ast: TagState[SqlExpr] = this match
       case SqlDbValue.DbColumn(_)                         => throw new IllegalArgumentException("Value not tagged")
@@ -145,6 +146,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Placeholder(value, tpe) =>
         State.pure(SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe)))
       case SqlDbValue.SubSelect(query) => query.selectAstAndValues.map(m => SqlExpr.SubSelect(m.ast))
+      case SqlDbValue.QueryCount       => State.pure(SqlExpr.QueryCount)
     end ast
 
     override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
@@ -157,6 +159,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Function(_, _, tpe)    => tpe
       case SqlDbValue.Placeholder(_, tpe)    => tpe
       case SqlDbValue.SubSelect(query)       => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
+      case SqlDbValue.QueryCount             => DbType.int64
     end tpe
   }
 

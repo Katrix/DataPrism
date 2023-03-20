@@ -97,6 +97,7 @@ class AstRenderer {
     case SqlExpr.IsNull(expr)                     => sql"${renderExpr(expr)} IS NULL"
     case SqlExpr.Cast(expr, asType)               => sql"(CAST (${renderExpr(expr)} AS ${SqlStr.const(asType)}))"
     case SqlExpr.SubSelect(selectAst)             => sql"(${renderSelect(selectAst)})"
+    case SqlExpr.QueryCount                       => sql"COUNT(*)"
     case SqlExpr.Custom(args, render)             => render(args.map(renderExpr))
 
   protected def spaceConcat(args: SqlStr*): SqlStr =
@@ -287,9 +288,9 @@ class AstRenderer {
     spaceConcat(renderOffset(limitOffset), renderLimit(limitOffset).getOrElse(sql""))
 
   protected def renderOffset(limitOffset: SelectAst.LimitOffset): SqlStr =
-    sql"OFFSET ${limitOffset.offset.as(DbType.int32)}"
+    sql"OFFSET ${limitOffset.offset.asArg(DbType.int32)}"
 
   protected def renderLimit(limitOffset: SelectAst.LimitOffset): Option[SqlStr] =
     val tiesPart = if limitOffset.withTies then sql"WITH TIES" else sql"ONLY"
-    limitOffset.limit.map(l => sql"FETCH NEXT ${l.as(DbType.int32)} ROWS $tiesPart")
+    limitOffset.limit.map(l => sql"FETCH NEXT ${l.asArg(DbType.int32)} ROWS $tiesPart")
 }

@@ -14,6 +14,7 @@ object SqlExpr {
   case class Cast(expr: SqlExpr, asType: String)                          extends SqlExpr
 
   case class SubSelect(selectAst: SelectAst) extends SqlExpr
+  case object QueryCount                     extends SqlExpr
 
   case class Custom(args: Seq[SqlExpr], render: Seq[SqlStr] => SqlStr) extends SqlExpr
 

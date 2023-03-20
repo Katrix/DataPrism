@@ -5,6 +5,7 @@ import scala.annotation.targetName
 import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
+import dataprism.platform.base.MapRes
 import dataprism.sharedast.SelectAst.Data
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.{Column, DbType, Table}
@@ -55,6 +56,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     private[platform] def addLimit(i: Int): Query[A]
 
     private[platform] def addOffset(i: Int): Query[A]
+
+    private[platform] def addDistinct: Query[A]
 
     private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]]
 
@@ -122,6 +125,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def addLimit(i: Int): Query[A] = nested.addLimit(i)
 
     def addOffset(i: Int): Query[A] = nested.addOffset(i)
+
+    def addDistinct: Query[A] = nested.addDistinct
   }
 
   object SqlQuery {
@@ -240,6 +245,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         val traverseK: TraverseKC[A]
     ) extends SqlQuery[A] {
 
+      override def nested: Query[A] = this.liftSqlQuery
+
       override def addWhere(f: A[DbValue] => DbValue[Boolean]): Query[A] =
         SqlQueryMapWhereStage(valueSource).addWhere(f)
 
@@ -314,6 +321,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def addOffset(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
         offset = i
+      ).liftSqlQuery
+
+      override def addDistinct: Query[A] = SqlQueryDistinctStage(
+        this.liftSqlQuery,
+        distinct = true
       ).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
@@ -483,6 +495,64 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           QueryAstMetadata(newSelectAst, aliases, groupedValues)
     }
 
+    case class SqlQueryDistinctStage[A[_[_]]](
+        query: Query[A],
+        distinct: Boolean
+    ) extends SqlQuery[A] {
+      export query.{applyK, traverseK}
+
+      override def addOrderBy(f: A[DbValue] => OrdSeq): Query[A] =
+        SqlQueryOrderedStage(
+          this.liftSqlQuery,
+          f
+        ).liftSqlQuery
+
+      override def addLimit(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        limit = Some(i)
+      ).liftSqlQuery
+
+      override def addOffset(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        offset = i
+      ).liftSqlQuery
+
+      def selectAstAndValues: TagState[QueryAstMetadata[A]] =
+        query.selectAstAndValues.flatMap { meta =>
+          meta.ast.data match
+            case data: SelectAst.Data.SelectFrom =>
+              State.pure(meta.copy(ast = meta.ast.copy(data = data.copy(distinct = Some(SelectAst.Distinct(Nil))))))
+            case _ =>
+              for
+                queryNum <- State((s: TaggedState) => (s.withNewQueryNum(s.queryNum + 1), s.queryNum))
+                queryName = s"y$queryNum"
+
+                newValues = meta.aliases.map2K(meta.values)(
+                  [X] =>
+                    (alias: String, value: DbValue[X]) =>
+                      SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).liftSqlDbValue
+                )
+                t <- tagValues(newValues)
+                (aliases, exprs) = t
+              yield QueryAstMetadata(
+                SelectAst(
+                  SelectAst.Data
+                    .SelectFrom(
+                      Some(SelectAst.Distinct(Nil)),
+                      exprs,
+                      Some(SelectAst.From.FromQuery(meta.ast, queryName)),
+                      None,
+                      None,
+                      None
+                    ),
+                  SelectAst.OrderLimit(None, None, None)
+                ),
+                aliases,
+                newValues
+              )
+        }
+    }
+
     case class SqlQueryOrderedStage[A[_[_]]](
         query: Query[A],
         orderBy: A[DbValue] => OrdSeq
@@ -603,6 +673,14 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       SqlQuery.SqlQueryFromStage(SqlValueSource.FromTable(table).liftSqlValueSource).liftSqlQuery
     end from
 
+    def queryCount: DbValue[Long] = SqlDbValue.QueryCount.liftSqlDbValue
+
+    def ofK[A[_[_]]: ApplyKC: TraverseKC](value: A[DbValue]): Query[A] =
+      SqlQuery.SqlQueryWithoutFrom(value).liftSqlQuery
+
+    inline def of[A](value: A)(using MR: MapRes[DbValue, A]): Query[MR.K] =
+      ofK(MR.toK(value))(using MR.applyKC, MR.traverseKC)
+
     def values[A[_[_]]: ApplyKC: TraverseKC](types: A[DbType], value: A[Id], values: Seq[A[Id]] = Nil): Query[A] =
       val liftValues = [Z] => (v: Z, tpe: DbType[Z]) => v.as(tpe)
 
@@ -702,6 +780,15 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def drop(n: Int): Query[A] = query.addOffset(n)
 
     @targetName("queryLimit") inline def offset(n: Int): Query[A] = drop(n)
+
+    // TODO: Ensure the type of this will always be Long
+    @targetName("querySize") def size: DbValue[Long] = query.map(_ => Query.queryCount).asDbValue
+
+    @targetName("queryNonEmpty") def nonEmpty: DbValue[Boolean] = size > 0.toLong.as(DbType.int64)
+
+    @targetName("queryIsEmpty") def isEmpty: DbValue[Boolean] = size === 0.toLong.as(DbType.int64)
+
+    @targetName("queryDistinct") def distinct: Query[A] = query.addDistinct
   end extension
 
   extension [A[_[_]]](query: QueryGrouped[A])
