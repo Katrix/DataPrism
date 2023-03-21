@@ -43,18 +43,20 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     end tpe
 
     def singletonArray(using tag: ClassTag[A]): DbValue[Seq[A]] = DbValue.ArrayOf(Seq(this), tpe, tag)
+
+    override def liftDbValue: DbValue[A] = this
+
+    override def asc: Ord = Ord.Asc(this)
+
+    override def desc: Ord = Ord.Desc(this)
+
+    protected[platform] override def asAnyDbVal: AnyDbValue = this.asInstanceOf[AnyDbValue]
   }
+  
+  protected[platform] override def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = new Lift[SqlDbValue[A], DbValue[A]]:
+    extension (a: SqlDbValue[A]) def lift: DbValue[A] = DbValue.SqlDbValue(a)
 
   override type AnyDbValue = DbValue[Any]
-
-  extension [A](sqlDbValue: SqlDbValue[A]) def liftSqlDbValue: DbValue[A] = DbValue.SqlDbValue(sqlDbValue)
-
-  extension [A](dbVal: DbValue[A])
-    @targetName("dbValAsAnyDbVal")
-    protected[platform] def asAnyDbVal: AnyDbValue = dbVal.asInstanceOf[AnyDbValue]
-
-    @targetName("dbValAsc") def asc: Ord   = Ord.Asc(dbVal)
-    @targetName("dbValDesc") def desc: Ord = Ord.Desc(dbVal)
 
   sealed trait OrdSeq extends SqlOrdSeqBase
 
@@ -62,16 +64,18 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     case Asc(value: DbValue[_])
     case Desc(value: DbValue[_])
 
-    def ast: TagState[Seq[SelectAst.OrderExpr]] = this match
+    override def ast: TagState[Seq[SelectAst.OrderExpr]] = this match
       case Ord.Asc(value)  => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
       case Ord.Desc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Desc, None)))
+
+    override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
   }
 
   case class MultiOrdSeq(init: OrdSeq, tail: Ord) extends OrdSeq {
-    def ast: TagState[Seq[SelectAst.OrderExpr]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
-  }
+    override def ast: TagState[Seq[SelectAst.OrderExpr]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
 
-  extension (ordSeq: OrdSeq) @targetName("ordSeqAndThen") def andThen(ord: Ord): OrdSeq = MultiOrdSeq(ordSeq, ord)
+    override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
+  }
 
   extension [A](many: Many[A])
     def arrayAgg(using ClassTag[A]): DbValue[Seq[A]] =
@@ -81,7 +85,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           Seq(many.asDbValue.asAnyDbVal),
           DbType.array(many.asDbValue.tpe)
         )
-        .liftSqlDbValue
+        .lift
 
   type ValueSource[A[_[_]]] = SqlValueSource[A]
   type ValueSourceCompanion = SqlValueSource.type
@@ -213,7 +217,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       override def run(using db: Db): Future[Int] =
         import table.FA
         val ret = for
-          computedValues <- values.addMap(columnsToSet[DbValue]).selectAstAndValues
+          computedValues <- values.mapK(columnsToSet[DbValue]).selectAstAndValues
           computedOnConflict <- onConflict.traverse { doColumns =>
             columnsToSet(doColumns)
               .map2Const(columnsToSet(table.columns)) {
@@ -275,7 +279,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       override def run(using db: Db): Future[QueryResult[C[Id]]] =
         import table.FA
         val ret = for
-          computedValues <- values.addMap(columnsToSet[DbValue]).selectAstAndValues
+          computedValues <- values.mapK(columnsToSet[DbValue]).selectAstAndValues
           computedOnConflict <- onConflict.traverse { doColumns =>
             columnsToSet(doColumns)
               .map2Const(columnsToSet(table.columns)) {
@@ -327,15 +331,15 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         import table.given
         val query = from match
           case Some(fromQ) =>
-            Query.from(table).addFlatMap(a => fromQ.where(b => where(a, b)).addMap(b => setValues(a, b)))
+            Query.from(table).flatMap(a => fromQ.where(b => where(a, b)).mapK(b => setValues(a, b)))
           case None =>
             Query
               .from(table)
               .where(a => where(a, a.asInstanceOf[B[DbValue]]))
-              .addMap(a => setValues(a, a.asInstanceOf[B[DbValue]]))
+              .mapK(a => setValues(a, a.asInstanceOf[B[DbValue]]))
 
         val ret =
-          for meta <- query.addMap(columnsToSet[DbValue]).selectAstAndValues
+          for meta <- query.mapK(columnsToSet[DbValue]).selectAstAndValues
           yield db.run(
             sqlRenderer.renderUpdate(
               columnsToSet(table.columns).foldMapK([Z] => (col: Column[Z]) => List(col.name)),
@@ -401,8 +405,8 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         }
 
         val bothQuery = from match
-          case Some(fromQ) => Query.from(table).addFlatMap[InnerJoin[A, B]](a => fromQ.addMap(b => (a, b)))
-          case None        => Query.from(table).addMap[InnerJoin[A, B]](a => (a, a.asInstanceOf[B[DbValue]]))
+          case Some(fromQ) => Query.from(table).flatMap[InnerJoin[A, B]](a => fromQ.mapK(b => (a, b)))
+          case None        => Query.from(table).mapK[InnerJoin[A, B]](a => (a, a.asInstanceOf[B[DbValue]]))
 
         extension [X[_[_]]: TraverseKC](x: X[DbValue])
           def collectAst: TagState[X[Const[SqlExpr]]] =

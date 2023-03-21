@@ -63,19 +63,25 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       def *(rhs: DbValue[A]): DbValue[A]
       def /(rhs: DbValue[A]): DbValue[A]
 
+      // TODO: Having these in here is quite broad. Might want to tighten this
+      def avg: DbValue[Nullable[A]] =
+        SqlDbValue.Function(SqlExpr.FunctionName.Avg, Seq(lhs.asAnyDbVal), dbTypeMakeNullable(lhs.tpe)).lift
+      def sum: DbValue[Nullable[A]] =
+        SqlDbValue.Function(SqlExpr.FunctionName.Sum, Seq(lhs.asAnyDbVal), dbTypeMakeNullable(lhs.tpe)).lift
+
   object SqlNumeric:
     def defaultInstance[A](tpe0: DbType[A]): SqlNumeric[A] = new SqlNumeric[A]:
       override def tpe: DbType[A] = tpe0
 
       extension (lhs: DbValue[A])
         override def +(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Plus(this).liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Plus(this).liftSqlBinOp).lift
         override def -(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Minus(this).liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Minus(this).liftSqlBinOp).lift
         override def *(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Multiply(this).liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Multiply(this).liftSqlBinOp).lift
         override def /(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Divide(this).liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Divide(this).liftSqlBinOp).lift
 
   given SqlNumeric[Int]    = SqlNumeric.defaultInstance(DbType.int32)
   given SqlNumeric[Long]   = SqlNumeric.defaultInstance(DbType.int64)
@@ -90,32 +96,47 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       def <=(rhs: DbValue[A]): DbValue[Boolean]
       def >=(rhs: DbValue[A]): DbValue[Boolean]
       def >(rhs: DbValue[A]): DbValue[Boolean]
+
+      // TODO: Having these in here is quite broad. Might want to tighten this
+      def min: DbValue[Nullable[A]] =
+        SqlDbValue.Function(SqlExpr.FunctionName.Min, Seq(lhs.asAnyDbVal), dbTypeMakeNullable(lhs.tpe)).lift
+      def max: DbValue[Nullable[A]] =
+        SqlDbValue.Function(SqlExpr.FunctionName.Max, Seq(lhs.asAnyDbVal), dbTypeMakeNullable(lhs.tpe)).lift
+
   object SqlOrdered:
     def defaultInstance[A](tpe0: DbType[A]): SqlOrdered[A] = new SqlOrdered[A]:
       override def tpe: DbType[A] = tpe0
 
       extension (lhs: DbValue[A])
         def <(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.LessThan().liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.LessThan().liftSqlBinOp).lift
         def <=(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.LessOrEqual().liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.LessOrEqual().liftSqlBinOp).lift
         def >=(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.GreaterOrEqual().liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.GreaterOrEqual().liftSqlBinOp).lift
         def >(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.GreaterThan().liftSqlBinOp).liftSqlDbValue
+          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift
 
   given SqlOrdered[Int]    = SqlOrdered.defaultInstance(DbType.int32)
   given SqlOrdered[Long]   = SqlOrdered.defaultInstance(DbType.int64)
   given SqlOrdered[Float]  = SqlOrdered.defaultInstance(DbType.float)
   given SqlOrdered[Double] = SqlOrdered.defaultInstance(DbType.double)
 
-  trait SqlDbValueBase[A] {
+  trait SqlDbValueBase[A] extends DbValueBase[A] {
+
+    @targetName("dbEquals") override def ===(that: DbValue[A]): DbValue[Boolean] =
+      SqlDbValue.BinOp(this.liftDbValue, that, SqlBinOp.Eq().liftSqlBinOp).lift
+
+    @targetName("dbNotEquals") override def !==(that: DbValue[A]): DbValue[Boolean] =
+      SqlDbValue.BinOp(this.liftDbValue, that, SqlBinOp.Neq().liftSqlBinOp).lift
 
     def ast: TagState[SqlExpr]
 
     def asSqlDbVal: Option[SqlDbValue[A]]
 
     def tpe: DbType[A]
+
+    protected[platform] def asAnyDbVal: AnyDbValue
   }
 
   override type DbValue[A] <: SqlDbValueBase[A]
@@ -161,56 +182,44 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.SubSelect(query)       => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
       case SqlDbValue.QueryCount             => DbType.int64
     end tpe
+
+    override protected[platform] def asAnyDbVal: AnyDbValue = this.lift.asAnyDbVal
+
+    override def liftDbValue: DbValue[A] = this.lift
+
+    override def asc: Ord = this.lift.asc
+
+    override def desc: Ord = this.lift.asc
   }
+  given [A]: Lift[SqlDbValue[A], DbValue[A]] = sqlDbValueLift[A]
 
-  extension [A](sqlDbValue: SqlDbValue[A]) def liftSqlDbValue: DbValue[A]
+  protected[platform] def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]]
 
-  extension [A](v: A) def as(tpe: DbType[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).liftSqlDbValue
+  extension [A](dbValue: DbValue[A])
+    @targetName("dbValueAsMany") protected[platform] inline def dbValAsMany: Many[A] = dbValue
 
-  extension [A](dbVal: DbValue[A])
-
-    @targetName("dbValEquals") def ===(that: DbValue[A]): DbValue[Boolean] =
-      SqlDbValue.BinOp(dbVal, that, SqlBinOp.Eq().liftSqlBinOp).liftSqlDbValue
-    @targetName("dbValNotEquals") def !==(that: DbValue[A]): DbValue[Boolean] =
-      SqlDbValue.BinOp(dbVal, that, SqlBinOp.Neq().liftSqlBinOp).liftSqlDbValue
-
-    @targetName("dbValAsMany") protected[platform] inline def dbValAsMany: Many[A] = dbVal
-
-    @targetName("dbValAsAnyDbVal") protected[platform] def asAnyDbVal: AnyDbValue
+  extension [A](v: A) def as(tpe: DbType[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).lift
 
   extension (boolVal: DbValue[Boolean])
     @targetName("dbValBooleanAnd") def &&(that: DbValue[Boolean]): DbValue[Boolean] =
-      SqlDbValue.BinOp(boolVal, that, SqlBinOp.And.liftSqlBinOp).liftSqlDbValue
+      SqlDbValue.BinOp(boolVal, that, SqlBinOp.And.liftSqlBinOp).lift
 
     @targetName("dbValBooleanOr") def ||(that: DbValue[Boolean]): DbValue[Boolean] =
-      SqlDbValue.BinOp(boolVal, that, SqlBinOp.Or.liftSqlBinOp).liftSqlDbValue
+      SqlDbValue.BinOp(boolVal, that, SqlBinOp.Or.liftSqlBinOp).lift
 
-  extension [A](many: Many[A])
-    // TODO: Check that the return type is indeed Long on all platforms
-    def count: DbValue[Long] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.asDbValue.asAnyDbVal), DbType.int64).liftSqlDbValue
-
-  // TODO: This is quite broad. Might want to tighten this
-  extension [A: SqlNumeric](a: DbValue[A])
-    def avg: DbValue[Nullable[A]] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Avg, Seq(a.asAnyDbVal), dbTypeMakeNullable(a.tpe)).liftSqlDbValue
-    def sum: DbValue[Nullable[A]] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Sum, Seq(a.asAnyDbVal), dbTypeMakeNullable(a.tpe)).liftSqlDbValue
-
-  // TODO: This is quite broad. Might want to tighten this
-  extension [A: SqlNumeric](a: DbValue[A])
-    def min: DbValue[Nullable[A]] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Min, Seq(a.asAnyDbVal), dbTypeMakeNullable(a.tpe)).liftSqlDbValue
-    def max: DbValue[Nullable[A]] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Max, Seq(a.asAnyDbVal), dbTypeMakeNullable(a.tpe)).liftSqlDbValue
-
-  trait SqlOrdSeqBase {
+  trait SqlOrdSeqBase extends OrdSeqBase {
     def ast: TagState[Seq[SelectAst.OrderExpr]]
   }
 
   type OrdSeq <: SqlOrdSeqBase
 
   opaque type Many[A] = DbValue[A]
+  object Many {
+    extension [A](many: Many[A])
+      // TODO: Check that the return type is indeed Long on all platforms
+      def count: DbValue[Long] =
+        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.asDbValue.asAnyDbVal), DbType.int64).lift
 
-  extension [A](many: Many[A]) @targetName("manyAsDbValue") protected[platform] inline def asDbValue: DbValue[A] = many
+      protected[platform] inline def asDbValue: DbValue[A] = many
+  }
 }

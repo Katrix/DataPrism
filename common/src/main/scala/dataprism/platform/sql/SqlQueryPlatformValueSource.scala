@@ -176,7 +176,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
       )
 
     private def mapJoinNullable[A[_[_]]: FunctorKC](values: A[DbValue]): A[Compose2[DbValue, Nullable]] =
-      values.mapK([X] => (value: DbValue[X]) => SqlDbValue.JoinNullable(value).liftSqlDbValue)
+      values.mapK([X] => (value: DbValue[X]) => SqlDbValue.JoinNullable(value).lift)
 
     def fromPartAndValues: TagState[ValueSourceAstMetaData[A]] = this match
       case SqlValueSource.FromQuery(q) =>
@@ -189,7 +189,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
               meta.aliases.map2K(meta.values)(
                 [X] =>
                   (alias: String, value: DbValue[X]) =>
-                    SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).liftSqlDbValue
+                    SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).lift
               )
 
             (
@@ -208,7 +208,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
           val values = table.columns.mapK(
             [X] =>
-              (column: Column[X]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).liftSqlDbValue
+              (column: Column[X]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).lift
           )
 
           (
@@ -232,7 +232,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
                 (dbVal: DbValue[X]) =>
                   State[Int, (DbValue[X], List[String])]((acc: Int) =>
                     val colName = s"x$acc"
-                    (acc + 1, (SqlDbValue.QueryColumn[X](colName, queryName, dbVal.tpe).liftSqlDbValue, List(colName)))
+                    (acc + 1, (SqlDbValue.QueryColumn[X](colName, queryName, dbVal.tpe).lift, List(colName)))
                 )
             )
 
