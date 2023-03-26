@@ -3,8 +3,11 @@ package dataprism
 import java.time.Instant
 import java.util.UUID
 
+import scala.concurrent.Future
+
 import dataprism.platform.implementations.PostgresQueryPlatform
 import dataprism.sql.*
+import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 
 case class HomeK[F[_]](
@@ -77,80 +80,208 @@ object ResidentK {
   given KMacros.RepresentableTraverseKC[ResidentK] = KMacros.deriveRepresentableTraverseKC[ResidentK]
 }
 
-case class People[F[_]](name: F[String], age: F[Option[Int]])
-object People {
+case class DepartmentK[F[_]](dpt: F[String])
+object DepartmentK {
+  given KMacros.RepresentableTraverseKC[DepartmentK] = KMacros.deriveRepresentableTraverseKC[DepartmentK]
 
-  val table: Table[People] = Table(
-    "people",
-    People(
-      Column("name", DbType.text),
-      Column("age", DbType.nullable(DbType.int32))
-    )
-  )
-
-  given KMacros.RepresentableTraverseKC[People] = KMacros.deriveRepresentableTraverseKC[People]
+  val table: Table[DepartmentK] = Table("departments", DepartmentK(Column("dpt", DbType.text)))
 }
 
-case class Names[F[_]](name: F[String])
-object Names {
-  given Names[DbType] = Names(DbType.text)
+case class EmployeK[F[_]](dpt: F[String], emp: F[String])
+object EmployeK {
+  given KMacros.RepresentableTraverseKC[EmployeK] = KMacros.deriveRepresentableTraverseKC[EmployeK]
 
-  given KMacros.RepresentableTraverseKC[Names] = KMacros.deriveRepresentableTraverseKC[Names]
+  val table: Table[EmployeK] = Table("employees", EmployeK(Column("dpt", DbType.text), Column("emp", DbType.text)))
+}
+
+case class TaskK[F[_]](emp: F[String], tsk: F[String])
+object TaskK {
+  given KMacros.RepresentableTraverseKC[TaskK] = KMacros.deriveRepresentableTraverseKC[TaskK]
+
+  val table: Table[TaskK] = Table("tasks", TaskK(Column("emp", DbType.text), Column("tsk", DbType.text)))
 }
 
 object Testing {
 
-  @main def testingDef: Unit =
-    val platform = new PostgresQueryPlatform
-    import platform.*
+  val platform = new PostgresQueryPlatform
+  import platform.*
 
-    def printQuery[A[_[_]]](q: Query[A]): Unit =
-      println(platform.sqlRenderer.renderSelect(q.selectAst).str)
-      println()
+  def printSqlStr(str: SqlStr): Unit =
+    if str.str.isEmpty then println("ERROR: Empty string") else println(str.str)
+    println()
+
+  def printQuery[A[_[_]]](q: Query[A]): Unit =
+    printSqlStr(platform.sqlRenderer.renderSelect(q.selectAst))
+
+  given Db with {
+    override def run(sql: SqlStr): Future[Int] =
+      printSqlStr(sql)
+      Future.successful(0)
+
+    override def runIntoSimple[Res](sql: SqlStr, dbTypes: DbType[Res]): Future[QueryResult[Res]] =
+      printSqlStr(sql)
+      Future.successful(QueryResult(Nil))
+
+    override def runIntoRes[Res[_[_]]](sql: SqlStr, dbTypes: Res[DbType])(
+        using FA: ApplyKC[Res],
+        FT: TraverseKC[Res]
+    ): Future[QueryResult[Res[Id]]] =
+      printSqlStr(sql)
+      Future.successful(QueryResult(Nil))
+  }
+
+  case class Location(getX: Double, getY: Double, getZ: Double)
+
+  @main def testingDef: Unit =
+    val uuid       = UUID.randomUUID()
+    val homeOwner  = UUID.randomUUID()
+    val name       = "name"
+    val homeName   = name
+    val worldUuid  = UUID.randomUUID()
+    val residentId = UUID.randomUUID()
+
+    val home     = HomeK[Id](homeOwner, homeName, Instant.now(), Instant.now(), 5, 10, 15, 20, 25, worldUuid)
+    val resident = ResidentK[Id](homeOwner, homeName, residentId, Instant.now())
 
     /*
-    printQuery(Query.from(HomeK.table).mapT(homes => (homes.owner, homes.name)))
-    printQuery(
+    Select(Query.from(HomeK.table).filter(_.owner === uuid.as(DbType.uuid))).run
+
+    Select(
       Query
         .from(HomeK.table)
-        .mapT(homes => (homes.owner, homes.name))
-        .filter(t => t.tuple.head === t.tuple.head && t.tuple.tail.head === t.tuple.tail.head)
-    )
+        .filter(home => home.owner === uuid.as(DbType.uuid) && home.name === name.as(DbType.text))
+    ).run
+
+    Select(Query.of(Query.from(HomeK.table).filter(_.owner === uuid.as(DbType.uuid)).size)).run
+
+    Select(
+      Query.of(
+        Query
+          .from(HomeK.table)
+          .filter(home => home.owner === uuid.as(DbType.uuid) && home.name === name.as(DbType.text))
+          .nonEmpty
+      )
+    ).run
+
+    Insert.into(HomeK.table).values(Query.valuesOf(HomeK.table, home)).onConflictUpdate.run
+
+    Delete
+      .from(HomeK.table)
+      .where((home, _) => home.owner === uuid.as(DbType.uuid) && home.name === name.as(DbType.text))
+      .run
+
+    def searchHomes(
+        location: Location,
+        radius: Option[Double],
+        world: Option[UUID],
+        owner: Option[UUID],
+        drop: Int,
+        take: Int
+    ): Unit =
+      def square2(v: DbValue[Double]): DbValue[Double] = v * v
+
+      val distanceToPlayerSq2: HomeK[DbValue] => DbValue[Double] = h =>
+        square2(h.x - location.getX.as(DbType.double)) +
+          square2(h.y - location.getY.as(DbType.double)) +
+          square2(h.z - location.getZ.as(DbType.double))
+
+      val filters2: Seq[Option[Query[HomeK] => Query[HomeK]]] = Seq(
+        radius.map { r =>
+          _.filter { h =>
+            distanceToPlayerSq2(h) < (r * r).as(DbType.double)
+          }
+        },
+        world.map(w => _.filter(_.worldUuid === w.as(DbType.uuid))),
+        owner.map(o => _.filter(_.owner === o.as(DbType.uuid)))
+      )
+
+      Select(
+        filters2.flatten
+          .foldLeft(Query.from(HomeK.table))((q, f) => f(q))
+          .orderBy(h => distanceToPlayerSq2(h).asc)
+          .drop(drop)
+          .take(take)
+      ).run
+    end searchHomes
+
+    searchHomes(Location(0, 0, 0), None, None, None, 0, 0)
+    searchHomes(Location(0, 0, 0), Some(5), None, None, 0, 0)
+    searchHomes(Location(0, 0, 0), None, Some(uuid), None, 0, 0)
+    searchHomes(Location(0, 0, 0), None, None, Some(uuid), 0, 0)
+    searchHomes(Location(0, 0, 0), None, Some(uuid), Some(uuid), 0, 0)
+    searchHomes(Location(0, 0, 0), Some(5), Some(uuid), None, 0, 0)
+    searchHomes(Location(0, 0, 0), Some(5), Some(uuid), Some(uuid), 0, 0)
+
+    Select(
+      Query
+        .from(ResidentK.table)
+        .filter(resident => resident.owner === homeOwner.as(DbType.uuid))
+        .groupMap(_.homeName)((name, r) => (name, r.resident.arrayAgg))
+    ).run
+
+    Select(
+      Query
+        .from(ResidentK.table)
+        .filter(r => r.owner === homeOwner.as(DbType.uuid) && r.homeName === homeName.as(DbType.text))
+        .map(_.resident)
+    ).run
+
+    Select(
+      Query.of(
+        Query
+          .from(ResidentK.table)
+          .filter(r => r.owner === homeOwner.as(DbType.uuid) && r.homeName === homeName.as(DbType.text))
+          .nonEmpty
+      )
+    ).run
+
+    Insert.into(ResidentK.table).values(Query.valuesOf(ResidentK.table, resident)).run
+
+    Delete
+      .from(ResidentK.table)
+      .where((r, _) => r.owner === homeOwner.as(DbType.uuid) && r.homeName === homeName.as(DbType.text))
+      .run
+
+    Select(
+      Query.from(HomeK.table).map(_.owner).distinct
+    ).run
+
+    Select(Query.from(HomeK.table)).run
+    Select(Query.from(ResidentK.table)).run
+
+    Delete.from(HomeK.table).where((_, _) => true.as(DbType.boolean)).run
+    Delete.from(ResidentK.table).where((_, _) => true.as(DbType.boolean)).run
+
+    Insert.into(HomeK.table).values(Query.valuesOf(HomeK.table, home, Seq(home))).run
+    Insert.into(ResidentK.table).values(Query.valuesOf(ResidentK.table, resident, Seq(resident))).run
+     */
+
+    /*
+    def noneHome[F[_]]: HomeK[Compose2[Option, F]] = HomeK(None, None, None, None, None, None, None, None, None, None)
+
+    Update
+      .table(HomeK.table)
+      .where((h, _) => h.owner === homeOwner.as(DbType.uuid))
+      .someValues((h, _) => noneHome.copy(owner = Some(homeOwner.as(DbType.uuid)), x = Some(h.x + h.x)))
+      .run
+     */
+
+    val u = "task"
     printQuery(
       Query
-        .from(HomeK.table)
-        .mapT(homes => (homes.owner, homes.name))
-        .limit(5)
-        .mapT(t => (t.tuple.head, t.tuple.head))
+        .from(DepartmentK.table)
+        .flatMap(d =>
+          Query
+            .from(EmployeK.table)
+            .where(e =>
+              d.dpt === e.dpt && !Query
+                .from(TaskK.table)
+                .where(t => e.emp === t.emp && t.tsk === u.as(DbType.text))
+                .nonEmpty
+            )
+            .map(e => DepartmentK(d.dpt))
+        )
     )
 
-    printQuery(
-      Query.from(HomeK.table).join(ResidentK.table)((h, r) => h.owner === r.owner && h.name === r.homeName)
-    )
-
-    printQuery(
-      Query.from(HomeK.table).map(home => home)
-    )
-    */
-
-    printQuery(
-      Query
-        .from(HomeK.table)
-        .groupMap(homes => (homes.owner, homes.name))((grouped, homes) =>
-          (
-            grouped._1,
-            grouped._2,
-            homes.x.arrayAgg,
-            homes.y.arrayAgg,
-            homes.z.arrayAgg
-          )
-        ).having(t => t.tuple._2 === "foo".as(DbType.text))
-    )
-
-
-    printQuery(
-      for
-        home <- Query.from(HomeK.table)
-      yield home.owner
-    )
+    ()
 }

@@ -26,18 +26,18 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def distinct: Query[A]
 
     def join[B[_[_]]](that: Table[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[InnerJoin[A, B]] = this.join(Query.from(that))(on)
 
     def crossJoin[B[_[_]]](that: Table[B]): Query[InnerJoin[A, B]] =
       this.crossJoin(Query.from(that))
 
     def leftJoin[B[_[_]]](that: Table[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[LeftJoin[A, B]] = this.leftJoin(Query.from(that))(on)
 
     def fullJoin[B[_[_]]](that: Table[B])(
-      on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+        on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]] = this.fullJoin(Query.from(that))(on)
 
     inline def limit(n: Int): Query[A] = take(n)
@@ -243,7 +243,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def mapK[B[_[_]]](
           f: A[DbValue] => B[DbValue]
       )(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
-        SqlQueryMapWhereStage(valueSource).mapK(f)
+        SqlQueryMapWhereStage(valueSource).mapK(f) //TODO: Maybe send this to the value source instead?
 
       override def join[B[_[_]]](that: Query[B])(
           on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -376,6 +376,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         offset = i
       ).liftSqlQuery
 
+      override def distinct: Query[B] = SqlQueryDistinctStage(
+        this.liftSqlQuery,
+        defaultDistinct = true
+      ).liftSqlQuery
+
       override def selectAstAndValues: TagState[QueryAstMetadata[B]] =
         for
           meta <- valueSource.fromPartAndValues
@@ -449,6 +454,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         offset = i
       ).liftSqlQuery
 
+      override def distinct: Query[Ma] = SqlQueryDistinctStage(
+        this.liftSqlQuery,
+        defaultDistinct = true
+      ).liftSqlQuery
+
       override def selectAstAndValues: TagState[QueryAstMetadata[Ma]] =
         for
           meta <- query.selectAstAndValues
@@ -470,19 +480,20 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             case (None, None)           => None
           end astAnd
 
-          val newSelectAst = selectAst.copy(
-            data = selectAst.data match
-              case from: Data.SelectFrom =>
-                from.copy(
-                  selectExprs = exprWithAliases,
-                  groupBy = Option.when(groupByAstList.nonEmpty)(SelectAst.GroupBy(groupByAstList)),
-                  having = astAnd(from.having, havingAst)
-                )
-
-              case data: Data.SetOperatorData => data
-          )
-
-          QueryAstMetadata(newSelectAst, aliases, groupedValues)
+          selectAst.data match
+            case from: Data.SelectFrom =>
+              QueryAstMetadata(
+                selectAst.copy(data =
+                  from.copy(
+                    selectExprs = exprWithAliases,
+                    groupBy = Option.when(groupByAstList.nonEmpty)(SelectAst.GroupBy(groupByAstList)),
+                    having = astAnd(from.having, havingAst)
+                  )
+                ),
+                aliases,
+                groupedValues
+              )
+            case _ => ???
     }
 
     case class SqlQueryDistinctStage[A[_[_]]](
@@ -519,8 +530,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
                 newValues = meta.aliases.map2K(meta.values)(
                   [X] =>
-                    (alias: String, value: DbValue[X]) =>
-                      SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).lift
+                    (alias: String, value: DbValue[X]) => SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).lift
                 )
                 t <- tagValues(newValues)
                 (aliases, exprs) = t
@@ -541,6 +551,74 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                 newValues
               )
         }
+    }
+
+    case class SqlQueryValues[A[_[_]]](
+        value: A[DbValue],
+        values: Seq[A[DbValue]]
+    )(using val applyK: ApplyKC[A], val traverseK: TraverseKC[A])
+        extends SqlQuery[A] {
+
+      override def mapK[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
+        copy(f(value), values.map(a => f(a))).liftSqlQuery
+      override def orderBy(f: A[DbValue] => OrdSeq): Query[A] =
+        SqlQueryOrderedStage(
+          this.liftSqlQuery,
+          f
+        ).liftSqlQuery
+
+      override def take(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        limit = Some(i)
+      ).liftSqlQuery
+
+      override def drop(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        offset = i
+      ).liftSqlQuery
+
+      override private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]] =
+        given FunctorKC[A] = applyK
+
+        State[TaggedState, TagState[QueryAstMetadata[A]]] { st =>
+          val queryNum  = st.queryNum
+          val queryName = s"y$queryNum"
+
+          val columnName = st.columnNum
+
+          val columnNumState: State[Int, A[[X] =>> (DbValue[X], String)]] =
+            value.traverseK(
+              [X] =>
+                (dbVal: DbValue[X]) =>
+                  State[Int, (DbValue[X], String)]((acc: Int) =>
+                    val colName = s"x$acc"
+                    (acc + 1, (SqlDbValue.QueryColumn[X](colName, queryName, dbVal.tpe).lift, colName))
+                )
+            )
+
+          val (newColumnNum, columns) = columnNumState.run(columnName).value
+          val dbValues                = columns.mapK([Z] => (t: (DbValue[Z], String)) => t._1)
+          val aliases                 = columns.mapConst([Z] => (t: (DbValue[Z], String)) => t._2)
+          val aliasesList             = aliases.toListK
+
+          val valueExprsSt = (value +: values).traverse { a =>
+            a.traverseK[TagState, Const[SqlExpr]]([Z] => (v: DbValue[Z]) => v.ast).map(_.toListK)
+          }
+
+          (
+            st.withNewQueryNum(queryNum + 1).withNewColumnNum(newColumnNum),
+            valueExprsSt.map { valueExprs =>
+              QueryAstMetadata(
+                SelectAst(
+                  SelectAst.Data.Values(valueExprs, Some(queryName), Some(aliasesList)),
+                  SelectAst.OrderLimit(None, None, None)
+                ),
+                aliases,
+                dbValues
+              )
+            }
+          )
+        }.flatMap(identity)
     }
 
     case class SqlQueryOrderedStage[A[_[_]]](
@@ -642,7 +720,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                       )
                     )
 
-                  case data: Data.SetOperatorData => ???
+                  case _ => ???
               )
 
               QueryAstMetadata(newSelectAstB, aliasesB, valuesB)
@@ -675,15 +753,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       val liftValues = [Z] => (v: Z, tpe: DbType[Z]) => v.as(tpe)
 
       SqlQuery
-        .SqlQueryFromStage(
-          SqlValueSource
-            .FromValues(
-              value.map2K(types)(liftValues),
-              values.map(_.map2K(types)(liftValues)),
-              summon[ApplyKC[A]],
-              summon[TraverseKC[A]]
-            )
-            .liftSqlValueSource
+        .SqlQueryValues(
+          value.map2K(types)(liftValues),
+          values.map(_.map2K(types)(liftValues))
         )
         .liftSqlQuery
 

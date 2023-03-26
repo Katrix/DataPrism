@@ -10,6 +10,14 @@ import perspective.*
 
 trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
+  trait SqlUnaryOpBase[R] {
+    def ast: SqlExpr.UnaryOperation
+
+    def tpe: DbType[R]
+  }
+
+  type UnaryOp[V, R] <: SqlUnaryOpBase[R]
+
   trait SqlBinOpBase[R] {
     def ast: SqlExpr.BinaryOperation
 
@@ -17,6 +25,17 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   }
 
   type BinOp[LHS, RHS, R] <: SqlBinOpBase[R]
+
+  enum SqlUnaryOp[V, R](op: SqlExpr.UnaryOperation) extends SqlUnaryOpBase[R] {
+    case Not extends SqlUnaryOp[Boolean, Boolean](SqlExpr.UnaryOperation.Not)
+
+    override def ast: SqlExpr.UnaryOperation = op
+
+    override def tpe: DbType[R] = this match
+      case Not => DbType.boolean
+  }
+
+  extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R]
 
   enum SqlBinOp[LHS, RHS, R](op: SqlExpr.BinaryOperation) extends SqlBinOpBase[R] {
     case Eq[A]()             extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Eq)
@@ -109,13 +128,13 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       extension (lhs: DbValue[A])
         def <(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.LessThan().liftSqlBinOp).lift
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessThan().liftSqlBinOp).lift
         def <=(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.LessOrEqual().liftSqlBinOp).lift
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessOrEqual().liftSqlBinOp).lift
         def >=(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.GreaterOrEqual().liftSqlBinOp).lift
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterOrEqual().liftSqlBinOp).lift
         def >(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(rhs, lhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift
+          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift
 
   given SqlOrdered[Int]    = SqlOrdered.defaultInstance(DbType.int32)
   given SqlOrdered[Long]   = SqlOrdered.defaultInstance(DbType.int64)
@@ -150,6 +169,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case DbColumn(column: Column[A])
     case QueryColumn(queryName: String, fromName: String, override val tpe: DbType[A])
     case JoinNullable[B](value: DbValue[B])                                            extends SqlDbValue[Nullable[B]]
+    case UnaryOp[B, R](value: DbValue[B], op: platform.UnaryOp[B, R])                  extends SqlDbValue[R]
     case BinOp[B, C, R](lhs: DbValue[B], rhs: DbValue[C], op: platform.BinOp[B, C, R]) extends SqlDbValue[R]
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue], override val tpe: DbType[A])
     case Placeholder(value: A, override val tpe: DbType[A])
@@ -159,6 +179,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     override def ast: TagState[SqlExpr] = this match
       case SqlDbValue.DbColumn(_)                         => throw new IllegalArgumentException("Value not tagged")
       case SqlDbValue.QueryColumn(queryName, fromName, _) => State.pure(SqlExpr.QueryRef(fromName, queryName))
+      case SqlDbValue.UnaryOp(value, op)                  => value.ast.map(v => SqlExpr.UnaryOp(v, op.ast))
       case SqlDbValue.BinOp(lhs, rhs, op) =>
         lhs.ast.flatMap(l => rhs.ast.map(r => SqlExpr.BinOp(l, r, op.ast)))
       case SqlDbValue.JoinNullable(value) => value.ast
@@ -175,6 +196,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     override def tpe: DbType[A] = this match
       case SqlDbValue.DbColumn(col)          => col.tpe
       case SqlDbValue.QueryColumn(_, _, tpe) => tpe
+      case SqlDbValue.UnaryOp(_, op)         => op.tpe
       case SqlDbValue.BinOp(_, _, op)        => op.tpe
       case SqlDbValue.JoinNullable(value)    => dbTypeMakeNullable(value.tpe).asInstanceOf[DbType[A]]
       case SqlDbValue.Function(_, _, tpe)    => tpe
@@ -206,6 +228,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     @targetName("dbValBooleanOr") def ||(that: DbValue[Boolean]): DbValue[Boolean] =
       SqlDbValue.BinOp(boolVal, that, SqlBinOp.Or.liftSqlBinOp).lift
+
+    @targetName("dbValBooleanNot") def unary_! : DbValue[Boolean] =
+      SqlDbValue.UnaryOp(boolVal, SqlUnaryOp.Not.liftSqlUnaryOp).lift
 
   trait SqlOrdSeqBase extends OrdSeqBase {
     def ast: TagState[Seq[SelectAst.OrderExpr]]

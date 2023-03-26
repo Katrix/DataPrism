@@ -27,7 +27,6 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
   enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
     case FromQuery(q: Query[A])
     case FromTable(t: Table[A])
-    case FromValues(value: A[DbValue], values: Seq[A[DbValue]], FA: ApplyKC[A], FT: TraverseKC[A])
     case InnerJoin[A[_[_]], B[_[_]]](
         lhs: ValueSource[A],
         rhs: ValueSource[B],
@@ -75,7 +74,6 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
     def applyKC: ApplyKC[A] = this match
       case SqlValueSource.FromQuery(q)            => q.applyK
       case SqlValueSource.FromTable(table)        => table.FA
-      case SqlValueSource.FromValues(_, _, fa, _) => fa
       case SqlValueSource.InnerJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
         given ApplyKC[lt] = l.applyKC
         given ApplyKC[rt] = r.applyKC
@@ -216,41 +214,6 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
             ValueSourceAstMetaData(SelectAst.From.FromTable(table.tableName, Some(queryName)), values)
           )
         }
-
-      case SqlValueSource.FromValues(value, values, _, ft) =>
-        State[TaggedState, TagState[ValueSourceAstMetaData[A]]] { st =>
-          given TraverseKC[A] = ft
-
-          val queryNum  = st.queryNum
-          val queryName = s"y$queryNum"
-
-          val columnName = st.columnNum
-
-          val columnNumState: State[Int, A[[X] =>> (DbValue[X], List[String])]] =
-            value.traverseK(
-              [X] =>
-                (dbVal: DbValue[X]) =>
-                  State[Int, (DbValue[X], List[String])]((acc: Int) =>
-                    val colName = s"x$acc"
-                    (acc + 1, (SqlDbValue.QueryColumn[X](colName, queryName, dbVal.tpe).lift, List(colName)))
-                )
-            )
-
-          val (newColumnNum, columns) = columnNumState.run(columnName).value
-          val dbValues                = columns.mapK([Z] => (t: (DbValue[Z], List[String])) => t._1)
-          val aliases                 = columns.foldMapK([Z] => (t: (DbValue[Z], List[String])) => t._2)
-
-          val valueExprsSt = (value +: values).traverse(a =>
-            a.traverseK[TagState, Const[SqlExpr]]([Z] => (v: DbValue[Z]) => v.ast).map(_.toListK)
-          )
-
-          (
-            st.withNewQueryNum(queryNum + 1).withNewColumnNum(newColumnNum),
-            valueExprsSt.map(valueExprs =>
-              ValueSourceAstMetaData(SelectAst.From.FromValues(valueExprs, Some(queryName), Some(aliases)), dbValues)
-            )
-          )
-        }.flatMap(identity)
 
       case SqlValueSource.InnerJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         fromPartJoin(lhs, rhs, on, SelectAst.From.InnerJoin.apply, (a, b) => (a, b))

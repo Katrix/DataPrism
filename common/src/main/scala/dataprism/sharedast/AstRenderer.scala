@@ -151,13 +151,18 @@ class AstRenderer {
       onConflict: List[(SqlStr, SqlExpr)],
       returning: List[SqlExpr]
   ): SqlStr =
+    //Fix the AST so that an alias isn't included for VALUES, as we then end up with (VALUES) AS ... (...)
+    val fixedValues = values.data match
+      case data: SelectAst.Data.Values => values.copy(data = data.copy(alias = None, columnAliases = None))
+      case _                           => values
+
     spaceConcat(
       sql"INSERT INTO",
       table,
       sql"(",
       columns.intercalate(sql", "),
       sql")",
-      renderSelect(values),
+      renderSelect(fixedValues),
       if onConflict.isEmpty then sql""
       else
         val conflictSets = onConflict.map((col, e) => sql"$col = ${renderExpr(e)}").intercalate(sql", ")
@@ -200,6 +205,7 @@ class AstRenderer {
 
   protected def renderSelectData(data: SelectAst.Data): SqlStr = data match
     case d: SelectAst.Data.SelectFrom      => renderSelectFrom(d)
+    case d: SelectAst.Data.Values          => renderSelectValues(d)
     case d: SelectAst.Data.SetOperatorData => renderSetOperatorData(d)
 
   protected def renderSelectFrom(data: SelectAst.Data.SelectFrom): SqlStr =
@@ -210,6 +216,15 @@ class AstRenderer {
     val groupBy  = data.groupBy.fold(sql"")(renderGroupBy)
     val having   = data.having.fold(sql"")(renderHaving)
     spaceConcat(sql"SELECT", distinct, exprs, from, where, groupBy, having)
+
+  protected def renderSelectValues(values: SelectAst.Data.Values): SqlStr =
+    val res = spaceConcat(
+      sql"VALUES ",
+      values.valueExprs.map(v => sql"(${v.map(renderExpr).intercalate(sql", ")})").intercalate(sql", "),
+      values.alias.fold(sql"")(a => sql"AS ${SqlStr(a, Nil)}"),
+      values.columnAliases.fold(sql"")(as => sql"(${as.map(SqlStr(_, Nil)).intercalate(sql", ")})")
+    )
+    if values.alias.isDefined || values.columnAliases.isDefined then sql"($res)" else res
 
   protected def renderDistinct(distinct: SelectAst.Distinct): SqlStr =
     spaceConcat(
@@ -228,11 +243,6 @@ class AstRenderer {
     case SelectAst.From.FromQuery(query, alias) => sql"(${renderSelect(query)}) ${SqlStr.const(alias)}"
     case SelectAst.From.FromTable(table, alias) =>
       spaceConcat(SqlStr.const(table), alias.fold(sql"")(a => sql"${SqlStr.const(a)}"))
-    case SelectAst.From.FromValues(valueExprs, alias, columnAliases) =>
-      spaceConcat(
-        sql"VALUES ",
-        valueExprs.map(v => sql"(${v.map(renderExpr).intercalate(sql", ")})").intercalate(sql", ")
-      )
     case SelectAst.From.FromMulti(fst, snd) => sql"${renderFrom(fst)}, ${renderFrom(snd)}"
     case SelectAst.From.CrossJoin(lhs, rhs) => sql"${renderFrom(lhs)} CROSS JOIN ${renderFrom(rhs)}"
     case SelectAst.From.InnerJoin(lhs, rhs, on) =>

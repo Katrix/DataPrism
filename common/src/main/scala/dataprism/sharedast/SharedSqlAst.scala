@@ -105,6 +105,9 @@ object SelectAst {
       def all: Boolean
     }
 
+    case class Values(valueExprs: Seq[Seq[SqlExpr]], alias: Option[String], columnAliases: Option[Seq[String]])
+        extends Data
+
     case class Union(lhs: Data, rhs: Data, all: Boolean)     extends SetOperatorData
     case class Intersect(lhs: Data, rhs: Data, all: Boolean) extends SetOperatorData
     case class Except(lhs: Data, rhs: Data, all: Boolean)    extends SetOperatorData
@@ -124,10 +127,8 @@ object SelectAst {
 
   sealed trait From
   object From {
-    case class FromTable(table: String, alias: Option[String]) extends From
-    case class FromQuery(selectAst: SelectAst, alias: String)  extends From
-    case class FromValues(valueExprs: Seq[Seq[SqlExpr]], alias: Option[String], columnAliases: Option[Seq[String]])
-        extends From
+    case class FromTable(table: String, alias: Option[String])   extends From
+    case class FromQuery(selectAst: SelectAst, alias: String)    extends From
     case class FromMulti(fst: From, snd: From)                   extends From
     case class CrossJoin(lhs: From, rhs: From)                   extends From
     case class InnerJoin(lhs: From, rhs: From, on: SqlExpr)      extends From
