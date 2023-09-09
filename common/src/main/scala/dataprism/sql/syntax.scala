@@ -35,10 +35,12 @@ extension (sc: StringContext)
         sb ++= s
         argsb ++= str.args
       case other =>
-        println("Got unexpected args")
-        println(other._1)
-        println(other._2.getClass)
-        println(other._2)
+        println(
+          s"""|Got unexpected args
+              |${other._1}
+              |${other._2.getClass}
+              |${other._2}""".stripMargin
+        )
     }
 
     SqlStr(sb.result(), argsb.result())

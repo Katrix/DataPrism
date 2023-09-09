@@ -12,7 +12,7 @@ class MySqlAstRenderer extends AstRenderer {
 
   override protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset): SqlStr =
     spaceConcat(
-      sql"LIMIT ${limitOffset.offset.asArg(DbType.int32)}",
-      limitOffset.limit.fold(sql"")(l => sql", ${l.asArg(DbType.int32)}")
+      sql"LIMIT ${limitOffset.offset.asArg(DbType.int4)}",
+      limitOffset.limit.fold(sql"")(l => sql", ${l.asArg(DbType.int4)}")
     )
 }

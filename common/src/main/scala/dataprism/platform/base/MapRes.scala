@@ -32,7 +32,7 @@ object MapRes {
   ): MapRes[F, T] with {
     override type K[F0[_]] = ProductK[F0, Tuple.InverseMap[T, F]]
 
-    override inline def toK(r: T): ProductK[F, Tuple.InverseMap[T, F]]   = ProductK.of(r)
+    override inline def toK(r: T): ProductK[F, Tuple.InverseMap[T, F]]   = ProductK.ofScalaTuple(r)
     override inline def fromK(k: ProductK[F, Tuple.InverseMap[T, F]]): T = k.tuple.asInstanceOf[T]
 
     private val instance = ProductK.productKInstance[Tuple.InverseMap[T, F]]

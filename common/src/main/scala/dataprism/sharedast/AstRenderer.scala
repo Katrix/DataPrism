@@ -148,6 +148,7 @@ class AstRenderer {
       table: SqlStr,
       columns: List[SqlStr],
       values: SelectAst,
+      conflictOn: List[SqlStr],
       onConflict: List[(SqlStr, SqlExpr)],
       returning: List[SqlExpr]
   ): SqlStr =
@@ -166,7 +167,7 @@ class AstRenderer {
       if onConflict.isEmpty then sql""
       else
         val conflictSets = onConflict.map((col, e) => sql"$col = ${renderExpr(e)}").intercalate(sql", ")
-        sql"ON CONFLICT DO UPDATE SET $conflictSets"
+        sql"ON CONFLICT (${conflictOn.intercalate(sql", ")}) DO UPDATE SET $conflictSets"
       ,
       if returning.isEmpty then sql"" else sql"RETURNING ${returning.map(renderExpr).intercalate(sql",  ")}"
     )
@@ -298,9 +299,9 @@ class AstRenderer {
     spaceConcat(renderOffset(limitOffset), renderLimit(limitOffset).getOrElse(sql""))
 
   protected def renderOffset(limitOffset: SelectAst.LimitOffset): SqlStr =
-    sql"OFFSET ${limitOffset.offset.asArg(DbType.int32)}"
+    sql"OFFSET ${limitOffset.offset.asArg(DbType.int4)}"
 
   protected def renderLimit(limitOffset: SelectAst.LimitOffset): Option[SqlStr] =
     val tiesPart = if limitOffset.withTies then sql"WITH TIES" else sql"ONLY"
-    limitOffset.limit.map(l => sql"FETCH NEXT ${l.asArg(DbType.int32)} ROWS $tiesPart")
+    limitOffset.limit.map(l => sql"FETCH NEXT ${l.asArg(DbType.int4)} ROWS $tiesPart")
 }

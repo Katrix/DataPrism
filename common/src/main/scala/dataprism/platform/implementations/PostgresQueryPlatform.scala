@@ -2,10 +2,8 @@ package dataprism.platform.implementations
 
 import scala.annotation.targetName
 import scala.concurrent.Future
-import scala.reflect.ClassTag
-
 import cats.Applicative
-import cats.data.State
+import cats.data.{NonEmptyList, State}
 import cats.syntax.all.*
 import dataprism.platform.base.MapRes
 import dataprism.platform.sql.SqlQueryPlatform
@@ -27,7 +25,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
   enum DbValue[A] extends SqlDbValueBase[A] {
     case SqlDbValue(value: platform.SqlDbValue[A])
-    case ArrayOf(values: Seq[DbValue[A]], elemType: DbType[A], clazzTag: ClassTag[A]) extends DbValue[Seq[A]]
+    case ArrayOf(values: Seq[DbValue[A]], elemType: DbType[A], mapping: DbType.ArrayMapping[A]) extends DbValue[Seq[A]]
 
     def ast: TagState[SqlExpr] = this match
       case DbValue.SqlDbValue(value) => value.ast
@@ -43,10 +41,10 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
     override def tpe: DbType[A] = this match
       case DbValue.SqlDbValue(value)      => value.tpe
-      case DbValue.ArrayOf(_, tpe, clazz) => DbType.array(tpe)(using clazz)
+      case DbValue.ArrayOf(_, tpe, mapping) => DbType.array(tpe)(using mapping)
     end tpe
 
-    def singletonArray(using tag: ClassTag[A]): DbValue[Seq[A]] = DbValue.ArrayOf(Seq(this), tpe, tag)
+    def singletonArray(using mapping: DbType.ArrayMapping[A]): DbValue[Seq[A]] = DbValue.ArrayOf(Seq(this), tpe, mapping)
 
     override def liftDbValue: DbValue[A] = this
 
@@ -83,7 +81,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   }
 
   extension [A](many: Many[A])
-    def arrayAgg(using ClassTag[A]): DbValue[Seq[A]] =
+    def arrayAgg(using DbType.ArrayMapping[A]): DbValue[Seq[A]] =
       SqlDbValue
         .Function[Seq[A]](
           SqlExpr.FunctionName.Custom("array_agg"),
@@ -216,6 +214,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     case class Insert[A[_[_]]](
         table: Table[A],
         values: Query[Insert.Optional[A]],
+        conflictOn: A[Column] => List[Column[_]],
         onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]
     ) extends Operation[Int]:
       override def run(using db: Db): Future[Int] =
@@ -246,6 +245,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
               .toListK
               .flatMap(_.toList),
             computedValues.ast,
+            conflictOn(table.columns).map(_.name),
             computedOnConflict.toListK.flatMap(_.toList),
             Nil
           )
@@ -253,15 +253,15 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
         ret.runA(freshTaggedState).value
 
-      def onConflict(a: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]): Insert[A] =
-        copy(onConflict = a)
+      def onConflict(on: A[Column] => NonEmptyList[Column[_]], a: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]): Insert[A] =
+        copy(conflictOn = on.andThen(_.toList), onConflict = a)
 
-      def onConflictUpdate: Insert[A] =
+      def onConflictUpdate(on: A[Column] => NonEmptyList[Column[_]]): Insert[A] =
         import table.FA
-        onConflict(table.columns.mapK([Z] => (_: Column[Z]) => (_: DbValue[Z], newV: Option[DbValue[Z]]) => newV))
+        onConflict(on, table.columns.mapK([Z] => (_: Column[Z]) => (_: DbValue[Z], newV: Option[DbValue[Z]]) => newV))
 
-      def returning[B[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => B[DbValue]): InsertReturning[A, B] =
-        InsertReturning(table, values, onConflict, f)
+      def returning[B[_[_]] : ApplyKC : TraverseKC](f: A[DbValue] => B[DbValue]): InsertReturning[A, B] =
+        InsertReturning(table, values, conflictOn, onConflict, f)
 
     object Insert:
       def into[A[_[_]]](table: Table[A]): InsertInto[A] = InsertInto(table)
@@ -299,6 +299,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         Insert(
           table,
           query.mapK[[F[_]] =>> A[Compose2[Option, F]]](a => a.mapK([Z] => (dbVal: DbValue[Z]) => Some(dbVal))),
+          _ => Nil,
           table.columns.mapK[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]](
             [Z] => (_: Column[Z]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
           )
@@ -309,6 +310,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         Insert(
           table,
           query,
+          _ => Nil,
           table.columns.mapK[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]](
             [Z] => (_: Column[Z]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
           )
@@ -318,6 +320,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     case class InsertReturning[A[_[_]], C[_[_]]: ApplyKC: TraverseKC](
         table: Table[A],
         values: Query[Insert.Optional[A]],
+        conflictOn: A[Column] => List[Column[_]],
         onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]],
         returning: A[DbValue] => C[DbValue]
     ) extends Operation[QueryResult[C[Id]]]:
@@ -357,6 +360,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
               .toListK
               .flatMap(_.toList),
             computedValues.ast,
+            conflictOn(table.columns).map(_.name),
             computedOnConflict.toListK.flatMap(_.toList),
             computedReturning.toListK
           ),

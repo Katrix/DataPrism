@@ -1,5 +1,5 @@
 lazy val commonSettings = Seq(
-  scalaVersion := "3.2.2",
+  scalaVersion := "3.3.1",
   version      := "0.0.1-SNAPSHOT",
   organization := "net.katsstuff",
   publishTo := {
@@ -32,8 +32,8 @@ lazy val common = project.settings(
   commonSettings,
   publishSettings,
   name                                   := "dataprism-common",
-  libraryDependencies += "net.katsstuff" %% "perspective"            % "0.0.7",
-  libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.0.7"
+  libraryDependencies += "net.katsstuff" %% "perspective"            % "0.2.0-SNAPSHOT",
+  libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.2.0-SNAPSHOT"
 )
 
 lazy val root = project.in(file(".")).aggregate(common).settings(noPublishSettings)

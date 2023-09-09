@@ -5,7 +5,7 @@ import perspective.derivation.{ProductK, ProductKPar}
 import perspective.*
 
 import java.io.Closeable
-import java.sql.PreparedStatement
+import java.sql.{Connection, PreparedStatement}
 import javax.sql.DataSource
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Using
@@ -17,36 +17,37 @@ class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends D
       man.acquire(a)
       a
 
-  private def makePrepared[A](sql: SqlStr)(f: Using.Manager ?=> PreparedStatement => A): Future[A] =
+  private def makePrepared[A](sql: SqlStr)(f: Using.Manager ?=> (PreparedStatement, Connection) => A): Future[A] =
     Future {
       Using.Manager { implicit man =>
         println("Making prepared statement")
         println(sql.str)
 
-        val ps = ds.getConnection.acquired.prepareStatement(sql.str).acquired
+        val con = ds.getConnection.acquired
+        val ps = con.prepareStatement(sql.str).acquired
 
         for ((obj, i) <- sql.args.zipWithIndex) {
-          obj.tpe.set(ps, i + 1, obj.value)
+          obj.tpe.set(ps, i + 1, obj.value, con)
         }
 
-        f(ps)
+        f(ps, con)
       }
     }.flatMap(Future.fromTry)
 
-  override def run(sql: SqlStr): Future[Int] = makePrepared(sql)(_.executeUpdate())
+  override def run(sql: SqlStr): Future[Int] = makePrepared(sql)((ps, _) => ps.executeUpdate())
 
   override def runIntoSimple[Res](
       sql: SqlStr,
       dbTypes: DbType[Res]
   ): Future[QueryResult[Res]] =
-    runIntoRes[ProductKPar[Tuple1[Res]]](sql, ProductK.of[DbType, Tuple1[Res]](Tuple1(dbTypes)))
+    runIntoRes[ProductKPar[Tuple1[Res]]](sql, ProductK.ofScalaTuple[DbType, Tuple1[Res]](Tuple1(dbTypes)))
       .map(_.map(_.tuple.head))
 
   override def runIntoRes[Res[_[_]]](
       sql: SqlStr,
       dbTypes: Res[DbType]
   )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
-    makePrepared(sql) { (ps: PreparedStatement) =>
+    makePrepared(sql) { (ps: PreparedStatement, con: Connection) =>
       val rs = ps.executeQuery().acquired
 
       val indicesState: State[Int, Res[Const[Int]]] =
@@ -58,7 +59,7 @@ class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends D
         Option.when(cond)(
           (
             dbTypes.map2K[Const[Int], Id](indices)(
-              [A] => (dbType: DbType[A], idx: Int) => dbType.get(rs, idx)
+              [A] => (dbType: DbType[A], idx: Int) => dbType.get(rs, idx, con)
             ),
             rs.next()
           )

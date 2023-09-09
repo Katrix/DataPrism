@@ -1,10 +1,10 @@
 package dataprism
 
+import dataprism.platform.base.MapRes
+
 import java.time.Instant
 import java.util.UUID
-
 import scala.concurrent.Future
-
 import dataprism.platform.implementations.PostgresQueryPlatform
 import dataprism.sql.*
 import perspective.*
@@ -266,21 +266,15 @@ object Testing {
       .run
      */
 
-    val u = "task"
+    val mr1 = summon[MapRes[DbValue, (DbValue[String], DbValue[UUID])]]
+    val mr2 = summon[MapRes[DbValue, mr1.K[DbValue]]]
+
     printQuery(
       Query
-        .from(DepartmentK.table)
-        .flatMap(d =>
-          Query
-            .from(EmployeK.table)
-            .where(e =>
-              d.dpt === e.dpt && !Query
-                .from(TaskK.table)
-                .where(t => e.emp === t.emp && t.tsk === u.as(DbType.text))
-                .nonEmpty
-            )
-            .map(e => DepartmentK(d.dpt))
-        )
+        .from(ResidentK.table)
+        .filter(resident => resident.owner === homeOwner.as(DbType.uuid))
+        .map(r => (r.homeName, r.resident))
+        //.groupMap(_.homeName)((name, r) => (name, r.resident.arrayAgg))
     )
 
     ()

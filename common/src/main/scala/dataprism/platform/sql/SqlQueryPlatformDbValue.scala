@@ -102,8 +102,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         override def /(rhs: DbValue[A]): DbValue[A] =
           SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Divide(this).liftSqlBinOp).lift
 
-  given SqlNumeric[Int]    = SqlNumeric.defaultInstance(DbType.int32)
-  given SqlNumeric[Long]   = SqlNumeric.defaultInstance(DbType.int64)
+  given SqlNumeric[Int]    = SqlNumeric.defaultInstance(DbType.int4)
+  given SqlNumeric[Long]   = SqlNumeric.defaultInstance(DbType.int8)
   given SqlNumeric[Float]  = SqlNumeric.defaultInstance(DbType.float)
   given SqlNumeric[Double] = SqlNumeric.defaultInstance(DbType.double)
 
@@ -136,8 +136,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         def >(rhs: DbValue[A]): DbValue[Boolean] =
           SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift
 
-  given SqlOrdered[Int]    = SqlOrdered.defaultInstance(DbType.int32)
-  given SqlOrdered[Long]   = SqlOrdered.defaultInstance(DbType.int64)
+  given SqlOrdered[Int]    = SqlOrdered.defaultInstance(DbType.int4)
+  given SqlOrdered[Long]   = SqlOrdered.defaultInstance(DbType.int8)
   given SqlOrdered[Float]  = SqlOrdered.defaultInstance(DbType.float)
   given SqlOrdered[Double] = SqlOrdered.defaultInstance(DbType.double)
 
@@ -202,7 +202,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Function(_, _, tpe)    => tpe
       case SqlDbValue.Placeholder(_, tpe)    => tpe
       case SqlDbValue.SubSelect(query)       => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
-      case SqlDbValue.QueryCount             => DbType.int64
+      case SqlDbValue.QueryCount             => DbType.int8
     end tpe
 
     override protected[platform] def asAnyDbVal: AnyDbValue = this.lift.asAnyDbVal
@@ -243,7 +243,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     extension [A](many: Many[A])
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.asDbValue.asAnyDbVal), DbType.int64).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.asDbValue.asAnyDbVal), DbType.int8).lift
 
       protected[platform] inline def asDbValue: DbValue[A] = many
   }
