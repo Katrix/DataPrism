@@ -1,5 +1,5 @@
 lazy val commonSettings = Seq(
-  scalaVersion := "3.3.1",
+  scalaVersion := "3.3.0",
   version      := "0.0.1-SNAPSHOT",
   organization := "net.katsstuff",
   publishTo := {

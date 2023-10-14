@@ -83,10 +83,12 @@ trait QueryPlatform {
         f: A[Many] => B[DbValue]
     ): QueryGrouped[B] =
       given TraverseKC[[F[_]] =>> Unit] with {
-        extension [X[__], C](fa: Unit) def foldLeftK[Y](b: Y)(f: Y => X ~>#: Y): Y = b
+        extension [X[__], C](fa: Unit) 
+          def foldLeftK[Y](b: Y)(f: Y => X :~>#: Y): Y = b
+          def foldRightK[Y](b: Y)(f: X :~>#: (Y => Y)): Y = b
 
         extension [X[_], C](fa: Unit)
-          def traverseK[G[_]: Applicative, Y[_]](f: X ~>: Compose2[G, Y]): G[Unit] = summon[Applicative[G]].unit
+          def traverseK[G[_]: Applicative, Y[_]](f: X :~>: Compose2[G, Y]): G[Unit] = summon[Applicative[G]].unit
       }
       groupMapK[[F[_]] =>> Unit, B](_ => ())((_, a) => f(a))
 

@@ -52,7 +52,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ) extends SqlValueSource[[F[_]] =>> (A[Compose2[F, Nullable]], B[Compose2[F, Nullable]])]
 
-    private def mapOptCompose[F[_[_]], X[_], Y[_]](fa: F[Compose2[X, Nullable]])(f: X ~>: Y)(
+    private def mapOptCompose[F[_[_]], X[_], Y[_]](fa: F[Compose2[X, Nullable]])(f: X :~>: Y)(
         using F: FunctorKC[F]
     ): F[Compose2[Y, Nullable]] =
       fa.mapK([Z] => (v: X[Nullable[Z]]) => f[Nullable[Z]](v))
@@ -64,7 +64,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
     def makeApplyKC[lt[_[_]]: ApplyKC, rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (lt[F], rt[F])] {
       extension [X[_], C](fa: (lt[X], rt[X]))
-        def mapK[Y[_]](f: X ~>: Y): (lt[Y], rt[Y]) =
+        def mapK[Y[_]](f: X :~>: Y): (lt[Y], rt[Y]) =
           (fa._1.mapK(f), fa._2.mapK(f))
 
         def map2K[Y[_], Z[_]](fb: (lt[Y], rt[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (lt[Z], rt[Z]) =
@@ -80,7 +80,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
         def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[F], Rt[F])] {
           extension [X[_], C](fa: (Lt[X], Rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (Lt[Y], Rt[Y]) =
+            def mapK[Y[_]](f: X :~>: Y): (Lt[Y], Rt[Y]) =
               (fa._1.mapK(f), fa._2.mapK(f))
 
             def map2K[Y[_], Z[_]](fb: (Lt[Y], Rt[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (Lt[Z], Rt[Z]) =
@@ -95,7 +95,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
         def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[F], Rt[F])] {
           extension [X[_], C](fa: (Lt[X], Rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (Lt[Y], Rt[Y]) =
+            def mapK[Y[_]](f: X :~>: Y): (Lt[Y], Rt[Y]) =
               (fa._1.mapK(f), fa._2.mapK(f))
 
             def map2K[Y[_], Z[_]](fb: (Lt[Y], Rt[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (Lt[Z], Rt[Z]) =
@@ -110,7 +110,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
         def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[F], Rt[Compose2[F, Nullable]])] {
           extension [X[_], C](fa: (Lt[X], Rt[Compose2[X, Nullable]]))
-            def mapK[Y[_]](f: X ~>: Y): (Lt[Y], Rt[Compose2[Y, Nullable]]) =
+            def mapK[Y[_]](f: X :~>: Y): (Lt[Y], Rt[Compose2[Y, Nullable]]) =
               (fa._1.mapK(f), mapOptCompose(fa._2)(f))
 
             def map2K[Y[_], Z[_]](fb: (Lt[Y], Rt[Compose2[Y, Nullable]]))(
@@ -127,7 +127,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
         def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] = new ApplyKC[[F[_]] =>> (Lt[Compose2[F, Nullable]], Rt[F])] {
           extension [X[_], C](fa: (Lt[Compose2[X, Nullable]], Rt[X]))
-            def mapK[Y[_]](f: X ~>: Y): (Lt[Compose2[Y, Nullable]], Rt[Y]) =
+            def mapK[Y[_]](f: X :~>: Y): (Lt[Compose2[Y, Nullable]], Rt[Y]) =
               (mapOptCompose(fa._1)(f), fa._2.mapK(f))
 
             def map2K[Y[_], Z[_]](fb: (Lt[Compose2[Y, Nullable]], Rt[Y]))(
@@ -145,7 +145,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
         def make[Lt[_[_]]: ApplyKC, Rt[_[_]]: ApplyKC] =
           new ApplyKC[[F[_]] =>> (Lt[Compose2[F, Nullable]], Rt[Compose2[F, Nullable]])] {
             extension [X[_], C](fa: (Lt[Compose2[X, Nullable]], Rt[Compose2[X, Nullable]]))
-              def mapK[Y[_]](f: X ~>: Y): (Lt[Compose2[Y, Nullable]], Rt[Compose2[Y, Nullable]]) =
+              def mapK[Y[_]](f: X :~>: Y): (Lt[Compose2[Y, Nullable]], Rt[Compose2[Y, Nullable]]) =
                 (mapOptCompose(fa._1)(f), mapOptCompose(fa._2)(f))
 
               def map2K[Y[_], Z[_]](fb: (Lt[Compose2[Y, Nullable]], Rt[Compose2[Y, Nullable]]))(

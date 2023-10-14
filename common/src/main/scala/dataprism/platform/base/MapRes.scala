@@ -2,7 +2,7 @@ package dataprism.platform.base
 
 import cats.Applicative
 import perspective.*
-import perspective.derivation.{ProductK, ProductKPar}
+import perspective.derivation.{ProductK, ProductKPar, TypeLength}
 
 trait MapRes[F[_], R] {
   type K[_[_]]
@@ -28,14 +28,17 @@ object MapRes {
 
   given [F[_], T <: NonEmptyTuple](
       using ev: Tuple.IsMappedBy[F][T],
-      size: ValueOf[Tuple.Size[Tuple.InverseMap[T, F]]]
+      size: ValueOf[Tuple.Size[T]]
   ): MapRes[F, T] with {
     override type K[F0[_]] = ProductK[F0, Tuple.InverseMap[T, F]]
 
     override inline def toK(r: T): ProductK[F, Tuple.InverseMap[T, F]]   = ProductK.ofScalaTuple(r)
     override inline def fromK(k: ProductK[F, Tuple.InverseMap[T, F]]): T = k.tuple.asInstanceOf[T]
 
-    private val instance = ProductK.productKInstance[Tuple.InverseMap[T, F]]
+    private val instance = {
+      given TypeLength.Aux[Tuple.InverseMap[T, F], Tuple.Size[T]] = TypeLength.TypeLengthImpl(size.value)
+      ProductK.productKInstance[Tuple.InverseMap[T, F]]
+    }
 
     override inline def applyKC: ApplyKC[K] = instance
 
@@ -53,12 +56,14 @@ object MapRes {
         def map2K[B[_], Z[_]](fb: K[B])(f: [X] => (A[X], B[X]) => Z[X]): K[Z] =
           f(fa, fb)
 
-        override def mapK[B[_]](f: A ~>: B): K[B] = f(fa)
+        override def mapK[B[_]](f: A :~>: B): K[B] = f(fa)
 
-        def traverseK[G[_]: Applicative, B[_]](f: A ~>: Compose2[G, B]): G[K[B]] =
+        def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[K[B]] =
           f(fa)
 
-        def foldLeftK[B](b: B)(f: B => A ~>#: B): B = f(b)(fa)
+        def foldLeftK[B](b: B)(f: B => A :~>#: B): B = f(b)(fa)
+
+        def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = f(fa)(b)
     }
 
     override inline def applyKC: ApplyKC[K] = instance

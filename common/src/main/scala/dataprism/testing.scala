@@ -266,6 +266,18 @@ object Testing {
       .run
      */
 
+    Insert.into(ResidentK.table).valuesWithoutSomeColumns(
+      Query.valueOfOpt(
+        ResidentK.table,
+        ResidentK(
+          Some(UUID.randomUUID()),
+          Some("foo"),
+          Some(UUID.randomUUID()),
+          None
+        )
+      )
+    )
+
     val mr1 = summon[MapRes[DbValue, (DbValue[String], DbValue[UUID])]]
     val mr2 = summon[MapRes[DbValue, mr1.K[DbValue]]]
 

@@ -189,20 +189,25 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             (fa._1.map2K(fb._1)(f), fa._2.map2K(fb._2)(f))
 
         extension [A[_], C](fa: F[A])
-          override def mapK[B[_]](f: A ~>: B): F[B] =
+          override def mapK[B[_]](f: A :~>: B): F[B] =
             (AA.mapK(fa._1)(f), BA.mapK(fa._2)(f))
 
         extension [A[_], C](fa: F[A])
-          def traverseK[G[_]: Applicative, B[_]](f: A ~>: Compose2[G, B]): G[F[B]] =
+          def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[F[B]] =
             val r1 = fa._1.traverseK(f)
             val r2 = fa._2.traverseK(f)
 
             r1.product(r2)
 
         extension [A[_], C](fa: F[A])
-          def foldLeftK[B](b: B)(f: B => A ~>#: B): B =
+          def foldLeftK[B](b: B)(f: B => A :~>#: B): B =
             val r1 = fa._1.foldLeftK(b)(f)
             val r2 = fa._2.foldLeftK(r1)(f)
+            r2
+
+          def foldRightK[B](b: B)(f: A :~>#: (B => B)): B =
+            val r1 = fa._2.foldRightK(b)(f)
+            val r2 = fa._1.foldRightK(r1)(f)
             r2
       }
 
@@ -763,6 +768,29 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       import table.given
       given FunctorKC[A] = table.FA
       Query.values(table.columns.mapK([Z] => (col: Column[Z]) => col.tpe), value, values)
+
+    def valueOpt[A[_[_]]](types: A[DbType], value: A[Option])(using FA: ApplyKC[A], FT: TraverseKC[A]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
+      given optValuesInstance: ApplyKC[[F[_]] =>> A[Compose2[Option, F]]] with TraverseKC[[F[_]] =>> A[Compose2[Option, F]]] with {
+        extension[B[_], D] (fa: A[Compose2[Option, B]])
+          def map2K[C[_], Z[_]](fb: A[Compose2[Option, C]])(f: [X] => (B[X], C[X]) => Z[X]): A[Compose2[Option, Z]] =
+            FA.map2K(fa)(fb)([X] => (v1o: Option[B[X]], v2o: Option[C[X]]) => v1o.zip(v2o).map((v1, v2) => f(v1, v2)))
+
+          def traverseK[G[_] : Applicative, C[_]](f: B :~>: Compose2[G, C]): G[A[Compose2[Option, C]]] =
+            FT.traverseK(fa)([Z] => (vo: Option[B[Z]]) => vo.traverse[G, C[Z]](v => f(v)))
+
+          def foldLeftK[C](b: C)(f: C => B :~>#: C): C =
+            FT.foldLeftK(fa)(b)(b1 => [Z] => (vo: Option[B[Z]]) => vo.fold(b1)(v => f(b1)(v)))
+
+          def foldRightK[C](b: C)(f: B :~>#: (C => C)): C =
+            FT.foldRightK(fa)(b)([Z] => (vo: Option[B[Z]]) => (b1: C) => vo.fold(b1)(v => f(v)(b1)))
+      }
+
+      values(types.map2K(value)([X] => (tpe: DbType[X], opt: Option[X]) => opt.map(_ => tpe)), value, Nil)
+
+    def valueOfOpt[A[_[_]]](table: Table[A], value: A[Option]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
+      import table.given
+      given FunctorKC[A] = table.FA
+      valueOpt(table.columns.mapK([Z] => (col: Column[Z]) => col.tpe), value)
 
   extension [A](query: Query[[F[_]] =>> F[A]])
     @targetName("queryAsMany") def asMany: Many[A] = query.asDbValue.dbValAsMany

@@ -279,11 +279,14 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           def map2K[C[_], Z[_]](fb: A[Compose2[Option, C]])(f: [X] => (B[X], C[X]) => Z[X]): A[Compose2[Option, Z]] =
             FA.map2K(fa)(fb)([X] => (v1o: Option[B[X]], v2o: Option[C[X]]) => v1o.zip(v2o).map((v1, v2) => f(v1, v2)))
 
-          def traverseK[G[_]: Applicative, C[_]](f: B ~>: Compose2[G, C]): G[A[Compose2[Option, C]]] =
+          def traverseK[G[_]: Applicative, C[_]](f: B :~>: Compose2[G, C]): G[A[Compose2[Option, C]]] =
             FT.traverseK(fa)([Z] => (vo: Option[B[Z]]) => vo.traverse[G, C[Z]](v => f(v)))
 
-          def foldLeftK[C](b: C)(f: C => B ~>#: C): C =
+          def foldLeftK[C](b: C)(f: C => B :~>#: C): C =
             FT.foldLeftK(fa)(b)(b1 => [Z] => (vo: Option[B[Z]]) => vo.fold(b1)(v => f(b1)(v)))
+
+          def foldRightK[C](b: C)(f: B :~>#: (C => C)): C =
+            FT.foldRightK(fa)(b)([Z] => (vo: Option[B[Z]]) => (b1: C) => vo.fold(b1)(v => f(v)(b1)))
       }
 
     end Insert
@@ -459,7 +462,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
         given ApplyKC[InnerJoin[A, B]] with {
           extension [X[_], E](fa: (A[X], B[X]))
-            def mapK[Y[_]](f: X ~>: Y): (A[Y], B[Y]) =
+            def mapK[Y[_]](f: X :~>: Y): (A[Y], B[Y]) =
               (fa._1.mapK(f), fa._2.mapK(f))
 
             def map2K[Y[_], Z[_]](fb: (A[Y], B[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (A[Z], B[Z]) =
@@ -467,12 +470,17 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         }
         given TraverseKC[InnerJoin[A, B]] with {
           extension [X[_], E](fa: InnerJoin[A, B][X])
-            def foldLeftK[Y](b: Y)(f: Y => X ~>#: Y): Y =
+            def foldLeftK[Y](b: Y)(f: Y => X :~>#: Y): Y =
               val b1 = fa._1.foldLeftK(b)(f)
-              fa._2.foldLeftK(b)(f)
+              fa._2.foldLeftK(b1)(f)
 
-            def traverseK[G[_]: Applicative, Y[_]](f: X ~>: Compose2[G, Y]): G[InnerJoin[A, B][Y]] =
+            def foldRightK[Y](b: Y)(f: X :~>#: (Y => Y)): Y =
+              val b1 = fa._2.foldRightK(b)(f)
+              fa._1.foldRightK(b1)(f)
+
+            def traverseK[G[_]: Applicative, Y[_]](f: X :~>: Compose2[G, Y]): G[InnerJoin[A, B][Y]] =
               fa._1.traverseK(f).product(fa._2.traverseK(f))
+
         }
 
         val bothQuery = from match
