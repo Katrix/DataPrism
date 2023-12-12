@@ -2,21 +2,27 @@ package dataprism.sql
 
 import cats.Monoid
 
-case class SqlStr(str: String, args: Seq[SqlArg]) {
+case class SqlStr[+Type[_]](str: String, args: Seq[SqlArg[Type]]):
 
   def isEmpty: Boolean  = str.isEmpty
 
   def nonEmpty: Boolean = str.nonEmpty
 
-  def stripMargin: SqlStr = copy(str = str.stripMargin)
-}
-object SqlStr {
-  given Monoid[SqlStr] with {
-    override def empty: SqlStr = SqlStr("", Nil)
+  def stripMargin: SqlStr[Type] = copy(str = str.stripMargin)
 
-    override def combine(x: SqlStr, y: SqlStr): SqlStr =
+object SqlStr:
+  given [Type[_]]: Monoid[SqlStr[Type]] with 
+    override def empty: SqlStr[Type] = SqlStr("", Nil)
+
+    override def combine(x: SqlStr[Type], y: SqlStr[Type]): SqlStr[Type] =
       SqlStr(x.str + y.str, x.args ++ y.args)
-  }
+  end given
 
-  def const(s: String): SqlStr = SqlStr(s, Nil)
-}
+  given nothingSqlStrMonoid: Monoid[SqlStr[Nothing]] with
+    override def empty: SqlStr[Nothing] = SqlStr("", Nil)
+
+    override def combine(x: SqlStr[Nothing], y: SqlStr[Nothing]): SqlStr[Nothing] =
+      SqlStr(x.str + y.str, x.args ++ y.args)
+  end nothingSqlStrMonoid
+
+  def const[Type[_]](s: String): SqlStr[Type] = SqlStr(s, Nil)

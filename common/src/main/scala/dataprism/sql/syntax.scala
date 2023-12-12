@@ -2,35 +2,35 @@ package dataprism.sql
 
 import scala.collection.mutable
 
-extension [A](a: A)(using SqlInterpolation) def asArg(tpe: DbType[A]): SqlArg = SqlArg.SqlArgObj(a, tpe)
+extension [A, Type[_]](a: A)(using SqlInterpolation[Type]) def asArg(tpe: Type[A]): SqlArg[Type] = SqlArg.SqlArgObj(a, tpe)
 
 //noinspection ScalaFileName
-trait SqlInterpolation
+trait SqlInterpolation[Type[_]]
 
 extension (sc: StringContext)
-  def sql(args: SqlInterpolation ?=> (SqlArg | SqlStr)*): SqlStr =
-    given sqlInterpolation: SqlInterpolation = new SqlInterpolation {}
+  def sql[Type[_]](args: SqlInterpolation[Type] ?=> (SqlArg[Type] | SqlStr[Type])*): SqlStr[Type] =
+    given sqlInterpolation: SqlInterpolation[Type] = new SqlInterpolation[Type] {}
     StringContext.checkLengths(args, sc.parts)
 
     val sb    = mutable.StringBuilder()
-    val argsb = Seq.newBuilder[SqlArg]
+    val argsb = Seq.newBuilder[SqlArg[Type]]
 
     sb ++= sc.parts.head
 
     sc.parts.tail.zip(args.map(f => f(using sqlInterpolation))).foreach {
-      case (s, arg: SqlArg) =>
+      case (s, arg: SqlArg[Type] @unchecked) =>
         sb += '?' ++= s
         argsb += arg
 
-      case (s, table: Table[_]) =>
+      case (s, table: Table[_, _]) =>
         sb ++= table.tableName
         sb ++= s
 
-      case (s, column: Column[_]) =>
+      case (s, column: Column[_, _]) =>
         sb ++= column.nameStr
         sb ++= s
 
-      case (s, str: SqlStr) =>
+      case (s, str: SqlStr[Type] @unchecked) =>
         sb ++= str.str
         sb ++= s
         argsb ++= str.args

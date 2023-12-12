@@ -2,19 +2,23 @@ package dataprism.platform.implementations
 
 import scala.annotation.targetName
 import scala.concurrent.Future
+
 import cats.Applicative
 import cats.data.{NonEmptyList, State}
 import cats.syntax.all.*
 import dataprism.platform.base.MapRes
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sharedast.{AstRenderer, PostgresAstRenderer, SelectAst, SqlExpr}
-import dataprism.sql.*
 import perspective.*
 
-//noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
+import dataprism.sql.*
 
-  val sqlRenderer: PostgresAstRenderer = new PostgresAstRenderer
+//noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
+trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
+
+  val sqlRenderer: PostgresAstRenderer[Type] = new PostgresAstRenderer[Type](ansiTypes)
+  type ArrayTypeArgs[A]
+  def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
 
   override type UnaryOp[V, R] = SqlUnaryOp[V, R]
 
@@ -23,11 +27,12 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
   extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
 
-  enum DbValue[A] extends SqlDbValueBase[A] {
+  enum DbValue[A] extends SqlDbValueBase[A]:
     case SqlDbValue(value: platform.SqlDbValue[A])
-    case ArrayOf(values: Seq[DbValue[A]], elemType: DbType[A], mapping: DbType.ArrayMapping[A]) extends DbValue[Seq[A]]
+    case ArrayOf(values: Seq[DbValue[A]], elemType: Type[A], extraArrayTypeArgs: ArrayTypeArgs[A])
+        extends DbValue[Seq[A]]
 
-    def ast: TagState[SqlExpr] = this match
+    def ast: TagState[SqlExpr[Type]] = this match
       case DbValue.SqlDbValue(value) => value.ast
       case DbValue.ArrayOf(values, _, _) =>
         values.toList
@@ -39,12 +44,13 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       case DbValue.SqlDbValue(res) => Some(res)
       case _                       => None
 
-    override def tpe: DbType[A] = this match
-      case DbValue.SqlDbValue(value)      => value.tpe
-      case DbValue.ArrayOf(_, tpe, mapping) => DbType.array(tpe)(using mapping)
+    override def tpe: Type[A] = this match
+      case DbValue.SqlDbValue(value)                   => value.tpe
+      case DbValue.ArrayOf(_, tpe, extraArrayTypeArgs) => arrayType(tpe)(using extraArrayTypeArgs)
     end tpe
 
-    def singletonArray(using mapping: DbType.ArrayMapping[A]): DbValue[Seq[A]] = DbValue.ArrayOf(Seq(this), tpe, mapping)
+    def singletonArray(using extraArrayTypeArgs: ArrayTypeArgs[A]): DbValue[Seq[A]] =
+      DbValue.ArrayOf(Seq(this), tpe, extraArrayTypeArgs)
 
     override def liftDbValue: DbValue[A] = this
 
@@ -53,7 +59,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     override def desc: Ord = Ord.Desc(this)
 
     override protected[platform] def asAnyDbVal: AnyDbValue = this.asInstanceOf[AnyDbValue]
-  }
+  end DbValue
 
   override protected[platform] def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
     new Lift[SqlDbValue[A], DbValue[A]]:
@@ -63,30 +69,30 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
   sealed trait OrdSeq extends SqlOrdSeqBase
 
-  enum Ord extends OrdSeq {
+  enum Ord extends OrdSeq:
     case Asc(value: DbValue[_])
     case Desc(value: DbValue[_])
 
-    override def ast: TagState[Seq[SelectAst.OrderExpr]] = this match
+    override def ast: TagState[Seq[SelectAst.OrderExpr[Type]]] = this match
       case Ord.Asc(value)  => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
       case Ord.Desc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Desc, None)))
 
     override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
-  }
+  end Ord
 
-  case class MultiOrdSeq(init: OrdSeq, tail: Ord) extends OrdSeq {
-    override def ast: TagState[Seq[SelectAst.OrderExpr]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
+  case class MultiOrdSeq(init: OrdSeq, tail: Ord) extends OrdSeq:
+    override def ast: TagState[Seq[SelectAst.OrderExpr[Type]]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
 
     override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
-  }
+  end MultiOrdSeq
 
   extension [A](many: Many[A])
-    def arrayAgg(using DbType.ArrayMapping[A]): DbValue[Seq[A]] =
+    def arrayAgg(using extraArrayTypeArgs: ArrayTypeArgs[A]): DbValue[Seq[A]] =
       SqlDbValue
         .Function[Seq[A]](
           SqlExpr.FunctionName.Custom("array_agg"),
           Seq(many.asDbValue.asAnyDbVal),
-          DbType.array(many.asDbValue.tpe)
+          arrayType(many.asDbValue.tpe)
         )
         .lift
 
@@ -115,18 +121,18 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
   extension [A[_[_]]](sqlQueryGrouped: SqlQueryGrouped[A]) def liftSqlQueryGrouped: QueryGrouped[A] = sqlQueryGrouped
 
-  case class TaggedState(queryNum: Int, columnNum: Int) extends SqlTaggedState {
+  case class TaggedState(queryNum: Int, columnNum: Int) extends SqlTaggedState:
     override def withNewQueryNum(newQueryNum: Int): TaggedState = copy(queryNum = newQueryNum)
 
     override def withNewColumnNum(newColumnNum: Int): TaggedState = copy(columnNum = newColumnNum)
-  }
+  end TaggedState
   protected def freshTaggedState: TaggedState = TaggedState(0, 0)
 
   sealed trait Operation[A]:
-    def run(using db: Db): Future[A]
+    def run[F[_]](using db: Db[F, Type]): F[A]
   object Operation:
     case class Select[Res[_[_]]](query: Query[Res]) extends Operation[QueryResult[Res[Id]]]:
-      override def run(using db: Db): Future[QueryResult[Res[Id]]] =
+      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[Res[Id]]] =
         import query.given
         given FunctorKC[Res] = summon[ApplyKC[Res]]
 
@@ -138,7 +144,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     end Select
 
     case class Delete[A[_[_]], B[_[_]]](
-        from: Table[A],
+        from: Table[A, Type],
         usingV: Option[Query[B]] = None,
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ) extends Operation[Int]:
@@ -146,7 +152,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
       given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
 
-      override def run(using db: Db): Future[Int] =
+      override def run[F[_]](using db: Db[F, Type]): F[Int] =
         val q = usingV match
           case Some(usingQ) => Query.from(from).flatMap(a => usingQ.where(b => where(a, b)))
           case None         => Query.from(from).where(a => where(a, a.asInstanceOf[B[DbValue]]))
@@ -167,12 +173,12 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       ): DeleteReturning[A, B, MR.K] =
         returningK((a, b) => MR.toK(f(a, b)))(using MR.applyKC, MR.traverseKC)
     object Delete:
-      def from[A[_[_]]](from: Table[A]): DeleteFrom[A, A] =
+      def from[A[_[_]]](from: Table[A, Type]): DeleteFrom[A, A] =
         import from.given
         DeleteFrom(from)
     end Delete
 
-    case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[A], using: Option[Query[B]] = None) {
+    case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Type], using: Option[Query[B]] = None) {
 
       def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1] = DeleteFrom(from, Some(query))
 
@@ -180,7 +186,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     }
 
     case class DeleteReturning[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
-        from: Table[A],
+        from: Table[A, Type],
         usingV: Option[Query[B]] = None,
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
         returning: (A[DbValue], B[DbValue]) => C[DbValue]
@@ -189,7 +195,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
       given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
 
-      override def run(using db: Db): Future[QueryResult[C[Id]]] =
+      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[C[Id]]] =
         given FunctorKC[C] = summon[ApplyKC[C]]
 
         val q = usingV match
@@ -212,12 +218,12 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     end DeleteReturning
 
     case class Insert[A[_[_]]](
-        table: Table[A],
+        table: Table[A, Type],
         values: Query[Insert.Optional[A]],
-        conflictOn: A[Column] => List[Column[_]],
+        conflictOn: A[[Z] =>> Column[Z, Type]] => List[Column[_, Type]],
         onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]
     ) extends Operation[Int]:
-      override def run(using db: Db): Future[Int] =
+      override def run[F[_]](using db: Db[F, Type]): F[Int] =
         import table.given
 
         val ret = for
@@ -225,7 +231,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           computedOnConflict <- onConflict
             .map2Const(computedValues.values.tupledK(table.columns)) {
               [Z] =>
-                (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z])) =>
+                (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z, Type])) =>
                   val value  = t._1
                   val column = t._2
 
@@ -234,13 +240,13 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
                     value.map(_ => DbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
                   ).traverse(r => r.ast.map(column.name -> _))
             }
-            .traverseK[TagState, Const[Option[(SqlStr, SqlExpr)]]](FunctionK.identity)
+            .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
         yield db.run(
           sqlRenderer.renderInsert(
             table.name,
             table.columns
               .map2Const(computedValues.values)(
-                [Z] => (column: Column[Z], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
+                [Z] => (column: Column[Z, Type], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
               )
               .toListK
               .flatMap(_.toList),
@@ -253,20 +259,26 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
         ret.runA(freshTaggedState).value
 
-      def onConflict(on: A[Column] => NonEmptyList[Column[_]], a: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]): Insert[A] =
+      def onConflict(
+          on: A[[Z] =>> Column[Z, Type]] => NonEmptyList[Column[_, Type]],
+          a: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]
+      ): Insert[A] =
         copy(conflictOn = on.andThen(_.toList), onConflict = a)
 
-      def onConflictUpdate(on: A[Column] => NonEmptyList[Column[_]]): Insert[A] =
+      def onConflictUpdate(on: A[[Z] =>> Column[Z, Type]] => NonEmptyList[Column[_, Type]]): Insert[A] =
         import table.FA
-        onConflict(on, table.columns.mapK([Z] => (_: Column[Z]) => (_: DbValue[Z], newV: Option[DbValue[Z]]) => newV))
+        onConflict(
+          on,
+          table.columns.mapK([Z] => (_: Column[Z, Type]) => (_: DbValue[Z], newV: Option[DbValue[Z]]) => newV)
+        )
 
-      def returning[B[_[_]] : ApplyKC : TraverseKC](f: A[DbValue] => B[DbValue]): InsertReturning[A, B] =
+      def returning[B[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => B[DbValue]): InsertReturning[A, B] =
         InsertReturning(table, values, conflictOn, onConflict, f)
 
     object Insert:
-      def into[A[_[_]]](table: Table[A]): InsertInto[A] = InsertInto(table)
+      def into[A[_[_]]](table: Table[A, Type]): InsertInto[A] = InsertInto(table)
 
-      def values[A[_[_]]](table: Table[A], value: A[Id], values: Seq[A[Id]] = Nil): Insert[A] =
+      def values[A[_[_]]](table: Table[A, Type], value: A[Id], values: Seq[A[Id]] = Nil): Insert[A] =
         Insert.into(table).values(Query.valuesOf(table, value, values))
 
       type Optional[A[_[_]]] = [F[_]] =>> A[Compose2[Option, F]]
@@ -291,7 +303,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
     end Insert
 
-    case class InsertInto[A[_[_]]](table: Table[A]):
+    case class InsertInto[A[_[_]]](table: Table[A, Type]):
 
       def values(query: Query[A]): Insert[A] =
         import table.given
@@ -304,7 +316,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           query.mapK[[F[_]] =>> A[Compose2[Option, F]]](a => a.mapK([Z] => (dbVal: DbValue[Z]) => Some(dbVal))),
           _ => Nil,
           table.columns.mapK[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]](
-            [Z] => (_: Column[Z]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
+            [Z] => (_: Column[Z, Type]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
           )
         )
 
@@ -315,19 +327,19 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           query,
           _ => Nil,
           table.columns.mapK[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]](
-            [Z] => (_: Column[Z]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
+            [Z] => (_: Column[Z, Type]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
           )
         )
     end InsertInto
 
     case class InsertReturning[A[_[_]], C[_[_]]: ApplyKC: TraverseKC](
-        table: Table[A],
+        table: Table[A, Type],
         values: Query[Insert.Optional[A]],
-        conflictOn: A[Column] => List[Column[_]],
+        conflictOn: A[[Z] =>> Column[Z, Type]] => List[Column[_, Type]],
         onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]],
         returning: A[DbValue] => C[DbValue]
     ) extends Operation[QueryResult[C[Id]]]:
-      override def run(using db: Db): Future[QueryResult[C[Id]]] =
+      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[C[Id]]] =
         import table.given
 
         val ret = for
@@ -335,7 +347,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           computedOnConflict <- onConflict
             .map2Const(computedValues.values.tupledK(table.columns)) {
               [Z] =>
-                (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z])) =>
+                (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z, Type])) =>
                   val value  = t._1
                   val column = t._2
 
@@ -344,21 +356,22 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
                     value.map(_ => DbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
                   ).traverse(r => r.ast.map(column.name -> _))
             }
-            .traverseK[TagState, Const[Option[(SqlStr, SqlExpr)]]](FunctionK.identity)
+            .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
           returningValues = returning(
             table.columns.mapK(
               [Z] =>
-                (col: Column[Z]) => DbValue.SqlDbValue(SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe))
+                (col: Column[Z, Type]) =>
+                  DbValue.SqlDbValue(SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe))
             )
           )
           computedReturning <-
-            returningValues.traverseK[TagState, Const[SqlExpr]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
+            returningValues.traverseK[TagState, Const[SqlExpr[Type]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
         yield db.runIntoRes(
           sqlRenderer.renderInsert(
             table.name,
             table.columns
               .map2Const(computedValues.values)(
-                [Z] => (column: Column[Z], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
+                [Z] => (column: Column[Z, Type], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
               )
               .toListK
               .flatMap(_.toList),
@@ -374,7 +387,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     end InsertReturning
 
     case class Update[A[_[_]], B[_[_]]](
-        table: Table[A],
+        table: Table[A, Type],
         from: Option[Query[B]],
         setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -383,7 +396,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       def returning[C[_[_]]: ApplyKC: TraverseKC](f: (A[DbValue], B[DbValue]) => C[DbValue]): UpdateReturning[A, B, C] =
         UpdateReturning(table, from, setValues, where, f)
 
-      override def run(using db: Db): Future[Int] =
+      override def run[F[_]](using db: Db[F, Type]): F[Int] =
         import table.given
         given (ApplyKC[Insert.Optional[A]] & TraverseKC[Insert.Optional[A]]) =
           Insert.optValuesInstance[A]
@@ -402,7 +415,9 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           yield db.run(
             sqlRenderer.renderUpdate(
               table.columns
-                .map2Const(meta.values)([Z] => (col: Column[Z], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList)
+                .map2Const(meta.values)(
+                  [Z] => (col: Column[Z, Type], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList
+                )
                 .toListK
                 .flatten,
               meta.ast,
@@ -413,11 +428,11 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         ret.runA(freshTaggedState).value
 
     object Update:
-      def table[A[_[_]]](table: Table[A]): UpdateTable[A, A] = UpdateTable(table, None)
+      def table[A[_[_]]](table: Table[A, Type]): UpdateTable[A, A] = UpdateTable(table, None)
 
     end Update
 
-    case class UpdateTable[A[_[_]], B[_[_]]](table: Table[A], from: Option[Query[B]] = None):
+    case class UpdateTable[A[_[_]], B[_[_]]](table: Table[A, Type], from: Option[Query[B]] = None):
 
       def from[B1[_[_]]](fromQ: Query[B1]): UpdateTable[A, B1] = UpdateTable(table, Some(fromQ))
 
@@ -425,7 +440,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         UpdateTableWhere(table, from, where)
 
     case class UpdateTableWhere[A[_[_]], B[_[_]]](
-        table: Table[A],
+        table: Table[A, Type],
         from: Option[Query[B]],
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ):
@@ -445,14 +460,14 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         Update(table, from, setValues, where)
 
     case class UpdateReturning[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
-        table: Table[A],
+        table: Table[A, Type],
         from: Option[Query[B]],
         setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
         returning: (A[DbValue], B[DbValue]) => C[DbValue]
     ) extends Operation[QueryResult[C[Id]]]:
 
-      override def run(using db: Db): Future[QueryResult[C[Id]]] =
+      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[C[Id]]] =
         import table.given
         given ApplyKC[B]    = from.fold(table.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
         given TraverseKC[B] = from.fold(table.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
@@ -491,20 +506,22 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           bothMeta <- bothQuery.selectAstAndValues
           whereAst <- where.tupled(bothMeta.values).ast
           toSet = setValues.tupled(bothMeta.values)
-          toSetAst <- table.FT.traverseK(toSet)[TagState, Const[Option[SqlExpr]]](
+          toSetAst <- table.FT.traverseK(toSet)[TagState, Const[Option[SqlExpr[Type]]]](
             [Z] => (vo: Option[DbValue[Z]]) => vo.traverse(v => v.ast)
           )
           returningValues = returning.tupled(bothMeta.values)
-          returningAst <- returningValues.traverseK[TagState, Const[SqlExpr]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
+          returningAst <- returningValues.traverseK[TagState, Const[SqlExpr[Type]]](
+            [Z] => (dbVal: DbValue[Z]) => dbVal.ast
+          )
         yield db.runIntoRes(
           sqlRenderer.renderUpdate(
             table.columns
-              .map2Const(toSet)([Z] => (col: Column[Z], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList)
+              .map2Const(toSet)([Z] => (col: Column[Z, Type], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList)
               .toListK
               .flatten,
             bothMeta.ast.copy(
               data = bothMeta.ast.data match
-                case data: SelectAst.Data.SelectFrom =>
+                case data: SelectAst.Data.SelectFrom[Type] =>
                   data.copy(
                     selectExprs = toSetAst.toListK.map(ast => SelectAst.ExprWithAlias(ast, None)),
                     where = Some(whereAst)
@@ -517,6 +534,7 @@ class PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         )
 
         ret.runA(freshTaggedState).value
+  end Operation
 
   export Operation.*
 }

@@ -1,27 +1,26 @@
 package dataprism.sql
 
-import java.io.Closeable
-import java.sql.{PreparedStatement, ResultSet}
-import javax.sql.DataSource
-
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
-import scala.util.Using
-
 import cats.data.State
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 
-trait Db:
+import java.io.Closeable
+import java.sql.{PreparedStatement, ResultSet}
+import javax.sql.DataSource
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.util.Using
 
-  def run(sql: SqlStr): Future[Int]
+trait Db[F[_], Type[_]]:
+
+  def run(sql: SqlStr[Type]): F[Int]
 
   def runIntoSimple[Res](
-      sql: SqlStr,
-      dbTypes: DbType[Res]
-  ): Future[QueryResult[Res]]
+      sql: SqlStr[Type],
+      dbTypes: Type[Res]
+  ): F[QueryResult[Res]]
 
   def runIntoRes[Res[_[_]]](
-      sql: SqlStr,
-      dbTypes: Res[DbType]
-  )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]]
+      sql: SqlStr[Type],
+      dbTypes: Res[Type]
+  )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): F[QueryResult[Res[Id]]]

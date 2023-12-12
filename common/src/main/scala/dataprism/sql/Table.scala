@@ -4,10 +4,10 @@ import cats.Foldable
 import cats.syntax.all.*
 import perspective.*
 
-case class Table[A[_[_]]](
+case class Table[A[_[_]], Type[_]](
     tableName: String,
-    columns: A[Column]
+    columns: A[[X] =>> Column[X, Type]]
 )(using val FA: ApplyKC[A], val FT: TraverseKC[A]) {
 
-  def name: SqlStr = SqlStr(tableName, Nil)
+  def name: SqlStr[Type] = SqlStr.const(tableName)
 }

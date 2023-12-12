@@ -1,14 +1,16 @@
-package dataprism
+package dataprism.jdbc
 
-import dataprism.platform.base.MapRes
+import dataprism.KMacros
+import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform
+import dataprism.jdbc.sql.{JdbcType, PostgresJdbcTypes}
 
-import java.time.Instant
+import java.time.{Instant, ZoneOffset}
 import java.util.UUID
 import scala.concurrent.Future
-import dataprism.platform.implementations.PostgresQueryPlatform
-import dataprism.sql.*
+import dataprism.platform.base.MapRes
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
+import dataprism.sql.*
 
 case class HomeK[F[_]](
     owner: F[UUID],
@@ -33,19 +35,21 @@ object HomeK {
   ): HomeK[F] =
     HomeK(uuid, string, instant, instant, double, double, double, float, float, uuid)
 
-  val table: Table[HomeK] = Table(
+  val table: Table[HomeK, JdbcType] = Table(
     "homes",
     HomeK(
-      owner = Column("owner", DbType.uuid),
-      name = Column("name", DbType.text),
-      createdAt = Column("created_at", DbType.timestamptz),
-      updatedAt = Column("updated_at", DbType.timestamptz),
-      x = Column("x", DbType.double),
-      y = Column("y", DbType.double),
-      z = Column("z", DbType.double),
-      yaw = Column("yaw", DbType.float),
-      pitch = Column("pitch", DbType.float),
-      worldUuid = Column("world_uuid", DbType.uuid)
+      owner = Column("owner", PostgresJdbcTypes.uuid),
+      name = Column("name", PostgresJdbcTypes.text),
+      createdAt =
+        Column("created_at", PostgresJdbcTypes.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))),
+      updatedAt =
+        Column("updated_at", PostgresJdbcTypes.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))),
+      x = Column("x", PostgresJdbcTypes.doublePrecision),
+      y = Column("y", PostgresJdbcTypes.doublePrecision),
+      z = Column("z", PostgresJdbcTypes.doublePrecision),
+      yaw = Column("yaw", PostgresJdbcTypes.real),
+      pitch = Column("pitch", PostgresJdbcTypes.real),
+      worldUuid = Column("world_uuid", PostgresJdbcTypes.uuid)
     )
   )
 
@@ -67,13 +71,13 @@ object ResidentK {
   ): ResidentK[F] =
     ResidentK(uuid, string, uuid, instant)
 
-  val table: Table[ResidentK] = Table(
+  val table: Table[ResidentK, JdbcType] = Table(
     "home_residents",
     ResidentK(
-      Column("home_owner", DbType.uuid),
-      Column("home_name", DbType.text),
-      Column("resident", DbType.uuid),
-      Column("created_at", DbType.timestamptz)
+      Column("home_owner", PostgresJdbcTypes.uuid),
+      Column("home_name", PostgresJdbcTypes.text),
+      Column("resident", PostgresJdbcTypes.uuid),
+      Column("created_at", PostgresJdbcTypes.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)))
     )
   )
 
@@ -84,45 +88,47 @@ case class DepartmentK[F[_]](dpt: F[String])
 object DepartmentK {
   given KMacros.RepresentableTraverseKC[DepartmentK] = KMacros.deriveRepresentableTraverseKC[DepartmentK]
 
-  val table: Table[DepartmentK] = Table("departments", DepartmentK(Column("dpt", DbType.text)))
+  val table: Table[DepartmentK, JdbcType] = Table("departments", DepartmentK(Column("dpt", PostgresJdbcTypes.text)))
 }
 
 case class EmployeK[F[_]](dpt: F[String], emp: F[String])
 object EmployeK {
   given KMacros.RepresentableTraverseKC[EmployeK] = KMacros.deriveRepresentableTraverseKC[EmployeK]
 
-  val table: Table[EmployeK] = Table("employees", EmployeK(Column("dpt", DbType.text), Column("emp", DbType.text)))
+  val table: Table[EmployeK, JdbcType] =
+    Table("employees", EmployeK(Column("dpt", PostgresJdbcTypes.text), Column("emp", PostgresJdbcTypes.text)))
 }
 
 case class TaskK[F[_]](emp: F[String], tsk: F[String])
 object TaskK {
   given KMacros.RepresentableTraverseKC[TaskK] = KMacros.deriveRepresentableTraverseKC[TaskK]
 
-  val table: Table[TaskK] = Table("tasks", TaskK(Column("emp", DbType.text), Column("tsk", DbType.text)))
+  val table: Table[TaskK, JdbcType] =
+    Table("tasks", TaskK(Column("emp", PostgresJdbcTypes.text), Column("tsk", PostgresJdbcTypes.text)))
 }
 
 object Testing {
 
-  val platform = new PostgresQueryPlatform
+  val platform: PostgresJdbcPlatform = new PostgresJdbcPlatform
   import platform.*
 
-  def printSqlStr(str: SqlStr): Unit =
+  def printSqlStr(str: SqlStr[JdbcType]): Unit =
     if str.str.isEmpty then println("ERROR: Empty string") else println(str.str)
     println()
 
   def printQuery[A[_[_]]](q: Query[A]): Unit =
     printSqlStr(platform.sqlRenderer.renderSelect(q.selectAst))
 
-  given Db with {
-    override def run(sql: SqlStr): Future[Int] =
+  given Db[Future, JdbcType] with {
+    override def run(sql: SqlStr[JdbcType]): Future[Int] =
       printSqlStr(sql)
       Future.successful(0)
 
-    override def runIntoSimple[Res](sql: SqlStr, dbTypes: DbType[Res]): Future[QueryResult[Res]] =
+    override def runIntoSimple[Res](sql: SqlStr[JdbcType], dbTypes: JdbcType[Res]): Future[QueryResult[Res]] =
       printSqlStr(sql)
       Future.successful(QueryResult(Nil))
 
-    override def runIntoRes[Res[_[_]]](sql: SqlStr, dbTypes: Res[DbType])(
+    override def runIntoRes[Res[_[_]]](sql: SqlStr[JdbcType], dbTypes: Res[JdbcType])(
         using FA: ApplyKC[Res],
         FT: TraverseKC[Res]
     ): Future[QueryResult[Res[Id]]] =
@@ -266,17 +272,19 @@ object Testing {
       .run
      */
 
-    Insert.into(ResidentK.table).valuesWithoutSomeColumns(
-      Query.valueOfOpt(
-        ResidentK.table,
-        ResidentK(
-          Some(UUID.randomUUID()),
-          Some("foo"),
-          Some(UUID.randomUUID()),
-          None
+    Insert
+      .into(ResidentK.table)
+      .valuesWithoutSomeColumns(
+        Query.valueOfOpt(
+          ResidentK.table,
+          ResidentK(
+            Some(UUID.randomUUID()),
+            Some("foo"),
+            Some(UUID.randomUUID()),
+            None
+          )
         )
       )
-    )
 
     val mr1 = summon[MapRes[DbValue, (DbValue[String], DbValue[UUID])]]
     val mr2 = summon[MapRes[DbValue, mr1.K[DbValue]]]
@@ -284,9 +292,9 @@ object Testing {
     printQuery(
       Query
         .from(ResidentK.table)
-        .filter(resident => resident.owner === homeOwner.as(DbType.uuid))
+        .filter(resident => resident.owner === homeOwner.as(PostgresJdbcTypes.uuid))
         .map(r => (r.homeName, r.resident))
-        //.groupMap(_.homeName)((name, r) => (name, r.resident.arrayAgg))
+      // .groupMap(_.homeName)((name, r) => (name, r.resident.arrayAgg))
     )
 
     ()

@@ -3,6 +3,6 @@ package dataprism.sharedast
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection
-class SqliteAstRenderer extends AstRenderer {
+class SqliteAstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) extends AstRenderer[Type](ansiTypes) {
 
 }

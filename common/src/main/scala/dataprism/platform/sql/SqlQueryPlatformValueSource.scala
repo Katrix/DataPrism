@@ -5,12 +5,13 @@ import scala.annotation.targetName
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.sharedast.{SelectAst, SqlExpr}
-import dataprism.sql.{Column, Table}
 import perspective.*
 
-trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
+import dataprism.sql.*
 
-  case class ValueSourceAstMetaData[A[_[_]]](ast: SelectAst.From, values: A[DbValue])
+trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
+  
+  case class ValueSourceAstMetaData[A[_[_]]](ast: SelectAst.From[Type], values: A[DbValue])
 
   trait SqlValueSourceBase[A[_[_]]] {
     def applyKC: ApplyKC[A]
@@ -26,7 +27,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
   enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
     case FromQuery(q: Query[A])
-    case FromTable(t: Table[A])
+    case FromTable(t: Table[A, Type])
     case InnerJoin[A[_[_]], B[_[_]]](
         lhs: ValueSource[A],
         rhs: ValueSource[B],
@@ -161,7 +162,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
         lhs: ValueSource[A],
         rhs: ValueSource[B],
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean],
-        make: (SelectAst.From, SelectAst.From, SqlExpr) => SelectAst.From,
+        make: (SelectAst.From[Type], SelectAst.From[Type], SqlExpr[Type]) => SelectAst.From[Type],
         doJoin: (A[DbValue], B[DbValue]) => R[DbValue]
     ): TagState[ValueSourceAstMetaData[R]] =
       for
@@ -206,7 +207,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
           val values = table.columns.mapK(
             [X] =>
-              (column: Column[X]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).lift
+              (column: Column[X, Type]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).lift
           )
 
           (
@@ -244,4 +245,5 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
   extension (c: ValueSourceCompanion)
     @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A]
+    
 }

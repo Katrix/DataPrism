@@ -1,7 +1,5 @@
 package dataprism.sql
 
-case class Column[A](nameStr: String, tpe: DbType[A]) {
-  def name: SqlStr = SqlStr(nameStr, Nil)
-
-  def typeName: SqlStr = SqlStr(tpe.name, Nil)
+case class Column[A, Type[_]](nameStr: String, tpe: Type[A]) {
+  def name: SqlStr[Type] = SqlStr.const(nameStr)
 }

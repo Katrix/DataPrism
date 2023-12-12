@@ -1,8 +1,9 @@
-package dataprism.sql
+package dataprism.jdbc.sql
 
 import cats.data.State
-import perspective.derivation.{ProductK, ProductKPar}
+import dataprism.sql.*
 import perspective.*
+import perspective.derivation.{ProductK, ProductKPar}
 
 import java.io.Closeable
 import java.sql.{Connection, PreparedStatement}
@@ -10,14 +11,14 @@ import javax.sql.DataSource
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Using
 
-class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends Db {
+class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends Db[Future, JdbcType] with Closeable:
 
   extension [A: Using.Releasable](a: A)
     def acquired(using man: Using.Manager): A =
       man.acquire(a)
       a
 
-  private def makePrepared[A](sql: SqlStr)(f: Using.Manager ?=> (PreparedStatement, Connection) => A): Future[A] =
+  private def makePrepared[A](sql: SqlStr[JdbcType])(f: Using.Manager ?=> (PreparedStatement, Connection) => A): Future[A] =
     Future {
       Using.Manager { implicit man =>
         println("Making prepared statement")
@@ -34,24 +35,24 @@ class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends D
       }
     }.flatMap(Future.fromTry)
 
-  override def run(sql: SqlStr): Future[Int] = makePrepared(sql)((ps, _) => ps.executeUpdate())
+  override def run(sql: SqlStr[JdbcType]): Future[Int] = makePrepared(sql)((ps, _) => ps.executeUpdate())
 
   override def runIntoSimple[Res](
-      sql: SqlStr,
-      dbTypes: DbType[Res]
+      sql: SqlStr[JdbcType],
+      dbTypes: JdbcType[Res]
   ): Future[QueryResult[Res]] =
-    runIntoRes[ProductKPar[Tuple1[Res]]](sql, ProductK.ofScalaTuple[DbType, Tuple1[Res]](Tuple1(dbTypes)))
+    runIntoRes[ProductKPar[Tuple1[Res]]](sql, ProductK.ofScalaTuple[JdbcType, Tuple1[Res]](Tuple1(dbTypes)))
       .map(_.map(_.tuple.head))
 
   override def runIntoRes[Res[_[_]]](
-      sql: SqlStr,
-      dbTypes: Res[DbType]
+      sql: SqlStr[JdbcType],
+      dbTypes: Res[JdbcType]
   )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
     makePrepared(sql) { (ps: PreparedStatement, con: Connection) =>
       val rs = ps.executeQuery().acquired
 
       val indicesState: State[Int, Res[Const[Int]]] =
-        dbTypes.traverseK([A] => (_: DbType[A]) => State((acc: Int) => (acc + 1, acc)))
+        dbTypes.traverseK([A] => (_: JdbcType[A]) => State((acc: Int) => (acc + 1, acc)))
 
       val indices: Res[Const[Int]] = indicesState.runA(1).value
 
@@ -59,7 +60,7 @@ class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends D
         Option.when(cond)(
           (
             dbTypes.map2K[Const[Int], Id](indices)(
-              [A] => (dbType: DbType[A], idx: Int) => dbType.get(rs, idx, con)
+              [A] => (dbType: JdbcType[A], idx: Int) => dbType.get(rs, idx, con)
             ),
             rs.next()
           )
@@ -70,4 +71,3 @@ class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends D
     }
 
   def close(): Unit = ds.close()
-}

@@ -8,8 +8,9 @@ import cats.syntax.all.*
 import dataprism.platform.base.QueryPlatform
 import dataprism.sharedast.SelectAst.Data
 import dataprism.sharedast.{AstRenderer, SelectAst, SqlExpr}
-import dataprism.sql.{Column, DbType, Table}
 import perspective.*
+
+import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection,ScalaUnusedSymbol
 trait SqlQueryPlatform
@@ -17,8 +18,11 @@ trait SqlQueryPlatform
     with SqlQueryPlatformDbValue
     with SqlQueryPlatformValueSource
     with SqlQueryPlatformQuery { platform =>
+  
+  type Type[_]
+  def ansiTypes: AnsiTypes[Type]
 
-  val sqlRenderer: AstRenderer
+  val sqlRenderer: AstRenderer[Type]
 
   trait SqlTaggedState {
     def queryNum: Int

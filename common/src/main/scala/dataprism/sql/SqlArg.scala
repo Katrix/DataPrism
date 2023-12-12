@@ -1,12 +1,12 @@
 package dataprism.sql
 
-trait SqlArg {
+trait SqlArg[+Type[_]] {
   type A
   def value: A
-  def tpe: DbType[A]
+  def tpe: Type[A]
 }
 object SqlArg {
-  case class SqlArgObj[A0](value: A0, tpe: DbType[A0]) extends SqlArg {
+  case class SqlArgObj[A0, Type[_]](value: A0, tpe: Type[A0]) extends SqlArg[Type] {
     type A = A0
   }
 }
