@@ -109,15 +109,14 @@ object TaskK {
 
 object Testing {
 
-  val platform: PostgresJdbcPlatform = new PostgresJdbcPlatform
-  import platform.*
+  import PostgresJdbcPlatform.*
 
   def printSqlStr(str: SqlStr[JdbcType]): Unit =
     if str.str.isEmpty then println("ERROR: Empty string") else println(str.str)
     println()
 
   def printQuery[A[_[_]]](q: Query[A]): Unit =
-    printSqlStr(platform.sqlRenderer.renderSelect(q.selectAst))
+    printSqlStr(PostgresJdbcPlatform.sqlRenderer.renderSelect(q.selectAst))
 
   given Db[Future, JdbcType] with {
     override def run(sql: SqlStr[JdbcType]): Future[Int] =

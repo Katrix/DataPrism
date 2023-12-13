@@ -50,9 +50,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     inline def count: DbValue[Long] = this.size
 
-    def nonEmpty: DbValue[Boolean] = size > 0.toLong.as(ansiTypes.bigint)
+    def nonEmpty: DbValue[Boolean] = size > 0.toLong.as(AnsiTypes.bigint)
 
-    def isEmpty: DbValue[Boolean] = size === 0.toLong.as(ansiTypes.bigint)
+    def isEmpty: DbValue[Boolean] = size === 0.toLong.as(AnsiTypes.bigint)
 
     def applyK: ApplyKC[A]
 

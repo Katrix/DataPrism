@@ -5,9 +5,8 @@ import scala.annotation.targetName
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.sharedast.{SelectAst, SqlExpr}
-import perspective.*
-
 import dataprism.sql.*
+import perspective.*
 
 trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
@@ -33,7 +32,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     override def ast: SqlExpr.UnaryOperation = op
 
     override def tpe: Type[R] = this match
-      case Not => ansiTypes.boolean
+      case Not => AnsiTypes.boolean
   }
 
   extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R]
@@ -56,14 +55,14 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     override def ast: SqlExpr.BinaryOperation = op
 
     override def tpe: Type[R] = this match
-      case Eq()             => ansiTypes.boolean
-      case Neq()            => ansiTypes.boolean
-      case And              => ansiTypes.boolean
-      case Or               => ansiTypes.boolean
-      case LessThan()       => ansiTypes.boolean
-      case LessOrEqual()    => ansiTypes.boolean
-      case GreaterThan()    => ansiTypes.boolean
-      case GreaterOrEqual() => ansiTypes.boolean
+      case Eq()             => AnsiTypes.boolean
+      case Neq()            => AnsiTypes.boolean
+      case And              => AnsiTypes.boolean
+      case Or               => AnsiTypes.boolean
+      case LessThan()       => AnsiTypes.boolean
+      case LessOrEqual()    => AnsiTypes.boolean
+      case GreaterThan()    => AnsiTypes.boolean
+      case GreaterOrEqual() => AnsiTypes.boolean
 
       case Plus(numeric)     => numeric.tpe
       case Minus(numeric)    => numeric.tpe
@@ -85,9 +84,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       // TODO: Having these in here is quite broad. Might want to tighten this
       def avg: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Avg, Seq(lhs.asAnyDbVal), ansiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Avg, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
       def sum: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Sum, Seq(lhs.asAnyDbVal), ansiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Sum, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
 
   object SqlNumeric:
     def defaultInstance[A](tpe0: Type[A]): SqlNumeric[A] = new SqlNumeric[A]:
@@ -103,10 +102,10 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         override def /(rhs: DbValue[A]): DbValue[A] =
           SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Divide(this).liftSqlBinOp).lift
 
-  given SqlNumeric[Int]    = SqlNumeric.defaultInstance(ansiTypes.integer)
-  given SqlNumeric[Long]   = SqlNumeric.defaultInstance(ansiTypes.bigint)
-  given SqlNumeric[Float]  = SqlNumeric.defaultInstance(ansiTypes.real)
-  given SqlNumeric[Double] = SqlNumeric.defaultInstance(ansiTypes.doublePrecision)
+  given SqlNumeric[Int]    = SqlNumeric.defaultInstance(AnsiTypes.integer)
+  given SqlNumeric[Long]   = SqlNumeric.defaultInstance(AnsiTypes.bigint)
+  given SqlNumeric[Float]  = SqlNumeric.defaultInstance(AnsiTypes.real)
+  given SqlNumeric[Double] = SqlNumeric.defaultInstance(AnsiTypes.doublePrecision)
 
   trait SqlOrdered[A]:
     def tpe: Type[A]
@@ -119,9 +118,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       // TODO: Having these in here is quite broad. Might want to tighten this
       def min: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Min, Seq(lhs.asAnyDbVal), ansiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Min, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
       def max: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Max, Seq(lhs.asAnyDbVal), ansiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Max, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
 
   object SqlOrdered:
     def defaultInstance[A](tpe0: Type[A]): SqlOrdered[A] = new SqlOrdered[A]:
@@ -137,10 +136,10 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         def >(rhs: DbValue[A]): DbValue[Boolean] =
           SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift
 
-  given SqlOrdered[Int]    = SqlOrdered.defaultInstance(ansiTypes.integer)
-  given SqlOrdered[Long]   = SqlOrdered.defaultInstance(ansiTypes.bigint)
-  given SqlOrdered[Float]  = SqlOrdered.defaultInstance(ansiTypes.real)
-  given SqlOrdered[Double] = SqlOrdered.defaultInstance(ansiTypes.doublePrecision)
+  given SqlOrdered[Int]    = SqlOrdered.defaultInstance(AnsiTypes.integer)
+  given SqlOrdered[Long]   = SqlOrdered.defaultInstance(AnsiTypes.bigint)
+  given SqlOrdered[Float]  = SqlOrdered.defaultInstance(AnsiTypes.real)
+  given SqlOrdered[Double] = SqlOrdered.defaultInstance(AnsiTypes.doublePrecision)
 
   trait SqlDbValueBase[A] extends DbValueBase[A] {
 
@@ -170,6 +169,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case BinOp[B, C, R](lhs: DbValue[B], rhs: DbValue[C], op: platform.BinOp[B, C, R]) extends SqlDbValue[R]
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue], override val tpe: Type[A])
     case Placeholder(value: A, override val tpe: Type[A])
+    case CompilePlaceholder(identifier: Object, override val tpe: Type[A])
     case SubSelect(query: Query[[F[_]] =>> F[A]])
     case QueryCount extends SqlDbValue[Long]
 
@@ -184,6 +184,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         values.toList.traverse(_.ast).map(exprs => SqlExpr.FunctionCall(f, exprs))
       case SqlDbValue.Placeholder(value, tpe) =>
         State.pure(SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe)))
+      case SqlDbValue.CompilePlaceholder(identifier, tpe) =>
+        State.pure(SqlExpr.PreparedArgument(None, SqlArg.CompileArg(identifier, tpe)))
       case SqlDbValue.SubSelect(query) => query.selectAstAndValues.map(m => SqlExpr.SubSelect(m.ast))
       case SqlDbValue.QueryCount       => State.pure(SqlExpr.QueryCount())
     end ast
@@ -191,15 +193,16 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
 
     override def tpe: Type[A] = this match
-      case SqlDbValue.DbColumn(col)          => col.tpe
-      case SqlDbValue.QueryColumn(_, _, tpe) => tpe
-      case SqlDbValue.UnaryOp(_, op)         => op.tpe
-      case SqlDbValue.BinOp(_, _, op)        => op.tpe
-      case SqlDbValue.JoinNullable(value)    => ansiTypes.nullable(value.tpe).asInstanceOf[Type[A]]
-      case SqlDbValue.Function(_, _, tpe)    => tpe
-      case SqlDbValue.Placeholder(_, tpe)    => tpe
-      case SqlDbValue.SubSelect(query)       => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
-      case SqlDbValue.QueryCount             => ansiTypes.bigint
+      case SqlDbValue.DbColumn(col)              => col.tpe
+      case SqlDbValue.QueryColumn(_, _, tpe)     => tpe
+      case SqlDbValue.UnaryOp(_, op)             => op.tpe
+      case SqlDbValue.BinOp(_, _, op)            => op.tpe
+      case SqlDbValue.JoinNullable(value)        => AnsiTypes.nullable(value.tpe).asInstanceOf[Type[A]]
+      case SqlDbValue.Function(_, _, tpe)        => tpe
+      case SqlDbValue.Placeholder(_, tpe)        => tpe
+      case SqlDbValue.CompilePlaceholder(_, tpe) => tpe
+      case SqlDbValue.SubSelect(query)           => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
+      case SqlDbValue.QueryCount                 => AnsiTypes.bigint
     end tpe
 
     override protected[platform] def asAnyDbVal: AnyDbValue = this.lift.asAnyDbVal
@@ -235,12 +238,12 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   type OrdSeq <: SqlOrdSeqBase
 
-  opaque type Many[A] = DbValue[Any] //Scala compiler bug? Stack overflow
+  opaque type Many[A] = DbValue[Any] // Scala compiler bug? Stack overflow
   object Many {
     extension [A](many: Many[A])
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.asDbValue.asAnyDbVal), ansiTypes.bigint).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.asDbValue.asAnyDbVal), AnsiTypes.bigint).lift
 
       protected[platform] inline def asDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
   }

@@ -15,9 +15,9 @@ import perspective.*
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
 trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
-  val sqlRenderer: PostgresAstRenderer[Type] = new PostgresAstRenderer[Type](ansiTypes)
+  val sqlRenderer: PostgresAstRenderer[Type] = new PostgresAstRenderer[Type](AnsiTypes)
   type ArrayTypeArgs[A]
-  def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
+  protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
 
   override type UnaryOp[V, R] = SqlUnaryOp[V, R]
 
@@ -131,10 +131,25 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     type Types
     def sqlAndTypes: (SqlStr[Type], Types)
 
-    def run[F[_]](using db: Db[F, Type]): F[A]
+    def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Type], types: Types)(using db: Db[F, Type]): F[A]
+
+    def run[F[_]](using Db[F, Type]): F[A] =
+      val (sqlStr, types) = sqlAndTypes
+      runWithSqlAndTypes(sqlStr, types)
+
   object Operation:
-    case class Select[Res[_[_]]](query: Query[Res]) extends Operation[QueryResult[Res[Id]]]:
+    sealed trait IntOperation extends Operation[Int]:
+      type Types = Type[Int]
+      override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Type], types: Type[Int])(using db: Db[F, Type]): F[Int] =
+        db.run(sqlStr)
+
+    sealed abstract class ResultOperation[Res[_[_]]](using val resApplyK: ApplyKC[Res], val resTraverseK: TraverseKC[Res]) extends Operation[QueryResult[Res[Id]]]:
       type Types = Res[Type]
+
+      override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Type], types: Res[Type])(using db: Db[F, Type]): F[QueryResult[Res[Id]]] =
+        db.runIntoRes(sqlStr, types)
+
+    case class Select[Res[_[_]]](query: Query[Res]) extends ResultOperation[Res](using query.applyK, query.traverseK):
       override def sqlAndTypes: (SqlStr[Type], Res[Type]) =
         import query.given
 
@@ -145,23 +160,16 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           sqlRenderer.renderSelect(astMeta.ast),
           astMeta.values.mapK([Z] => (value: DbValue[Z]) => value.tpe)
         )
-
-      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[Res[Id]]] =
-        import query.given
-        val (sql, tpes) = sqlAndTypes
-        db.runIntoRes(sql, tpes)
     end Select
 
     case class Delete[A[_[_]], B[_[_]]](
         from: Table[A, Type],
         usingV: Option[Query[B]] = None,
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ) extends Operation[Int]:
+    ) extends IntOperation:
       given ApplyKC[B] = usingV.fold(from.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
 
       given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
-
-      type Types = Type[Int]
 
       override def sqlAndTypes: (SqlStr[Type], Type[Int]) =
         val q = usingV match
@@ -173,11 +181,8 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
             q.selectAstAndValues.runA(freshTaggedState).value.ast,
             returning = false
           ),
-          ansiTypes.integer
+          AnsiTypes.integer
         )
-
-      override def run[F[_]](using db: Db[F, Type]): F[Int] =
-        db.run(sqlAndTypes._1)
 
       def returningK[C[_[_]]: ApplyKC: TraverseKC](
           f: (A[DbValue], B[DbValue]) => C[DbValue]
@@ -205,12 +210,10 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         usingV: Option[Query[B]] = None,
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
         returning: (A[DbValue], B[DbValue]) => C[DbValue]
-    ) extends Operation[QueryResult[C[Id]]]:
+    ) extends ResultOperation[C]:
+
       given ApplyKC[B] = usingV.fold(from.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
-
       given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
-
-      type Types = C[Type]
 
       override def sqlAndTypes: (SqlStr[Type], C[Type]) =
         given FunctorKC[C] = summon[ApplyKC[C]]
@@ -232,10 +235,6 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           ),
           astMeta.values.mapK([Z] => (value: DbValue[Z]) => value.tpe)
         )
-
-      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[C[Id]]] =
-        val (sql, tpes) = sqlAndTypes
-        db.runIntoRes(sql, tpes)
     end DeleteReturning
 
     case class Insert[A[_[_]]](
@@ -243,10 +242,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         values: Query[Insert.Optional[A]],
         conflictOn: A[[Z] =>> Column[Z, Type]] => List[Column[_, Type]],
         onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]
-    ) extends Operation[Int]:
-
-      override type Types = Type[Int]
-
+    ) extends IntOperation:
       override def sqlAndTypes: (SqlStr[Type], Type[Int]) =
         import table.given
 
@@ -279,10 +275,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           Nil
         )
 
-        (ret.runA(freshTaggedState).value, ansiTypes.integer)
-
-      override def run[F[_]](using db: Db[F, Type]): F[Int] =
-        db.run(sqlAndTypes._1)
+        (ret.runA(freshTaggedState).value, AnsiTypes.integer)
 
       def onConflict(
           on: A[[Z] =>> Column[Z, Type]] => NonEmptyList[Column[_, Type]],
@@ -363,7 +356,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         conflictOn: A[[Z] =>> Column[Z, Type]] => List[Column[_, Type]],
         onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]],
         returning: A[DbValue] => C[DbValue]
-    ) extends Operation[QueryResult[C[Id]]]:
+    ) extends ResultOperation[C]:
 
       override type Types = C[Type]
 
@@ -412,10 +405,6 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         )
 
         ret.runA(freshTaggedState).value
-
-      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[C[Id]]] =
-        val (sql, tpes) = sqlAndTypes
-        db.runIntoRes(sql, tpes)
     end InsertReturning
 
     case class Update[A[_[_]], B[_[_]]](
@@ -423,14 +412,12 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         from: Option[Query[B]],
         setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ) extends Operation[Int]:
+    ) extends IntOperation:
 
       def returning[C[_[_]]: ApplyKC: TraverseKC](f: (A[DbValue], B[DbValue]) => C[DbValue]): UpdateReturning[A, B, C] =
         UpdateReturning(table, from, setValues, where, f)
 
-      override type Types = Type[Int]
-
-      override def sqlAndTypes: (SqlStr[Type], Type[Int]) = {
+      override def sqlAndTypes: (SqlStr[Type], Type[Int]) =
 
         import table.given
         given (ApplyKC[Insert.Optional[A]] & TraverseKC[Insert.Optional[A]]) =
@@ -458,11 +445,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
             Nil
           )
 
-        (ret.runA(freshTaggedState).value, ansiTypes.integer)
-      }
-
-      override def run[F[_]](using db: Db[F, Type]): F[Int] =
-        db.run(sqlAndTypes._1)
+        (ret.runA(freshTaggedState).value, AnsiTypes.integer)
 
     object Update:
       def table[A[_[_]]](table: Table[A, Type]): UpdateTable[A, A] = UpdateTable(table, None)
@@ -502,9 +485,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
         where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
         returning: (A[DbValue], B[DbValue]) => C[DbValue]
-    ) extends Operation[QueryResult[C[Id]]]:
-
-      override type Types = C[Type]
+    ) extends ResultOperation[C]:
 
       override def sqlAndTypes: (SqlStr[Type], C[Type]) = {
         import table.given
@@ -575,11 +556,24 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
         ret.runA(freshTaggedState).value
       }
-
-      override def run[F[_]](using db: Db[F, Type]): F[QueryResult[C[Id]]] =
-        val (sql, tpes) = sqlAndTypes
-        db.runIntoRes(sql, tpes)
   end Operation
+
+  type Compile <: PostgresCompile
+
+  trait PostgresCompile extends SqlCompile:
+    def operationK[A[_[_]]: ApplyKC: TraverseKC, B, F[_]](types: A[Type])(f: A[DbValue] => Operation[B])(
+        using db: Db[F, Type]
+    ): A[Id] => F[B] =
+      simple(types)(f.andThen(op => (op, op.sqlAndTypes))) { case ((op, (rawSqlStr, resultTypes)), replacements) =>
+        (op, (rawSqlStr.compileWithValues(replacements), resultTypes))
+      }.andThen { case (op, (sqlStr, resultTypes)) =>
+        op.runWithSqlAndTypes(sqlStr, resultTypes.asInstanceOf[op.Types])
+      }
+
+    inline def operation[A, B, F[_]](types: A)(using res: MapRes[Type, A])(f: res.K[DbValue] => Operation[B])(
+        using db: Db[F, Type]
+    ): res.K[Id] => F[B] =
+      operationK(res.toK(types))(f)(using res.applyKC, res.traverseKC, db)
 
   export Operation.*
 }

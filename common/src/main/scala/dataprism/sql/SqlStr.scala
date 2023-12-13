@@ -4,14 +4,17 @@ import cats.Monoid
 
 case class SqlStr[+Type[_]](str: String, args: Seq[SqlArg[Type]]):
 
-  def isEmpty: Boolean  = str.isEmpty
+  def isEmpty: Boolean = str.isEmpty
 
   def nonEmpty: Boolean = str.nonEmpty
 
   def stripMargin: SqlStr[Type] = copy(str = str.stripMargin)
 
+  protected[dataprism] def compileWithValues(replacements: Map[Object, Any]): SqlStr[Type] =
+    copy(args = args.map(_.compile(replacements)))
+
 object SqlStr:
-  given [Type[_]]: Monoid[SqlStr[Type]] with 
+  given [Type[_]]: Monoid[SqlStr[Type]] with
     override def empty: SqlStr[Type] = SqlStr("", Nil)
 
     override def combine(x: SqlStr[Type], y: SqlStr[Type]): SqlStr[Type] =

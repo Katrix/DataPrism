@@ -30,25 +30,25 @@ object MapRes {
       using ev: Tuple.IsMappedBy[F][T],
       size: ValueOf[Tuple.Size[T]]
   ): MapRes[F, T] with {
-    override type K[F0[_]] = ProductK[F0, Tuple.InverseMap[T, F]]
+    override type K[F0[_]] = Tuple.Map[Tuple.InverseMap[T, F], F0]
 
-    override inline def toK(r: T): ProductK[F, Tuple.InverseMap[T, F]]   = ProductK.ofScalaTuple(r)
-    override inline def fromK(k: ProductK[F, Tuple.InverseMap[T, F]]): T = k.tuple.asInstanceOf[T]
+    override inline def toK(r: T): Tuple.Map[Tuple.InverseMap[T, F], F]   = r
+    override inline def fromK(k: Tuple.Map[Tuple.InverseMap[T, F], F]): T = k.asInstanceOf[T]
 
     private val instance = {
       given TypeLength.Aux[Tuple.InverseMap[T, F], Tuple.Size[T]] = TypeLength.TypeLengthImpl(size.value)
       ProductK.productKInstance[Tuple.InverseMap[T, F]]
     }
 
-    override inline def applyKC: ApplyKC[K] = instance
+    override inline def applyKC: ApplyKC[K] = instance.asInstanceOf[ApplyKC[K]]
 
-    override inline def traverseKC: TraverseKC[K] = instance
+    override inline def traverseKC: TraverseKC[K] = instance.asInstanceOf[TraverseKC[K]]
   }
 
   given [F[_], A]: MapRes[F, F[A]] with {
     override type K[F0[_]] = F0[A]
 
-    override inline def toK(r: F[A]): K[F] = r
+    override inline def toK(r: F[A]): K[F]   = r
     override inline def fromK(k: K[F]): F[A] = k
 
     private val instance: ApplyKC[K] with TraverseKC[K] = new ApplyKC[K] with TraverseKC[K] {
