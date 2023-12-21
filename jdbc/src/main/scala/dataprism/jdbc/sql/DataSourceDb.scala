@@ -11,7 +11,7 @@ import javax.sql.DataSource
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Using
 
-class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends Db[Future, JdbcType] with Closeable:
+class DataSourceDb(ds: DataSource)(using ExecutionContext) extends Db[Future, JdbcType]:
 
   extension [A: Using.Releasable](a: A)
     def acquired(using man: Using.Manager): A =
@@ -69,5 +69,3 @@ class DataSourceDb(ds: DataSource & Closeable)(using ExecutionContext) extends D
 
       QueryResult(rows)
     }
-
-  def close(): Unit = ds.close()
