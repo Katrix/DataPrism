@@ -6,7 +6,8 @@ lazy val commonSettings = Seq(
     val nexus = "https://oss.sonatype.org/"
     if (isSnapshot.value) Some("snapshots".at(nexus + "content/repositories/snapshots"))
     else Some("releases".at(nexus + "service/local/staging/deploy/maven2"))
-  }
+  },
+  scalacOptions += "-explain"
 )
 
 lazy val publishSettings = Seq(

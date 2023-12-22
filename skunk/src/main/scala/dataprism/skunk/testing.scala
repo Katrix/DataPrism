@@ -80,7 +80,7 @@ object ResidentK {
       Column("created_at", timestamptz.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)))
     )
   )
-
+  
   given KMacros.RepresentableTraverseKC[ResidentK] = KMacros.deriveRepresentableTraverseKC[ResidentK]
 }
 

@@ -1,7 +1,6 @@
 package dataprism.sharedast
 
 import cats.syntax.all.*
-
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection,SqlDialectInspection
@@ -70,12 +69,13 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
       case SqlExpr.FunctionName.Sin   => normal("sin")
       case SqlExpr.FunctionName.Tan   => normal("tan")
 
-      case SqlExpr.FunctionName.Abs   => normal("abs")
-      case SqlExpr.FunctionName.Avg   => normal("avg")
-      case SqlExpr.FunctionName.Max   => normal("max")
-      case SqlExpr.FunctionName.Min   => normal("min")
-      case SqlExpr.FunctionName.Count => normal("count")
-      case SqlExpr.FunctionName.Sum   => normal("sum")
+      case SqlExpr.FunctionName.Abs      => normal("abs")
+      case SqlExpr.FunctionName.Avg      => normal("avg")
+      case SqlExpr.FunctionName.Count    => normal("count")
+      case SqlExpr.FunctionName.Sum      => normal("sum")
+
+      case SqlExpr.FunctionName.Greatest => normal("greatest")
+      case SqlExpr.FunctionName.Least    => normal("least")
 
       case SqlExpr.FunctionName.Ln      => normal("ln")
       case SqlExpr.FunctionName.Log     => normal("log")

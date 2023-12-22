@@ -52,7 +52,7 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcType]:
   trait ArrayMapping[A]:
     def makeArrayType(inner: JdbcType[A]): JdbcType[Seq[A]]
 
-  val ArrayMapping: ArrayMappingCompanion
+  def ArrayMapping: ArrayMappingCompanion
   trait ArrayMappingCompanion:
     given ArrayMapping[Byte] with
       override def makeArrayType(inner: JdbcType[Byte]): JdbcType[Seq[Byte]] =
@@ -78,4 +78,4 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcType]:
         .asInstanceOf[JdbcType[Nullable[A]]]
 
 object JdbcAnsiTypes extends JdbcAnsiTypes:
-  override val ArrayMapping: ArrayMappingCompanion = new ArrayMappingCompanion {}
+  override def ArrayMapping: ArrayMappingCompanion = new ArrayMappingCompanion {}

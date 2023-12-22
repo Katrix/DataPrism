@@ -24,6 +24,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     def tpe: Type[R]
   }
 
+  extension [A](tpe: Type[A]) @targetName("typeName") def name: String
+
   type BinOp[LHS, RHS, R] <: SqlBinOpBase[R]
 
   enum SqlUnaryOp[V, R](op: SqlExpr.UnaryOperation) extends SqlUnaryOpBase[R] {
@@ -84,9 +86,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       // TODO: Having these in here is quite broad. Might want to tighten this
       def avg: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Avg, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Avg, Seq(lhs.unsafeAsAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
       def sum: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Sum, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Sum, Seq(lhs.unsafeAsAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
 
   object SqlNumeric:
     def defaultInstance[A](tpe0: Type[A]): SqlNumeric[A] = new SqlNumeric[A]:
@@ -118,9 +120,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       // TODO: Having these in here is quite broad. Might want to tighten this
       def min: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Min, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Least, Seq(lhs.unsafeAsAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
       def max: DbValue[Nullable[A]] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Max, Seq(lhs.asAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Greatest, Seq(lhs.unsafeAsAnyDbVal), AnsiTypes.nullable(lhs.tpe)).lift
 
   object SqlOrdered:
     def defaultInstance[A](tpe0: Type[A]): SqlOrdered[A] = new SqlOrdered[A]:
@@ -149,13 +151,15 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     @targetName("dbNotEquals") override def !==(that: DbValue[A]): DbValue[Boolean] =
       SqlDbValue.BinOp(this.liftDbValue, that, SqlBinOp.Neq().liftSqlBinOp).lift
 
+    def cast[B](tpe: Type[B]): DbValue[B] = SqlDbValue.Cast(this.unsafeAsAnyDbVal, tpe).lift
+
     def ast: TagState[SqlExpr[Type]]
 
     def asSqlDbVal: Option[SqlDbValue[A]]
 
     def tpe: Type[A]
 
-    protected[platform] def asAnyDbVal: AnyDbValue
+    def unsafeAsAnyDbVal: AnyDbValue
   }
 
   override type DbValue[A] <: SqlDbValueBase[A]
@@ -168,6 +172,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case UnaryOp[B, R](value: DbValue[B], op: platform.UnaryOp[B, R])                  extends SqlDbValue[R]
     case BinOp[B, C, R](lhs: DbValue[B], rhs: DbValue[C], op: platform.BinOp[B, C, R]) extends SqlDbValue[R]
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue], override val tpe: Type[A])
+    case Cast(value: AnyDbValue, override val tpe: Type[A])
     case Placeholder(value: A, override val tpe: Type[A])
     case CompilePlaceholder(identifier: Object, override val tpe: Type[A])
     case SubSelect(query: Query[[F[_]] =>> F[A]])
@@ -182,6 +187,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.JoinNullable(value) => value.ast
       case SqlDbValue.Function(f, values, _) =>
         values.toList.traverse(_.ast).map(exprs => SqlExpr.FunctionCall(f, exprs))
+      case SqlDbValue.Cast(value, tpe) => value.ast.map(v => SqlExpr.Cast(v, tpe.name))
       case SqlDbValue.Placeholder(value, tpe) =>
         State.pure(SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe)))
       case SqlDbValue.CompilePlaceholder(identifier, tpe) =>
@@ -199,13 +205,14 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.BinOp(_, _, op)            => op.tpe
       case SqlDbValue.JoinNullable(value)        => AnsiTypes.nullable(value.tpe).asInstanceOf[Type[A]]
       case SqlDbValue.Function(_, _, tpe)        => tpe
+      case SqlDbValue.Cast(_, tpe)               => tpe
       case SqlDbValue.Placeholder(_, tpe)        => tpe
       case SqlDbValue.CompilePlaceholder(_, tpe) => tpe
       case SqlDbValue.SubSelect(query)           => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
       case SqlDbValue.QueryCount                 => AnsiTypes.bigint
     end tpe
 
-    override protected[platform] def asAnyDbVal: AnyDbValue = this.lift.asAnyDbVal
+    override def unsafeAsAnyDbVal: AnyDbValue = this.lift.unsafeAsAnyDbVal
 
     override def liftDbValue: DbValue[A] = this.lift
 
@@ -215,10 +222,10 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   }
   given [A]: Lift[SqlDbValue[A], DbValue[A]] = sqlDbValueLift[A]
 
-  protected[platform] def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]]
+  protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]]
 
   extension [A](dbValue: DbValue[A])
-    @targetName("dbValueAsMany") protected[platform] inline def dbValAsMany: Many[A] = dbValue.asInstanceOf[Many[A]]
+    @targetName("dbValueAsMany") protected inline def unsafeDbValAsMany: Many[A] = dbValue.asInstanceOf[Many[A]]
 
   extension [A](v: A) def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).lift
 
@@ -243,8 +250,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     extension [A](many: Many[A])
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.asDbValue.asAnyDbVal), AnsiTypes.bigint).lift
+        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.unsafeAsAnyDbVal), AnsiTypes.bigint).lift
 
-      protected[platform] inline def asDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
+      inline def unsafeAsDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
   }
 }

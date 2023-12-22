@@ -10,10 +10,15 @@ import skunk.{Codec, Decoder, data}
 import skunk.data.Arr
 import skunk.util.Origin
 
+import scala.annotation.targetName
+
 trait PostgresSkunkPlatform extends PostgresQueryPlatform {
 
   override type ArrayTypeArgs[_] = DummyImplicit
   override type Type[A]          = Codec[A]
+  extension [A](tpe: Codec[A])
+    @targetName("typeName")
+    override def name: String = tpe.types.head.name
 
   override protected def arrayType[A](elemType: Codec[A])(using extraArrayTypeArgs: DummyImplicit): Codec[Seq[A]] =
     Codec
@@ -29,8 +34,8 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
   type Compile = SkunkCompile
   object Compile extends SkunkCompile
 
-  trait SkunkCompile extends PostgresCompile:
-    def queryK[A[_[_]]: ApplyKC: TraverseKC, Res[_[_]]](types: A[Codec])(f: A[DbValue] => Operation.ResultOperation[Res])(using origin: Origin): skunk.Query[A[Id], Res[Id]] =
+  trait SkunkCompile extends SqlCompile:
+    def queryK[A[_[_]]: ApplyKC: TraverseKC, Res[_[_]]](types: A[Codec])(f: A[DbValue] => ResultOperation[Res])(using origin: Origin): skunk.Query[A[Id], Res[Id]] =
       given FunctorKC[A] = summon[ApplyKC[A]]
 
       val tpesWithIdentifiers: A[Tuple2K[Const[Object], Type]] = types.mapK([Z] => (tpe: Type[Z]) => (new Object, tpe))
@@ -63,10 +68,10 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
         }
       )
 
-    inline def query[A, Res[_[_]]](types: A)(using res: MapRes[Codec, A])(f: res.K[DbValue] => Operation.ResultOperation[Res])(using origin: Origin): skunk.Query[res.K[Id], Res[Id]] =
+    inline def query[A, Res[_[_]]](types: A)(using res: MapRes[Codec, A])(f: res.K[DbValue] => ResultOperation[Res])(using origin: Origin): skunk.Query[res.K[Id], Res[Id]] =
       queryK(res.toK(types))(f)(using res.applyKC, res.traverseKC, origin)
 
-    def commandK[A[_[_]] : ApplyKC : TraverseKC](types: A[Codec])(f: A[DbValue] => Operation.IntOperation)(using origin: Origin): skunk.Command[A[Id]] =
+    def commandK[A[_[_]] : ApplyKC : TraverseKC](types: A[Codec])(f: A[DbValue] => IntOperation)(using origin: Origin): skunk.Command[A[Id]] =
       given FunctorKC[A] = summon[ApplyKC[A]]
 
       val tpesWithIdentifiers: A[Tuple2K[Const[Object], Type]] = types.mapK([Z] => (tpe: Type[Z]) => (new Object, tpe))
@@ -88,7 +93,7 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
         }
       )
 
-    inline def command[A](types: A)(using res: MapRes[Codec, A])(f: res.K[DbValue] => Operation.IntOperation)(using origin: Origin): skunk.Command[res.K[Id]] =
+    inline def command[A](types: A)(using res: MapRes[Codec, A])(f: res.K[DbValue] => IntOperation)(using origin: Origin): skunk.Command[res.K[Id]] =
       commandK(res.toK(types))(f)(using res.applyKC, res.traverseKC, origin)
 }
 object PostgresSkunkPlatform extends PostgresSkunkPlatform

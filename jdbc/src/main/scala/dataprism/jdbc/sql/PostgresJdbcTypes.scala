@@ -13,7 +13,7 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
 
   val uuid: JdbcType[UUID] = JdbcType.simple("UUID", _.getObject(_, classOf[UUID]), _.setObject(_, _))
 
-  val ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings
+  def ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings
 
   trait LowPriorityArrayMappings:
     given [A](using @unused ev: NotGiven[A <:< Seq[_]]): ArrayMapping[A] with
@@ -27,5 +27,5 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
       )
 
 object PostgresJdbcTypes extends PostgresJdbcTypes:
-  override val ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings =
+  override def ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings =
     new ArrayMappingCompanion with LowPriorityArrayMappings {}

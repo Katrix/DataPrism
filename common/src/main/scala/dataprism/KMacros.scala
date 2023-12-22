@@ -1,13 +1,13 @@
 package dataprism
 
-import scala.compiletime.constValue
+import scala.annotation.unused
+import scala.compiletime.{constValue, erasedValue, summonInline}
 import scala.deriving.Mirror
+
 import cats.Applicative
 import cats.syntax.all.*
 import perspective.*
 import perspective.Finite.NotZero
-
-import scala.annotation.unused
 
 //noinspection DuplicatedCode
 object KMacros {
@@ -18,6 +18,64 @@ object KMacros {
     type MirroredElemTypes[A[_]] <: Tuple
     type MirroredElemLabels <: Tuple
   }
+
+  private inline def getInstancesForFields[Labels <: Tuple, F[_[_]], Instance[_[_[_]]]] = ${
+    getInstancesForFieldsImpl[Labels, F, Instance]
+  }
+
+  case class Foo[F[_]](
+      v: F[Int]
+  )
+
+  summon[ApplyKC[[F[_]] =>> F[Int]]](using perspective.idInstanceC)
+
+  private def getInstancesForFieldsImpl[Labels <: Tuple: scala.quoted.Type, F[_[_]]: scala.quoted.Type, Instance[_[_[
+      _
+  ]]]: scala.quoted.Type](
+      using q: scala.quoted.Quotes
+  ): scala.quoted.Expr[Seq[Any]] =
+    import scala.quoted.*
+    import q.reflect.*
+    val labels: Labels = Type.valueOfTuple[Labels].get
+    if !labels.productIterator.forall(_.isInstanceOf[String]) then report.error("Labels are not all strings")
+
+    val fType: TypeRepr = TypeRepr.of[F]
+    val fTypeLambda     = fType.asInstanceOf[TypeLambda] // TODO: Check or error
+
+    val instanceType: TypeRepr = TypeRepr.of[Instance]
+    val fSym                   = fType.typeSymbol
+    val fParams                = fSym.paramSymss
+
+    val (errors, values) = labels.productIterator.map(_.asInstanceOf[String]).toSeq.partitionMap { label =>
+      val fieldSym = fType.typeSymbol.declaredField(label)
+      val TypeLambda(fTypeLambdaNames, fTypeLambdaBounds, _) = fTypeLambda
+      val fieldTpe2 = TypeLambda(
+        fTypeLambdaNames.map(_ + "Upd"),
+        _ => fTypeLambdaBounds,
+        l =>
+          fType
+            .memberType(fieldSym)
+            .substituteTypes(
+              fTypeLambdaNames.indices.toList.map(idx => fTypeLambda.param(idx).typeSymbol),
+              fTypeLambdaNames.indices.toList.map(idx => l.param(idx))
+            )
+      )
+
+      println(fieldTpe2.show)
+      println(fTypeLambda.paramTypes.toList)
+      println(AppliedType(instanceType, List(fieldTpe2)).show)
+
+      Implicits.search(AppliedType(instanceType, List(fieldTpe2))) match
+        case iss: ImplicitSearchSuccess => Right(iss.tree.asExpr)
+        case isf: ImplicitSearchFailure => Left(isf.explanation)
+    }
+
+    if errors.nonEmpty then
+      errors.init.foreach(report.error)
+      report.errorAndAbort(errors.last)
+    else
+      println(values)
+      Expr.ofSeq(values)
 
   private inline def mapKImpl[F[_[_]] <: Product, A[_], B[_]](fa: F[A], f: A :~>: B)(using m: MirrorProductK[F]): F[B] =
     m.fromProduct(Tuple.fromArray(fa.productIterator.map(a => f(a.asInstanceOf[A[Any]])).toArray))
@@ -139,6 +197,7 @@ object KMacros {
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
   ): RepresentableKC.Aux[F, [A] =>> Finite[Tuple.Size[m.MirroredElemLabels]]] with TraverseKC[F] =
+    getInstancesForFields[m.MirroredElemLabels, F, RepresentableKC]
     new RepresentableKC[F] with TraverseKC[F] {
       type RepresentationK[_] = Finite[Tuple.Size[m.MirroredElemLabels]]
 
@@ -157,7 +216,7 @@ object KMacros {
           pureKImpl(a)
 
       extension [A[_], C](fa: F[A])
-        def foldLeftK[B](b: B)(f: B => A :~>#: B): B = foldLeftKImpl(fa, b, f)
+        def foldLeftK[B](b: B)(f: B => A :~>#: B): B    = foldLeftKImpl(fa, b, f)
         def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = foldRightKImpl(fa, b, f)
 
       extension [A[_], C](fa: F[A])

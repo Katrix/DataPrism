@@ -794,7 +794,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       valueOpt(table.columns.mapK([Z] => (col: Column[Z, Type]) => col.tpe), value)
 
   extension [A](query: Query[[F[_]] =>> F[A]])
-    @targetName("queryAsMany") def asMany: Many[A] = query.asDbValue.dbValAsMany
+    @targetName("queryAsMany") def asMany: Many[A] = query.asDbValue.unsafeDbValAsMany
 
     @targetName("queryAsDbValue") def asDbValue: DbValue[A] = SqlDbValue.SubSelect(query).lift
 }

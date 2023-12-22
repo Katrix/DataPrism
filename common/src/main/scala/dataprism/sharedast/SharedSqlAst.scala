@@ -59,10 +59,11 @@ object SqlExpr {
     case Sin
     case Tan
 
+    case Greatest
+    case Least
+
     case Abs
     case Avg
-    case Max
-    case Min
     case Count
     case Sum
 
