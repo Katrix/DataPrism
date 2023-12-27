@@ -107,6 +107,17 @@ object TaskK {
     Table("tasks", TaskK(Column("emp", PostgresJdbcTypes.text), Column("tsk", PostgresJdbcTypes.text)))
 }
 
+case class FooK[F[_]](a: F[Int], b: F[Int], c: FooK.CK[F])
+object FooK {
+  given KMacros.RepresentableTraverseKC[FooK] = KMacros.deriveRepresentableTraverseKC[FooK]
+
+  case class CK[F[_]](d: F[Double], e: F[Double])
+  object CK {
+    given KMacros.RepresentableTraverseKC[CK] = KMacros.deriveRepresentableTraverseKC[CK]
+  }
+
+}
+
 object Testing {
 
   import PostgresJdbcPlatform.*
