@@ -1,6 +1,7 @@
 package dataprism.jdbc.sql
 
 import java.sql.{Connection, PreparedStatement, ResultSet}
+import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
 import scala.annotation.unused
 import scala.util.NotGiven
@@ -24,6 +25,38 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
           val arr = con.createArrayOf(inner.name, obj.map(_.asInstanceOf[AnyRef]).toArray)
           ps.setArray(i, arr)
         }
+      )
+      
+  object javaTime:
+    val date: JdbcType[LocalDate] = JdbcType.simple(
+      "DATE",
+      _.getObject(_, classOf[LocalDate]),
+      (a, b, c) => a.setObject(b, c)
+    )
+
+    val time: JdbcType[LocalTime] = JdbcType.simple(
+      "TIME",
+      _.getObject(_, classOf[LocalTime]),
+      (a, b, c) => a.setObject(b, c)
+    )
+
+    val timeWithTimezone: JdbcType[OffsetTime] = JdbcType.simple(
+      "TIME WITH TIMEZONE",
+      _.getObject(_, classOf[OffsetTime]),
+      (a, b, c) => a.setObject(b, c)
+    )
+
+    val timestamp: JdbcType[LocalDateTime] = JdbcType.simple(
+      "TIMESTAMP",
+      _.getObject(_, classOf[LocalDateTime]),
+      (a, b, c) => a.setObject(b, c)
+    )
+
+    val timestampWithTimezone: JdbcType[OffsetDateTime] =
+      JdbcType.simple(
+        "TIMESTAMP WITH TIMEZONE",
+        _.getObject(_, classOf[OffsetDateTime]),
+        (a, b, c) => a.setObject(b, c)
       )
 
 object PostgresJdbcTypes extends PostgresJdbcTypes:

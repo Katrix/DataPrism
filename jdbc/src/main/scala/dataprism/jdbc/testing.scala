@@ -1,16 +1,17 @@
 package dataprism.jdbc
 
+import java.time.{Instant, ZoneOffset}
+import java.util.UUID
+
+import scala.concurrent.Future
+
 import dataprism.KMacros
 import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform
 import dataprism.jdbc.sql.{JdbcType, PostgresJdbcTypes}
-
-import java.time.{Instant, ZoneOffset}
-import java.util.UUID
-import scala.concurrent.Future
 import dataprism.platform.base.MapRes
+import dataprism.sql.*
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
-import dataprism.sql.*
 
 case class HomeK[F[_]](
     owner: F[UUID],
@@ -40,10 +41,14 @@ object HomeK {
     HomeK(
       owner = Column("owner", PostgresJdbcTypes.uuid),
       name = Column("name", PostgresJdbcTypes.text),
-      createdAt =
-        Column("created_at", PostgresJdbcTypes.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))),
-      updatedAt =
-        Column("updated_at", PostgresJdbcTypes.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))),
+      createdAt = Column(
+        "created_at",
+        PostgresJdbcTypes.javaTime.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))
+      ),
+      updatedAt = Column(
+        "updated_at",
+        PostgresJdbcTypes.javaTime.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))
+      ),
       x = Column("x", PostgresJdbcTypes.doublePrecision),
       y = Column("y", PostgresJdbcTypes.doublePrecision),
       z = Column("z", PostgresJdbcTypes.doublePrecision),
@@ -77,7 +82,7 @@ object ResidentK {
       Column("home_owner", PostgresJdbcTypes.uuid),
       Column("home_name", PostgresJdbcTypes.text),
       Column("resident", PostgresJdbcTypes.uuid),
-      Column("created_at", PostgresJdbcTypes.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)))
+      Column("created_at", PostgresJdbcTypes.javaTime.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)))
     )
   )
 
@@ -304,7 +309,7 @@ object Testing {
         .from(ResidentK.table)
         .filter(resident => resident.owner === homeOwner.as(PostgresJdbcTypes.uuid))
         .map(r => (r.homeName, r.resident))
-      // .groupMap(_.homeName)((name, r) => (name, r.resident.arrayAgg))
+        // .groupMap(_.homeName)((name, r) => (name, r.resident.arrayAgg))
     )
 
     ()

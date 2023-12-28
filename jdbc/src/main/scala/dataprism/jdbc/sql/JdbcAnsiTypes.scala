@@ -2,7 +2,7 @@ package dataprism.jdbc.sql
 
 import dataprism.sql.AnsiTypes
 
-import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
+import java.sql.{Date, Time, Timestamp}
 import scala.annotation.unused
 import scala.util.NotGiven
 
@@ -18,35 +18,35 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcType]:
 
   override def defaultStringType: JdbcType[String] = varchar(254)
 
-  val date: JdbcType[LocalDate] = JdbcType.simple(
+  val date: JdbcType[Date] = JdbcType.simple(
     "DATE",
-    _.getObject(_, classOf[LocalDate]),
-    (a, b, c) => a.setObject(b, c)
+    _.getDate(_),
+    (a, b, c) => a.setDate(b, c)
   )
 
-  val time: JdbcType[LocalTime] = JdbcType.simple(
+  val time: JdbcType[Time] = JdbcType.simple(
     "TIME",
-    _.getObject(_, classOf[LocalTime]),
-    (a, b, c) => a.setObject(b, c)
+    _.getTime(_),
+    (a, b, c) => a.setTime(b, c)
   )
 
-  val timeWithTimezone: JdbcType[OffsetTime] = JdbcType.simple(
+  val timeWithTimezone: JdbcType[Time] = JdbcType.simple(
     "TIME WITH TIMEZONE",
-    _.getObject(_, classOf[OffsetTime]),
-    (a, b, c) => a.setObject(b, c)
+    _.getTime(_),
+    (a, b, c) => a.setTime(b, c)
   )
 
-  val timestamp: JdbcType[LocalDateTime] = JdbcType.simple(
+  val timestamp: JdbcType[Timestamp] = JdbcType.simple(
     "TIMESTAMP",
-    _.getObject(_, classOf[LocalDateTime]),
-    (a, b, c) => a.setObject(b, c)
+    _.getTimestamp(_),
+    (a, b, c) => a.setTimestamp(b, c)
   )
 
-  val timestampWithTimezone: JdbcType[OffsetDateTime] =
+  val timestampWithTimezone: JdbcType[Timestamp] =
     JdbcType.simple(
       "TIMESTAMP WITH TIMEZONE",
-      _.getObject(_, classOf[OffsetDateTime]),
-      (a, b, c) => a.setObject(b, c)
+      _.getTimestamp(_),
+      (a, b, c) => a.setTimestamp(b, c)
     )
 
   trait ArrayMapping[A]:

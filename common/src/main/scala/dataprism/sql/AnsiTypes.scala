@@ -1,6 +1,6 @@
 package dataprism.sql
 
-import java.time.*
+import java.sql.{Date, Time, Timestamp}
 import scala.annotation.unused
 import scala.util.NotGiven
 
@@ -15,11 +15,11 @@ trait AnsiTypes[Type[_]] {
   
   def defaultStringType: Type[String]
   
-  def date: Type[LocalDate]
-  def time: Type[LocalTime]
-  def timeWithTimezone: Type[OffsetTime]
-  def timestamp: Type[LocalDateTime]
-  def timestampWithTimezone: Type[OffsetDateTime]
+  def date: Type[Date]
+  def time: Type[Time]
+  def timeWithTimezone: Type[Time]
+  def timestamp: Type[Timestamp]
+  def timestampWithTimezone: Type[Timestamp]
   
   def boolean: Type[Boolean]
   

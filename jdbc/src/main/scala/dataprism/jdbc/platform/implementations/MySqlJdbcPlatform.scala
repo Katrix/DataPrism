@@ -1,13 +1,19 @@
 package dataprism.jdbc.platform.implementations
 
-import dataprism.jdbc.sql.{JdbcType, MySqlJdbcTypes, PostgresJdbcTypes}
+import scala.annotation.targetName
+
+import dataprism.jdbc.sql.{JdbcType, MySqlJdbcTypeCastable, MySqlJdbcTypes}
 import dataprism.platform.implementations.MySqlQueryPlatform
 import dataprism.sql.AnsiTypes
 
-import scala.annotation.targetName
-
 trait MySqlJdbcPlatform extends MySqlQueryPlatform {
-  override type Type[A] = JdbcType[A]
+  override type Type[A]     = JdbcType[A]
+  override type CastType[A] = MySqlJdbcTypeCastable[A]
+
+  extension [A](t: CastType[A])
+    @targetName("castTypeName") override def castTypeName: String = t.name
+    @targetName("castTypeType") override def castTypeType: Type[A] = t.tpe
+
   extension [A](tpe: JdbcType[A])
     @targetName("typeName")
     override def name: String = tpe.name

@@ -16,7 +16,7 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
 
   override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
   extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
-
+  
   enum DbValue[A] extends SqlDbValueBase[A]:
     case SqlDbValue(value: platform.SqlDbValue[A])
 

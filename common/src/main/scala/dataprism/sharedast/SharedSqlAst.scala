@@ -78,6 +78,8 @@ object SqlExpr {
     case Floor
 
     case Concat
+    
+    case Coalesce
 
     case Custom(f: String)
 }

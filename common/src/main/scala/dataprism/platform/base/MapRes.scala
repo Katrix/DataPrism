@@ -8,11 +8,15 @@ import perspective.derivation.{ProductK, ProductKPar, TypeLength}
 trait MapRes[F[_], R] {
   type K[_[_]]
 
-  /*/*inline*/*/ def toK(r: R): K[F]
-  /*/*inline*/*/ def fromK(k: K[F]): R
+  /*/*inline*/*/
+  def toK(r: R): K[F]
+  /*/*inline*/*/
+  def fromK(k: K[F]): R
 
-  /*/*inline*/*/ def applyKC: ApplyKC[K]
-  /*/*inline*/*/ def traverseKC: TraverseKC[K]
+  /*/*inline*/*/
+  def applyKC: ApplyKC[K]
+  /*/*inline*/*/
+  def traverseKC: TraverseKC[K]
 }
 object MapRes extends LowPriorityMapRes {
   type Aux[F[_], R, K0[_[_]]] = MapRes[F, R] { type K[G[_]] = K0[G] }
@@ -89,7 +93,9 @@ object MapRes extends LowPriorityMapRes {
     override /*inline*/ def traverseKC: TraverseKC[K] = instance
   }
 
-  given recurTuple1[F[_], V, MRK[_[_]]](using mr: MapRes.Aux[F, V, MRK]): MapRes.Aux[F, Tuple1[V], [F0[_]] =>> Tuple1[MRK[F0]]] = new MapRes[F, Tuple1[V]]:
+  given recurTuple1[F[_], V, MRK[_[_]]](
+      using mr: MapRes.Aux[F, V, MRK]
+  ): MapRes.Aux[F, Tuple1[V], [F0[_]] =>> Tuple1[MRK[F0]]] = new MapRes[F, Tuple1[V]]:
     override type K[F0[_]] = Tuple1[MRK[F0]]
 
     override /*inline*/ def toK(r: Tuple1[V]): K[F] = Tuple1(mr.toK(r._1))
@@ -98,18 +104,21 @@ object MapRes extends LowPriorityMapRes {
 
     override /*inline*/ def applyKC: ApplyKC[K] = new ApplyKC[K]:
       given applyInstance: ApplyKC[MRK] = mr.applyKC
-      
+
       extension [A[_], C](fa: Tuple1[MRK[A]])
-        override def map2K[B[_], Z[_]](fb: Tuple1[MRK[B]])(f: [X] => (A[X], B[X]) => Z[X]): Tuple1[MRK[Z]] = Tuple1(fa._1.map2K(fb._1)(f))
+        override def map2K[B[_], Z[_]](fb: Tuple1[MRK[B]])(f: [X] => (A[X], B[X]) => Z[X]): Tuple1[MRK[Z]] = Tuple1(
+          fa._1.map2K(fb._1)(f)
+        )
         override def mapK[B[_]](f: A :~>: B): Tuple1[MRK[B]] = Tuple1(fa._1.mapK(f))
     end applyKC
 
     override /*inline*/ def traverseKC: TraverseKC[K] = new TraverseKC[K]:
       given traverseInstance: TraverseKC[MRK] = mr.traverseKC
-      
+
       extension [A[_], C](fa: Tuple1[MRK[A]])
-        override def traverseK[G[_] : Applicative, B[_]](f: A :~>: Compose2[G, B]): G[Tuple1[MRK[B]]] = fa._1.traverseK(f).map(v => Tuple1(v))
-        override def foldLeftK[B](b: B)(f: B => A :~>#: B): B = fa._1.foldLeftK(b)(f)
+        override def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[Tuple1[MRK[B]]] =
+          fa._1.traverseK(f).map(v => Tuple1(v))
+        override def foldLeftK[B](b: B)(f: B => A :~>#: B): B    = fa._1.foldLeftK(b)(f)
         override def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = fa._1.foldRightK(b)(f)
   end recurTuple1
 }
@@ -157,4 +166,40 @@ trait LowPriorityMapRes {
           val r2 = fa.tail.foldRightK(r1)(f)
           r2
   end recurTuple
+
+  given applyTraversable[F[_], G[_]: cats.Apply: cats.Traverse, V, MRK[_[_]]](
+      using mr: MapRes.Aux[F, V, MRK]
+  ): MapRes.Aux[F, G[V], [F0[_]] =>> G[MRK[F0]]] = new MapRes[F, G[V]] {
+    import cats.*
+    override type K[F0[_]] = G[MRK[F0]]
+    given Functor[G] = summon[Apply[G]]
+
+    override def toK(r: G[V]): G[MRK[F]] = r.map(v => mr.toK(v))
+
+    override def fromK(k: G[MRK[F]]): G[V] = k.map(v => mr.fromK(v))
+
+    override val applyKC: ApplyKC[K] = new ApplyKC[K] {
+      given applyInstance: ApplyKC[MRK] = mr.applyKC
+
+      extension [A[_], C](fa: K[A])
+        override def map2K[B[_], Z[_]](fb: K[B])(f: [X] => (A[X], B[X]) => Z[X]): K[Z] =
+          fa.map2(fb)((a, b) => a.map2K(b)(f))
+
+        override def mapK[B[_]](f: A :~>: B): K[B] = fa.map(_.mapK(f))
+    }
+
+    override val traverseKC: TraverseKC[K] = new TraverseKC[K] {
+      given traverseInstance: TraverseKC[MRK] = mr.traverseKC
+
+      extension [A[_], C](fa: K[A])
+        override def traverseK[I[_]: Applicative, B[_]](f: A :~>: Compose2[I, B]): I[K[B]] =
+          fa.traverse(a => a.traverseK[I, B](f))
+
+        override def foldLeftK[B](b: B)(f: B => A :~>#: B): B =
+          fa.foldLeft(b)((bacc, mrka) => mrka.foldLeftK(bacc)(f))
+
+        override def foldRightK[B](b: B)(f: A :~>#: (B => B)): B =
+          fa.foldRight(Eval.now(b))((mrka, bacce) => bacce.map(bacc => mrka.foldRightK(bacc)(f))).value
+    }
+  }
 }

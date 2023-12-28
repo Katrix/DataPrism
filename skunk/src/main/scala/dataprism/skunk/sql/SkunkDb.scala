@@ -1,21 +1,15 @@
 package dataprism.skunk.sql
 
-import java.io.Closeable
-import java.sql.{Connection, PreparedStatement}
-import javax.sql.DataSource
-
-import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Using
-
 import cats.Functor
 import cats.data.State
+import cats.effect.MonadCancelThrow
 import cats.syntax.all.*
-import dataprism.sql.{Db, QueryResult, SqlArg, SqlStr}
+import dataprism.sql.{Db, QueryResult, SqlStr}
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 import skunk.data.{Completion, Type}
 import skunk.util.Origin
-import skunk.{Codec, Command, Decoder, Encoder, Query, Session}
+import skunk.*
 
 class SkunkDb[F[_]: Functor](s: Session[F]) extends Db[F, Codec]:
 
@@ -146,3 +140,8 @@ class SkunkDb[F[_]: Functor](s: Session[F]) extends Db[F, Codec]:
     val (query, args) = makeQuery(sql, dbTypes)
     s.execute(query)(args).map(xs => QueryResult(xs))
   }
+
+  def skunkMapK[G[_]: MonadCancelThrow](f: F :~>: G)(using MonadCancelThrow[F]): SkunkDb[G] =
+    SkunkDb[G](s.mapK(new cats.arrow.FunctionK[F, G] {
+      override def apply[A](fa: F[A]): G[A] = f(fa)
+    }))

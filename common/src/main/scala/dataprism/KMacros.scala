@@ -244,7 +244,7 @@ object KMacros {
         traverseKImpl(fa, f)
   }
 
-  //TODO: Improve representation type
+  // TODO: Improve representation type
   inline def deriveRepresentableKC[F[_[_]] <: Product](
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
@@ -267,14 +267,13 @@ object KMacros {
           pureKImpl(a)
     }
 
-  type RepresentableTraverseKC[F[_[_]]] = RepresentableKC[F] with TraverseKC[F]
+  type RepresentableTraverseKC[F[_[_]]] = RepresentableKC[F] & TraverseKC[F]
 
-  //TODO: Improve representation type
+  // TODO: Improve representation type
   inline def deriveRepresentableTraverseKC[F[_[_]] <: Product](
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
   ): RepresentableKC.Aux[F, [A] =>> (Finite[Tuple.Size[m.MirroredElemLabels]], Any)] with TraverseKC[F] =
-    getInstancesForFields[m.MirroredElemLabels, F, RepresentableKC]
     new RepresentableKC[F] with TraverseKC[F] {
       type RepresentationK[_] = (Finite[Tuple.Size[m.MirroredElemLabels]], Any)
 
@@ -291,6 +290,27 @@ object KMacros {
       extension [A[_]](a: ValueK[A])
         override def pure[C]: F[A] =
           pureKImpl(a)
+
+      extension [A[_], C](fa: F[A])
+        def foldLeftK[B](b: B)(f: B => A :~>#: B): B    = foldLeftKImpl(fa, b, f)
+        def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = foldRightKImpl(fa, b, f)
+
+      extension [A[_], C](fa: F[A])
+        def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[F[B]] =
+          traverseKImpl(fa, f)
+    }
+    
+  type ApplyTraverseKC[F[_[_]]] = ApplyKC[F] & TraverseKC[F]
+
+  inline def deriveApplyTraverseKC[F[_[_]] <: Product](
+      using m: MirrorProductK[F],
+      @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
+  ): ApplyKC[F] with TraverseKC[F] =
+    new ApplyKC[F] with TraverseKC[F] {
+      extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
+
+      extension [A[_], C](fa: F[A])
+        override def map2K[B[_], Z[_]](fb: F[B])(f: [X] => (A[X], B[X]) => Z[X]): F[Z] = map2KImpl(fa, fb, f)
 
       extension [A[_], C](fa: F[A])
         def foldLeftK[B](b: B)(f: B => A :~>#: B): B    = foldLeftKImpl(fa, b, f)

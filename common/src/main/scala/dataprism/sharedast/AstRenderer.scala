@@ -87,6 +87,8 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
       case SqlExpr.FunctionName.Floor   => normal("floor")
       case SqlExpr.FunctionName.Concat  => normal("concat")
 
+      case SqlExpr.FunctionName.Coalesce => normal("COALESCE")
+
       case SqlExpr.FunctionName.Custom(f) => normal(f)
 
   protected def renderExpr(expr: SqlExpr[Type]): SqlStr[Type] = expr match
@@ -96,7 +98,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SqlExpr.FunctionCall(functionCall, args) => renderFunctionCall(functionCall, args)
     case SqlExpr.PreparedArgument(_, arg)         => SqlStr("?", Seq(arg))
     case SqlExpr.IsNull(expr)                     => sql"${renderExpr(expr)} IS NULL"
-    case SqlExpr.Cast(expr, asType)               => sql"(CAST (${renderExpr(expr)} AS ${SqlStr.const(asType)}))"
+    case SqlExpr.Cast(expr, asType)               => sql"(CAST(${renderExpr(expr)} AS ${SqlStr.const(asType)}))"
     case SqlExpr.SubSelect(selectAst)             => sql"(${renderSelect(selectAst)})"
     case SqlExpr.QueryCount()                     => sql"COUNT(*)"
     case SqlExpr.Custom(args, render)             => render(args.map(renderExpr))

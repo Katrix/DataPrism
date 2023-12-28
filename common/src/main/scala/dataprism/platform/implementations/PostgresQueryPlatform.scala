@@ -25,6 +25,12 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
   extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
 
+  override type CastType[A] = Type[A]
+
+  extension [A](t: CastType[A])
+    override def castTypeName: String  = t.name
+    override def castTypeType: Type[A] = t
+
   enum DbValue[A] extends SqlDbValueBase[A]:
     case SqlDbValue(value: platform.SqlDbValue[A])
     case ArrayOf(values: Seq[DbValue[A]], elemType: Type[A], extraArrayTypeArgs: ArrayTypeArgs[A])
@@ -59,7 +65,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     override def unsafeAsAnyDbVal: AnyDbValue = this.asInstanceOf[AnyDbValue]
   end DbValue
 
-  override protected  def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
+  override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
     new Lift[SqlDbValue[A], DbValue[A]]:
       extension (a: SqlDbValue[A]) def lift: DbValue[A] = DbValue.SqlDbValue(a)
 

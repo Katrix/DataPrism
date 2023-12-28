@@ -1,9 +1,11 @@
 package dataprism.skunk.sql
 
-import dataprism.sql.AnsiTypes
+import java.sql.{Date, Time, Timestamp}
+import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZoneOffset}
 
-import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import scala.util.NotGiven
+
+import dataprism.sql.AnsiTypes
 import skunk.Codec
 import skunk.codec.all
 
@@ -23,15 +25,20 @@ object SkunkAnsiTypes extends AnsiTypes[Codec] {
 
   override def defaultStringType: Codec[String] = all.text
 
-  override def date: Codec[LocalDate] = all.date
+  override def date: Codec[Date] = all.date.imap(d => java.sql.Date.valueOf(d))(d => d.toLocalDate)
 
-  override def time: Codec[LocalTime] = all.time
+  override def time: Codec[Time] = all.time.imap(d => java.sql.Time.valueOf(d))(d => d.toLocalTime)
 
-  override def timeWithTimezone: Codec[OffsetTime] = all.timetz
+  override def timeWithTimezone: Codec[Time] =
+    all.timetz.imap(d => java.sql.Time.valueOf(d.toLocalTime))(d => d.toLocalTime.atOffset(ZoneOffset.UTC))
 
-  override def timestamp: Codec[LocalDateTime] = all.timestamp
+  override def timestamp: Codec[Timestamp] =
+    all.timestamp.imap(t => java.sql.Timestamp.valueOf(t))(t => t.toLocalDateTime)
 
-  override def timestampWithTimezone: Codec[OffsetDateTime] = all.timestamptz
+  override def timestampWithTimezone: Codec[Timestamp] =
+    all.timestamptz.imap(t => java.sql.Timestamp.valueOf(t.toLocalDateTime))(t =>
+      t.toLocalDateTime.atOffset(ZoneOffset.UTC)
+    )
 
   override def boolean: Codec[Boolean] = all.bool
 

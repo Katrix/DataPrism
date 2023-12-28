@@ -1,17 +1,9 @@
 package dataprism.sql
 
-import cats.data.State
 import perspective.*
-import perspective.derivation.{ProductK, ProductKPar}
-
-import java.io.Closeable
-import java.sql.{PreparedStatement, ResultSet}
-import javax.sql.DataSource
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
-import scala.util.Using
 
 trait Db[F[_], Type[_]]:
+  self =>
 
   def run(sql: SqlStr[Type]): F[Int]
 
@@ -24,3 +16,15 @@ trait Db[F[_], Type[_]]:
       sql: SqlStr[Type],
       dbTypes: Res[Type]
   )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): F[QueryResult[Res[Id]]]
+
+  def mapK[G[_]](f: F :~>: G): Db[G, Type] = new Db[G, Type]:
+    override def run(sql: SqlStr[Type]): G[Int] = f(self.run(sql))
+
+    override def runIntoSimple[Res](sql: SqlStr[Type], dbTypes: Type[Res]): G[QueryResult[Res]] = f(
+      self.runIntoSimple(sql, dbTypes)
+    )
+
+    override def runIntoRes[Res[_[_]]](sql: SqlStr[Type], dbTypes: Res[Type])(
+        using FA: ApplyKC[Res],
+        FT: TraverseKC[Res]
+    ): G[QueryResult[Res[Id]]] = f(self.runIntoRes(sql, dbTypes))

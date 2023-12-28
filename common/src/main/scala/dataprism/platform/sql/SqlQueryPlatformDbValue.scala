@@ -143,6 +143,11 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   given SqlOrdered[Float]  = SqlOrdered.defaultInstance(AnsiTypes.real)
   given SqlOrdered[Double] = SqlOrdered.defaultInstance(AnsiTypes.doublePrecision)
 
+  type CastType[A]
+  extension [A](t: CastType[A])
+    def castTypeName: String
+    def castTypeType: Type[A]
+
   trait SqlDbValueBase[A] extends DbValueBase[A] {
 
     @targetName("dbEquals") override def ===(that: DbValue[A]): DbValue[Boolean] =
@@ -151,7 +156,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     @targetName("dbNotEquals") override def !==(that: DbValue[A]): DbValue[Boolean] =
       SqlDbValue.BinOp(this.liftDbValue, that, SqlBinOp.Neq().liftSqlBinOp).lift
 
-    def cast[B](tpe: Type[B]): DbValue[B] = SqlDbValue.Cast(this.unsafeAsAnyDbVal, tpe).lift
+    def cast[B](tpe: CastType[B]): DbValue[B] = SqlDbValue.Cast(this.unsafeAsAnyDbVal, tpe.castTypeName, tpe.castTypeType).lift
 
     def ast: TagState[SqlExpr[Type]]
 
@@ -172,7 +177,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case UnaryOp[B, R](value: DbValue[B], op: platform.UnaryOp[B, R])                  extends SqlDbValue[R]
     case BinOp[B, C, R](lhs: DbValue[B], rhs: DbValue[C], op: platform.BinOp[B, C, R]) extends SqlDbValue[R]
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue], override val tpe: Type[A])
-    case Cast(value: AnyDbValue, override val tpe: Type[A])
+    case Cast(value: AnyDbValue, typeName: String, override val tpe: Type[A])
     case Placeholder(value: A, override val tpe: Type[A])
     case CompilePlaceholder(identifier: Object, override val tpe: Type[A])
     case SubSelect(query: Query[[F[_]] =>> F[A]])
@@ -187,7 +192,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.JoinNullable(value) => value.ast
       case SqlDbValue.Function(f, values, _) =>
         values.toList.traverse(_.ast).map(exprs => SqlExpr.FunctionCall(f, exprs))
-      case SqlDbValue.Cast(value, tpe) => value.ast.map(v => SqlExpr.Cast(v, tpe.name))
+      case SqlDbValue.Cast(value, typeName, _) => value.ast.map(v => SqlExpr.Cast(v, typeName))
       case SqlDbValue.Placeholder(value, tpe) =>
         State.pure(SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe)))
       case SqlDbValue.CompilePlaceholder(identifier, tpe) =>
@@ -205,7 +210,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.BinOp(_, _, op)            => op.tpe
       case SqlDbValue.JoinNullable(value)        => AnsiTypes.nullable(value.tpe).asInstanceOf[Type[A]]
       case SqlDbValue.Function(_, _, tpe)        => tpe
-      case SqlDbValue.Cast(_, tpe)               => tpe
+      case SqlDbValue.Cast(_, _, tpe)            => tpe
       case SqlDbValue.Placeholder(_, tpe)        => tpe
       case SqlDbValue.CompilePlaceholder(_, tpe) => tpe
       case SqlDbValue.SubSelect(query)           => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
@@ -250,8 +255,28 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     extension [A](many: Many[A])
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long] =
-        SqlDbValue.Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.unsafeAsAnyDbVal), AnsiTypes.bigint).lift
+        SqlDbValue
+          .Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.unsafeAsAnyDbVal), AnsiTypes.bigint)
+          .lift
 
       inline def unsafeAsDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
   }
+
+  extension [A](optVal: DbValue[Option[A]])
+    //@targetName("dbValOptIsEmpty") def isEmpty: DbValue[Boolean]     = ???
+    //@targetName("dbValOptIsDefined") def isDefined: DbValue[Boolean] = ???
+
+    @targetName("dbValOptOrElse") def orElse(other: DbValue[Option[A]]): DbValue[Option[A]] =
+      SqlDbValue.Function(
+        SqlExpr.FunctionName.Coalesce,
+        Seq(optVal.unsafeAsAnyDbVal, other.unsafeAsAnyDbVal),
+        other.tpe
+      ).lift
+      
+    @targetName("dbValOptGetOrElse") def getOrElse(other: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(
+        SqlExpr.FunctionName.Coalesce,
+        Seq(optVal.unsafeAsAnyDbVal, other.unsafeAsAnyDbVal),
+        other.tpe
+      ).lift
 }
