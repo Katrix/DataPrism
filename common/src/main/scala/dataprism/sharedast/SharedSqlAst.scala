@@ -13,6 +13,14 @@ object SqlExpr {
   case class IsNull[Type[_]](expr: SqlExpr[Type])                                        extends SqlExpr[Type]
   case class Cast[Type[_]](expr: SqlExpr[Type], asType: String)                          extends SqlExpr[Type]
 
+  case class ValueCase[Type[_]](
+      matchOn: SqlExpr[Type],
+      cases: IndexedSeq[(SqlExpr[Type], SqlExpr[Type])],
+      orElse: SqlExpr[Type]
+  ) extends SqlExpr[Type]
+  case class ConditionCase[Type[_]](cases: IndexedSeq[(SqlExpr[Type], SqlExpr[Type])], orElse: SqlExpr[Type])
+      extends SqlExpr[Type]
+
   case class SubSelect[Type[_]](selectAst: SelectAst[Type]) extends SqlExpr[Type]
   case class QueryCount[Type[_]]()                          extends SqlExpr[Type]
 
@@ -66,6 +74,8 @@ object SqlExpr {
     case Avg
     case Count
     case Sum
+    case Min
+    case Max
 
     case Ln
     case Log
@@ -78,7 +88,7 @@ object SqlExpr {
     case Floor
 
     case Concat
-    
+
     case Coalesce
 
     case Custom(f: String)

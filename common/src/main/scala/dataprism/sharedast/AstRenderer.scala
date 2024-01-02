@@ -69,10 +69,12 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
       case SqlExpr.FunctionName.Sin   => normal("sin")
       case SqlExpr.FunctionName.Tan   => normal("tan")
 
-      case SqlExpr.FunctionName.Abs      => normal("abs")
-      case SqlExpr.FunctionName.Avg      => normal("avg")
-      case SqlExpr.FunctionName.Count    => normal("count")
-      case SqlExpr.FunctionName.Sum      => normal("sum")
+      case SqlExpr.FunctionName.Abs   => normal("abs")
+      case SqlExpr.FunctionName.Avg   => normal("avg")
+      case SqlExpr.FunctionName.Count => normal("count")
+      case SqlExpr.FunctionName.Sum   => normal("sum")
+      case SqlExpr.FunctionName.Min   => normal("min")
+      case SqlExpr.FunctionName.Max   => normal("max")
 
       case SqlExpr.FunctionName.Greatest => normal("greatest")
       case SqlExpr.FunctionName.Least    => normal("least")
@@ -99,9 +101,17 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SqlExpr.PreparedArgument(_, arg)         => SqlStr("?", Seq(arg))
     case SqlExpr.IsNull(expr)                     => sql"${renderExpr(expr)} IS NULL"
     case SqlExpr.Cast(expr, asType)               => sql"(CAST(${renderExpr(expr)} AS ${SqlStr.const(asType)}))"
-    case SqlExpr.SubSelect(selectAst)             => sql"(${renderSelect(selectAst)})"
-    case SqlExpr.QueryCount()                     => sql"COUNT(*)"
-    case SqlExpr.Custom(args, render)             => render(args.map(renderExpr))
+    case SqlExpr.ValueCase(matchOn, cases, orElse) =>
+      sql"CASE ${renderExpr(matchOn)} ${cases.toVector
+          .map(t => sql"WHEN ${renderExpr(t._1)} THEN ${renderExpr(t._2)}")
+          .intercalate(sql" ")} ELSE ${renderExpr(orElse)} END"
+    case SqlExpr.ConditionCase(cases, orElse) =>
+      sql"CASE ${cases.toVector
+          .map(t => sql"WHEN ${renderExpr(t._1)} THEN ${renderExpr(t._2)}")
+          .intercalate(sql" ")} ELSE ${renderExpr(orElse)} END"
+    case SqlExpr.SubSelect(selectAst) => sql"(${renderSelect(selectAst)})"
+    case SqlExpr.QueryCount()         => sql"COUNT(*)"
+    case SqlExpr.Custom(args, render) => render(args.map(renderExpr))
 
   protected def spaceConcat(args: SqlStr[Type]*): SqlStr[Type] =
     args.filter(_.nonEmpty).intercalate(sql" ")

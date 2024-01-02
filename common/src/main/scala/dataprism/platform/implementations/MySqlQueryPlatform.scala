@@ -82,6 +82,9 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
 
   extension [A[_[_]]](sqlQueryGrouped: SqlQueryGrouped[A]) def liftSqlQueryGrouped: QueryGrouped[A] = sqlQueryGrouped
 
+  override type CaseCompanion = DefaultSqlCaseCompanion
+  override val Case: DefaultSqlCaseCompanion = new DefaultSqlCaseCompanion {}
+
   case class TaggedState(queryNum: Int, columnNum: Int) extends SqlTaggedState:
     override def withNewQueryNum(newQueryNum: Int): TaggedState = copy(queryNum = newQueryNum)
 

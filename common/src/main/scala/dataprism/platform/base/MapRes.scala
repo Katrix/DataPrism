@@ -5,6 +5,9 @@ import cats.syntax.all.*
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar, TypeLength}
 
+import scala.annotation.implicitNotFound
+
+@implicitNotFound("Do not know how ${R} incorporates the type ${F}")
 trait MapRes[F[_], R] {
   type K[_[_]]
 
