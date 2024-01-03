@@ -1,5 +1,5 @@
 lazy val commonSettings = Seq(
-  scalaVersion := "3.3.1",
+  scalaVersion := "3.3.1"
 )
 
 inThisBuild(
@@ -21,7 +21,7 @@ lazy val publishSettings = Seq(
       Some("scm:git:github.com/Katrix/DataPrism")
     )
   ),
-  autoAPIMappings      := true
+  autoAPIMappings := true
 )
 
 lazy val noPublishSettings = Seq(publish := {}, publishLocal := {}, publishArtifact := false, publish / skip := true)
@@ -30,22 +30,26 @@ lazy val common = project.settings(
   commonSettings,
   publishSettings,
   name                                   := "dataprism-common",
-  libraryDependencies += "net.katsstuff" %% "perspective"            % "0.2.0-SNAPSHOT",
-  libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.2.0-SNAPSHOT"
+  libraryDependencies += "net.katsstuff" %% "perspective"            % "0.2.0",
+  libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.2.0"
 )
 
-lazy val jdbc = project.settings(
-  commonSettings,
-  publishSettings,
-  name := "dataprism-jdbc"
-).dependsOn(common)
+lazy val jdbc = project
+  .settings(
+    commonSettings,
+    publishSettings,
+    name := "dataprism-jdbc"
+  )
+  .dependsOn(common)
 
-lazy val skunk = project.settings(
-  commonSettings,
-  publishSettings,
-  name := "dataprism-skunk",
-  libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2"
-).dependsOn(common)
+lazy val skunk = project
+  .settings(
+    commonSettings,
+    publishSettings,
+    name                                  := "dataprism-skunk",
+    libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2"
+  )
+  .dependsOn(common)
 
 lazy val docsMappingsAPIDir = settingKey[String]("Name of subdirectory in site target directory for api docs")
 
@@ -67,17 +71,17 @@ lazy val docs = project
     ghpagesCleanSite / excludeFilter       := "CNAME",
     micrositePushSiteWith                  := GitHub4s,
     micrositeGithubToken                   := sys.env.get("GITHUB_TOKEN"),
-    autoAPIMappings := true,
+    autoAPIMappings                        := true,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
       common,
       jdbc,
-      skunk,
+      skunk
     ),
     docsMappingsAPIDir := "api",
     addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, docsMappingsAPIDir),
-    //mdoc / fork := true,
+    // mdoc / fork := true,
     mdocIn := sourceDirectory.value / "main" / "mdoc",
-    //ScalaUnidoc / unidoc / fork := true,
+    // ScalaUnidoc / unidoc / fork := true,
     ScalaUnidoc / unidoc / scalacOptions ++= Seq(
       "-doc-source-url",
       "https://github.com/Katrix/DataPrism/tree/master€{FILE_PATH}.scala",
@@ -86,4 +90,4 @@ lazy val docs = project
     )
   )
 
-lazy val root = project.in(file(".")).aggregate(common, jdbc, skunk).settings(noPublishSettings)
+lazy val dataprismRoot = project.in(file(".")).aggregate(common, jdbc, skunk).settings(noPublishSettings)

@@ -19,11 +19,10 @@ sure thing.
 
 DataPrism also works with both Java's JDBC and skunk.
 
-Add DataPrism to your project by adding these statements to your `build.sbt` file.
-
 DataPrism is currently early in development, but feel free to try it out and 
 report bugs and errors.
 
+Add DataPrism to your project by adding these statements to your `build.sbt` file.
 ```scala
 // For JDBC
 libraryDependencies += "net.katsstuff" %% "dataprism-jdbc" % "{{versions.dataprism}}"
@@ -34,4 +33,4 @@ libraryDependencies += "net.katsstuff" %% "dataprism-skunk" % "{{versions.datapr
 
 # More information
 
-For more information, either see the the examples or the ScalaDoc.
+For more information, either see the examples or the ScalaDoc.
