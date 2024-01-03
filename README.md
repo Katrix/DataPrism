@@ -1,11 +1,34 @@
 # DataPrism
 
-DataPrism as an early in dev FRM (Functional Relational Mapper).
+*A new FRM with focus on Higher Kinded Data*
 
-DataPrism focuses on doing its job by using HKD(Higher Kinded Data).
+DataPrism is an SQL query construction library built to take full advantage of
+the power of higher kinded data. DataPrism builds on `perspective` and the
+tools it provides.
+
+DataPrism is more flexible than other SQL libraries made for Scala. Want to
+sometimes leave out a column? You can do that. Want to return a List from a query,
+sure thing.
+
+DataPrism also works with both Java's JDBC and skunk.
+
+Add DataPrism to your project by adding these statements to your `build.sbt` file.
+
+DataPrism is currently early in development, but feel free to try it out and
+report bugs and errors.
+
+```scala
+// For JDBC
+libraryDependencies += "net.katsstuff" %% "dataprism-jdbc" % "{{versions.dataprism}}"
+
+// For Skunk
+libraryDependencies += "net.katsstuff" %% "dataprism-skunk" % "{{versions.dataprism}}"
+```
 
 Simple showcase of code
 ```scala
+
+
 case class HomeK[F[_]](
   owner: F[UUID],
   name: F[String],
@@ -20,39 +43,39 @@ case class HomeK[F[_]](
 )
 
 object HomeK {
-  val table: Table[HomeK] = Table(
+  import dataprism.jdbc.sql.JdbcType
+  import dataprism.jdbc.sql.PostgresJdbcTypes.*
+  val table: Table[HomeK, JdbcType] = Table(
     "homes",
     HomeK(
-      owner = Column("owner", DbType.uuid),
-      name = Column("name", DbType.text),
-      createdAt = Column("created_at", DbType.timestamptz),
-      updatedAt = Column("updated_at", DbType.timestamptz),
-      x = Column("x", DbType.double),
-      y = Column("y", DbType.double),
-      z = Column("z", DbType.double),
-      yaw = Column("yaw", DbType.float),
-      pitch = Column("pitch", DbType.float),
-      worldUuid = Column("world_uuid", DbType.uuid)
+      owner = Column("owner", uuid),
+      name = Column("name", text),
+      createdAt = Column("created_at", javaTime.timestamptz),
+      updatedAt = Column("updated_at", javaTime.timestamptz),
+      x = Column("x", doublePrecision),
+      y = Column("y", doublePrecision),
+      z = Column("z", doublePrecision),
+      yaw = Column("yaw", real),
+      pitch = Column("pitch", real),
+      worldUuid = Column("world_uuid", uuid)
     )
   )
 
-  given HomeK[DbType] = Table.tableDbTypes(table)
-
-  given typeclass: KMacros.RepresentableTraverseKC[HomeK] = KMacros.deriveRepresentableTraverseKC[HomeK]
+  given KMacros.ApplyTraverseKC[HomeK] = KMacros.deriveApplyTraverseKC[HomeK]
 }
 
 
-Query.from(HomeK.table).mapT(homes => (homes.owner, homes.name))
+Query.from(HomeK.table).map(homes => (homes.owner, homes.name))
 
 Query
   .from(HomeK.table)
-  .groupByT(homes =>
+  .groupBy(homes => (homes.owner, homes.name))((grouped, homes) =>
     (
-      homes.owner.groupedBy,
-      homes.name.groupedBy,
-      homes.x.asMany.arrayAgg,
-      homes.y.asMany.arrayAgg,
-      homes.z.asMany.arrayAgg
+      grouped._1,
+      grouped._2,
+      homes.x.arrayAgg,
+      homes.y.arrayAgg,
+      homes.z.arrayAgg
     )
   )
 ```

@@ -1,18 +1,19 @@
 lazy val commonSettings = Seq(
   scalaVersion := "3.3.1",
-  version      := "0.0.1-SNAPSHOT",
-  organization := "net.katsstuff",
-  publishTo := {
-    val nexus = "https://oss.sonatype.org/"
-    if (isSnapshot.value) Some("snapshots".at(nexus + "content/repositories/snapshots"))
-    else Some("releases".at(nexus + "service/local/staging/deploy/maven2"))
-  },
+)
+
+inThisBuild(
+  Seq(
+    homepage      := Some(url("https://github.com/Katrix/DataPrism")),
+    organization  := "net.katsstuff",
+    licenses      := Seq("MIT" -> url("http://opensource.org/licenses/MIT")),
+    developers    := List(Developer("Katrix", "Kathryn Frid", "katrix97@hotmail.com", url("http://katsstuff.net/"))),
+    versionScheme := Some("early-semver")
+  )
 )
 
 lazy val publishSettings = Seq(
-  publishMavenStyle      := true,
   Test / publishArtifact := false,
-  licenses               := Seq("MIT" -> url("http://opensource.org/licenses/MIT")),
   scmInfo := Some(
     ScmInfo(
       url("https://github.com/Katrix/DataPrism"),
@@ -20,13 +21,10 @@ lazy val publishSettings = Seq(
       Some("scm:git:github.com/Katrix/DataPrism")
     )
   ),
-  homepage             := Some(url("https://github.com/Katrix/DataPrism")),
-  developers           := List(Developer("Katrix", "Kathryn", "katrix97@hotmail.com", url("http://katsstuff.net/"))),
-  pomIncludeRepository := (_ => false),
   autoAPIMappings      := true
 )
 
-lazy val noPublishSettings = Seq(publish := {}, publishLocal := {}, publishArtifact := false)
+lazy val noPublishSettings = Seq(publish := {}, publishLocal := {}, publishArtifact := false, publish / skip := true)
 
 lazy val common = project.settings(
   commonSettings,
@@ -48,5 +46,44 @@ lazy val skunk = project.settings(
   name := "dataprism-skunk",
   libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2"
 ).dependsOn(common)
+
+lazy val docsMappingsAPIDir = settingKey[String]("Name of subdirectory in site target directory for api docs")
+
+lazy val docs = project
+  .enablePlugins(MicrositesPlugin, ScalaUnidocPlugin, GhpagesPlugin)
+  .settings(
+    commonSettings,
+    micrositeName                          := "DataPrism",
+    micrositeAuthor                        := "Katrix",
+    micrositeDescription                   := "A new FRM with focus on Higher Kinded Data",
+    micrositeDocumentationUrl              := "/api/dataprism",
+    micrositeDocumentationLabelDescription := "ScalaDoc",
+    micrositeHomepage                      := "https://dataprism.katsstuff.net",
+    micrositeGithubOwner                   := "Katrix",
+    micrositeGithubRepo                    := "DataPrism",
+    micrositeGitterChannel                 := false,
+    micrositeShareOnSocial                 := false,
+    micrositeTheme                         := "pattern",
+    ghpagesCleanSite / excludeFilter       := "CNAME",
+    micrositePushSiteWith                  := GitHub4s,
+    micrositeGithubToken                   := sys.env.get("GITHUB_TOKEN"),
+    autoAPIMappings := true,
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
+      common,
+      jdbc,
+      skunk,
+    ),
+    docsMappingsAPIDir := "api",
+    addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, docsMappingsAPIDir),
+    //mdoc / fork := true,
+    mdocIn := sourceDirectory.value / "main" / "mdoc",
+    //ScalaUnidoc / unidoc / fork := true,
+    ScalaUnidoc / unidoc / scalacOptions ++= Seq(
+      "-doc-source-url",
+      "https://github.com/Katrix/DataPrism/tree/master€{FILE_PATH}.scala",
+      "-sourcepath",
+      (LocalRootProject / baseDirectory).value.getAbsolutePath
+    )
+  )
 
 lazy val root = project.in(file(".")).aggregate(common, jdbc, skunk).settings(noPublishSettings)

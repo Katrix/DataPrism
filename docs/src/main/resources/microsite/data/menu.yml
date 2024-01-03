@@ -1,0 +1,18 @@
+options:
+  - title: Table definitions
+    url: docs/table_definitions.html
+
+  - title: Queries
+    url: docs/queries.html
+
+  - title: Operations
+    url: docs/operations.html
+
+  - title: Compiled queries and commands
+    url: docs/compiled_queries_commands.html
+
+  - title: Usage with Skunk
+    url: docs/skunk.html
+
+  - title: Exotic data and return types
+    url: docs/exotic_data_return_types.md
