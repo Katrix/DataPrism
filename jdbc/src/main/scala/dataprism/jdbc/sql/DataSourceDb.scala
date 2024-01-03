@@ -47,20 +47,20 @@ class DataSourceDb(ds: DataSource)(using ExecutionContext) extends Db[Future, Jd
   override def runIntoRes[Res[_[_]]](
       sql: SqlStr[JdbcType],
       dbTypes: Res[JdbcType]
-  )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
+  )(using FT: TraverseKC[Res]): Future[QueryResult[Res[Id]]] =
     makePrepared(sql) { (ps: PreparedStatement, con: Connection) =>
       val rs = ps.executeQuery().acquired
 
-      val indicesState: State[Int, Res[Const[Int]]] =
-        dbTypes.traverseK([A] => (_: JdbcType[A]) => State((acc: Int) => (acc + 1, acc)))
+      val indicesState: State[Int, Res[Tuple2K[JdbcType, Const[Int]]]] =
+        dbTypes.traverseK([A] => (tpe: JdbcType[A]) => State((acc: Int) => (acc + 1, (tpe, acc))))
 
-      val indices: Res[Const[Int]] = indicesState.runA(1).value
+      val indices: Res[Tuple2K[JdbcType, Const[Int]]] = indicesState.runA(1).value
 
       val rows = Seq.unfold(rs.next())(cond =>
         Option.when(cond)(
           (
-            dbTypes.map2K[Const[Int], Id](indices)(
-              [A] => (dbType: JdbcType[A], idx: Int) => dbType.get(rs, idx, con)
+            indices.mapK[Id](
+              [A] => (t: (JdbcType[A], Int)) => t._1.get(rs, t._2, con)
             ),
             rs.next()
           )

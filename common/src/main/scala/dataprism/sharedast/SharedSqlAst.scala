@@ -11,6 +11,7 @@ object SqlExpr {
   case class FunctionCall[Type[_]](functionCall: FunctionName, args: Seq[SqlExpr[Type]]) extends SqlExpr[Type]
   case class PreparedArgument[Type[_]](name: Option[String], arg: SqlArg[Type])          extends SqlExpr[Type]
   case class IsNull[Type[_]](expr: SqlExpr[Type])                                        extends SqlExpr[Type]
+  case class IsNotNull[Type[_]](expr: SqlExpr[Type])                                     extends SqlExpr[Type]
   case class Cast[Type[_]](expr: SqlExpr[Type], asType: String)                          extends SqlExpr[Type]
 
   case class ValueCase[Type[_]](
@@ -28,6 +29,7 @@ object SqlExpr {
 
   enum UnaryOperation:
     case Not
+    case Negation
     case BitwiseNot
 
   enum BinaryOperation:

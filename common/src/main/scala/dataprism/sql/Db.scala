@@ -15,7 +15,7 @@ trait Db[F[_], Type[_]]:
   def runIntoRes[Res[_[_]]](
       sql: SqlStr[Type],
       dbTypes: Res[Type]
-  )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): F[QueryResult[Res[Id]]]
+  )(using FT: TraverseKC[Res]): F[QueryResult[Res[Id]]]
 
   def mapK[G[_]](f: F :~>: G): Db[G, Type] = new Db[G, Type]:
     override def run(sql: SqlStr[Type]): G[Int] = f(self.run(sql))
@@ -25,6 +25,5 @@ trait Db[F[_], Type[_]]:
     )
 
     override def runIntoRes[Res[_[_]]](sql: SqlStr[Type], dbTypes: Res[Type])(
-        using FA: ApplyKC[Res],
-        FT: TraverseKC[Res]
+        using FT: TraverseKC[Res]
     ): G[QueryResult[Res[Id]]] = f(self.runIntoRes(sql, dbTypes))

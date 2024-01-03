@@ -8,10 +8,9 @@ import cats.syntax.all.*
 import dataprism.platform.base.MapRes
 import dataprism.sharedast.SelectAst.Data
 import dataprism.sharedast.{SelectAst, SqlExpr}
+import dataprism.sql.*
 import perspective.*
 import perspective.derivation.ProductKPar
-
-import dataprism.sql.*
 
 //noinspection ScalaUnusedSymbol
 trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
@@ -249,7 +248,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def mapK[B[_[_]]](
           f: A[DbValue] => B[DbValue]
       )(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
-        SqlQueryMapWhereStage(valueSource).mapK(f) //TODO: Maybe send this to the value source instead?
+        SqlQueryMapWhereStage(valueSource).mapK(f) // TODO: Maybe send this to the value source instead?
 
       override def join[B[_[_]]](that: Query[B])(
           on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -499,7 +498,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                 aliases,
                 groupedValues
               )
-            case _ => ???
+            case _ => throw new Exception("Found non SelectFrom data in groupByHaving stage. Not allowed")
     }
 
     case class SqlQueryDistinctStage[A[_[_]]](
@@ -726,7 +725,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                       )
                     )
 
-                  case _ => ???
+                  case _ => throw new Exception("Encountered flatmap on non SelectFrom data. Not possible")
               )
 
               QueryAstMetadata(newSelectAstB, aliasesB, valuesB)
@@ -770,13 +769,18 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       given FunctorKC[A] = table.FA
       Query.values(table.columns.mapK([Z] => (col: Column[Z, Type]) => col.tpe), value, values)
 
-    def valueOpt[A[_[_]]](types: A[Type], value: A[Option])(using FA: ApplyKC[A], FT: TraverseKC[A]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
-      given optValuesInstance: ApplyKC[[F[_]] =>> A[Compose2[Option, F]]] with TraverseKC[[F[_]] =>> A[Compose2[Option, F]]] with {
-        extension[B[_], D] (fa: A[Compose2[Option, B]])
+    def valueOpt[A[_[_]]](types: A[Type], value: A[Option])(
+        using FA: ApplyKC[A],
+        FT: TraverseKC[A]
+    ): Query[[F[_]] =>> A[Compose2[Option, F]]] =
+      given optValuesInstance: ApplyKC[[F[_]] =>> A[Compose2[Option, F]]]
+        with TraverseKC[[F[_]] =>> A[Compose2[Option, F]]]
+        with {
+        extension [B[_], D](fa: A[Compose2[Option, B]])
           def map2K[C[_], Z[_]](fb: A[Compose2[Option, C]])(f: [X] => (B[X], C[X]) => Z[X]): A[Compose2[Option, Z]] =
             FA.map2K(fa)(fb)([X] => (v1o: Option[B[X]], v2o: Option[C[X]]) => v1o.zip(v2o).map((v1, v2) => f(v1, v2)))
 
-          def traverseK[G[_] : Applicative, C[_]](f: B :~>: Compose2[G, C]): G[A[Compose2[Option, C]]] =
+          def traverseK[G[_]: Applicative, C[_]](f: B :~>: Compose2[G, C]): G[A[Compose2[Option, C]]] =
             FT.traverseK(fa)([Z] => (vo: Option[B[Z]]) => vo.traverse[G, C[Z]](v => f(v)))
 
           def foldLeftK[C](b: C)(f: C => B :~>#: C): C =
@@ -794,6 +798,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       valueOpt(table.columns.mapK([Z] => (col: Column[Z, Type]) => col.tpe), value)
 
   extension [A](query: Query[[F[_]] =>> F[A]])
+    // TODO: Make use of an implicit conversion here?
     @targetName("queryAsMany") def asMany: Many[A] = query.asDbValue.unsafeDbValAsMany
 
     @targetName("queryAsDbValue") def asDbValue: DbValue[A] = SqlDbValue.SubSelect(query).lift

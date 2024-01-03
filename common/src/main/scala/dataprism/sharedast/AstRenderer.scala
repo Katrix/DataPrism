@@ -10,6 +10,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     val rendered = renderExpr(expr)
     op match
       case SqlExpr.UnaryOperation.Not        => sql"(NOT $rendered)"
+      case SqlExpr.UnaryOperation.Negation   => sql"(-$rendered)"
       case SqlExpr.UnaryOperation.BitwiseNot => sql"(~$rendered)"
 
   protected def renderBinaryOp(lhs: SqlExpr[Type], rhs: SqlExpr[Type], op: SqlExpr.BinaryOperation): SqlStr[Type] =
@@ -100,6 +101,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SqlExpr.FunctionCall(functionCall, args) => renderFunctionCall(functionCall, args)
     case SqlExpr.PreparedArgument(_, arg)         => SqlStr("?", Seq(arg))
     case SqlExpr.IsNull(expr)                     => sql"${renderExpr(expr)} IS NULL"
+    case SqlExpr.IsNotNull(expr)                  => sql"${renderExpr(expr)} IS NOT NULL"
     case SqlExpr.Cast(expr, asType)               => sql"(CAST(${renderExpr(expr)} AS ${SqlStr.const(asType)}))"
     case SqlExpr.ValueCase(matchOn, cases, orElse) =>
       sql"CASE ${renderExpr(matchOn)} ${cases.toVector

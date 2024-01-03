@@ -34,7 +34,7 @@ class SkunkDb[F[_]: Functor](s: Session[F]) extends Db[F, Codec]:
   private def makeQuery[Res[_[_]]](
       sql: SqlStr[Codec],
       dbTypes: Res[Codec]
-  )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): (Query[Seq[Any], Res[Id]], Seq[Any]) =
+  )(using FT: TraverseKC[Res]): (Query[Seq[Any], Res[Id]], Seq[Any]) =
     val sqlStr = sql
     (
       Query(
@@ -136,7 +136,7 @@ class SkunkDb[F[_]: Functor](s: Session[F]) extends Db[F, Codec]:
   override def runIntoRes[Res[_[_]]](
       sql: SqlStr[Codec],
       dbTypes: Res[Codec]
-  )(using FA: ApplyKC[Res], FT: TraverseKC[Res]): F[QueryResult[Res[Id]]] = {
+  )(using FT: TraverseKC[Res]): F[QueryResult[Res[Id]]] = {
     val (query, args) = makeQuery(sql, dbTypes)
     s.execute(query)(args).map(xs => QueryResult(xs))
   }

@@ -1,21 +1,21 @@
 package dataprism.jdbc.sql
-import java.sql.{Date, Time}
+import java.sql.{Date, Time, Types}
 
 case class MySqlJdbcTypeCastable[A](name: String, tpe: JdbcType[A])
 trait MySqlJdbcTypes extends JdbcAnsiTypes:
   self =>
-  val text: JdbcType[String] = JdbcType.simple("TEXT", _.getString(_), _.setString(_, _))
+  val text: JdbcType[String] = JdbcType.simple("TEXT", Types.VARCHAR, _.getString(_), _.setString(_, _))
 
   val decimal: JdbcType[BigDecimal] = JdbcType
-    .simple("DECIMAL", _.getBigDecimal(_), _.setBigDecimal(_, _))
+    .simple("DECIMAL", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
     .imap(jbd => BigDecimal(jbd))(bd => bd.bigDecimal)
 
   def decimalN(m: Int): JdbcType[BigDecimal] = JdbcType
-    .simple(s"DECIMAL($m)", _.getBigDecimal(_), _.setBigDecimal(_, _))
+    .simple(s"DECIMAL($m)", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
     .imap(jbd => BigDecimal(jbd))(bd => bd.bigDecimal)
 
   def decimalN(m: Int, n: Int): JdbcType[BigDecimal] = JdbcType
-    .simple(s"DECIMAL($m, $n)", _.getBigDecimal(_), _.setBigDecimal(_, _))
+    .simple(s"DECIMAL($m, $n)", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
     .imap(jbd => BigDecimal(jbd))(bd => bd.bigDecimal)
 
   object castType:

@@ -144,8 +144,7 @@ object Testing {
       Future.successful(QueryResult(Nil))
 
     override def runIntoRes[Res[_[_]]](sql: SqlStr[JdbcType], dbTypes: Res[JdbcType])(
-        using FA: ApplyKC[Res],
-        FT: TraverseKC[Res]
+        using FT: TraverseKC[Res]
     ): Future[QueryResult[Res[Id]]] =
       printSqlStr(sql)
       Future.successful(QueryResult(Nil))

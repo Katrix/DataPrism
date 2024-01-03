@@ -16,28 +16,32 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
 
   override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
   extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
-  
-  enum DbValue[A] extends SqlDbValueBase[A]:
+
+  type DbValue[A] = MySqlDbValue[A]
+  enum MySqlDbValue[A] extends SqlDbValueBase[A]:
     case SqlDbValue(value: platform.SqlDbValue[A])
 
     override def ast: TagState[SqlExpr[Type]] = this match
-      case DbValue.SqlDbValue(v) => v.ast
+      case MySqlDbValue.SqlDbValue(v) => v.ast
 
     override def asSqlDbVal: Option[platform.SqlDbValue[A]] = this match
-      case DbValue.SqlDbValue(v) => Some(v)
+      case MySqlDbValue.SqlDbValue(v) => Some(v)
 
     override def tpe: Type[A] = this match
-      case DbValue.SqlDbValue(v) => v.tpe
+      case MySqlDbValue.SqlDbValue(v) => v.tpe
 
     override def unsafeAsAnyDbVal: DbValue[Any] = this.asInstanceOf[DbValue[Any]]
     override def liftDbValue: DbValue[A] = this
     override def asc: Ord = Ord.Asc(this)
     override def desc: Ord = Ord.Desc(this)
+  end MySqlDbValue
 
+  type DbValueCompanion = SqlDbValueCompanion
+  val DbValue: DbValueCompanion = new SqlDbValueCompanion {}
 
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
     new Lift[SqlDbValue[A], DbValue[A]]:
-      extension (a: SqlDbValue[A]) def lift: DbValue[A] = DbValue.SqlDbValue(a)
+      extension (a: SqlDbValue[A]) def lift: DbValue[A] = MySqlDbValue.SqlDbValue(a)
 
   override type AnyDbValue = DbValue[Any]
 

@@ -31,30 +31,31 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     override def castTypeName: String  = t.name
     override def castTypeType: Type[A] = t
 
-  enum DbValue[A] extends SqlDbValueBase[A]:
+  type DbValue[A] = PostgresDbValue[A]
+  enum PostgresDbValue[A] extends SqlDbValueBase[A]:
     case SqlDbValue(value: platform.SqlDbValue[A])
     case ArrayOf(values: Seq[DbValue[A]], elemType: Type[A], extraArrayTypeArgs: ArrayTypeArgs[A])
         extends DbValue[Seq[A]]
 
     def ast: TagState[SqlExpr[Type]] = this match
-      case DbValue.SqlDbValue(value) => value.ast
-      case DbValue.ArrayOf(values, _, _) =>
+      case PostgresDbValue.SqlDbValue(value) => value.ast
+      case PostgresDbValue.ArrayOf(values, _, _) =>
         values.toList
           .traverse(_.ast)
           .map(exprs => SqlExpr.Custom(exprs, args => sql"ARRAY[${args.intercalate(sql", ")}]"))
     end ast
 
     def asSqlDbVal: Option[platform.SqlDbValue[A]] = this match
-      case DbValue.SqlDbValue(res) => Some(res)
+      case PostgresDbValue.SqlDbValue(res) => Some(res)
       case _                       => None
 
     override def tpe: Type[A] = this match
-      case DbValue.SqlDbValue(value)                   => value.tpe
-      case DbValue.ArrayOf(_, tpe, extraArrayTypeArgs) => arrayType(tpe)(using extraArrayTypeArgs)
+      case PostgresDbValue.SqlDbValue(value)                   => value.tpe
+      case PostgresDbValue.ArrayOf(_, tpe, extraArrayTypeArgs) => arrayType(tpe)(using extraArrayTypeArgs)
     end tpe
 
     def singletonArray(using extraArrayTypeArgs: ArrayTypeArgs[A]): DbValue[Seq[A]] =
-      DbValue.ArrayOf(Seq(this), tpe, extraArrayTypeArgs)
+      PostgresDbValue.ArrayOf(Seq(this), tpe, extraArrayTypeArgs)
 
     override def liftDbValue: DbValue[A] = this
 
@@ -63,11 +64,14 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     override def desc: Ord = Ord.Desc(this)
 
     override def unsafeAsAnyDbVal: AnyDbValue = this.asInstanceOf[AnyDbValue]
-  end DbValue
+  end PostgresDbValue
+
+  type DbValueCompanion = SqlDbValueCompanion
+  val DbValue: DbValueCompanion = new SqlDbValueCompanion {}
 
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
     new Lift[SqlDbValue[A], DbValue[A]]:
-      extension (a: SqlDbValue[A]) def lift: DbValue[A] = DbValue.SqlDbValue(a)
+      extension (a: SqlDbValue[A]) def lift: DbValue[A] = PostgresDbValue.SqlDbValue(a)
 
   override type AnyDbValue = DbValue[Any]
 
@@ -202,8 +206,8 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
                 val column = t._2
 
                 f(
-                  DbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
-                  value.map(_ => DbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
+                  PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
+                  value.map(_ => PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
                 ).traverse(r => r.ast.map(column.name -> _))
           }
           .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
@@ -262,8 +266,8 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
                 val column = t._2
 
                 f(
-                  DbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
-                  value.map(_ => DbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
+                  PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
+                  value.map(_ => PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
                 ).traverse(r => r.ast.map(column.name -> _))
           }
           .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
@@ -271,7 +275,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           table.columns.mapK(
             [Z] =>
               (col: Column[Z, Type]) =>
-                DbValue.SqlDbValue(SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe))
+                PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe))
           )
         )
         computedReturning <-
