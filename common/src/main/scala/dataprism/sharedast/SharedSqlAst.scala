@@ -12,6 +12,10 @@ object SqlExpr {
   case class PreparedArgument[Type[_]](name: Option[String], arg: SqlArg[Type])          extends SqlExpr[Type]
   case class IsNull[Type[_]](expr: SqlExpr[Type])                                        extends SqlExpr[Type]
   case class IsNotNull[Type[_]](expr: SqlExpr[Type])                                     extends SqlExpr[Type]
+  case class InValues[Type[_]](expr: SqlExpr[Type], values: Seq[SqlExpr[Type]])          extends SqlExpr[Type]
+  case class NotInValues[Type[_]](expr: SqlExpr[Type], values: Seq[SqlExpr[Type]])       extends SqlExpr[Type]
+  case class InQuery[Type[_]](expr: SqlExpr[Type], selectAst: SelectAst[Type])           extends SqlExpr[Type]
+  case class NotInQuery[Type[_]](expr: SqlExpr[Type], selectAst: SelectAst[Type])        extends SqlExpr[Type]
   case class Cast[Type[_]](expr: SqlExpr[Type], asType: String)                          extends SqlExpr[Type]
 
   case class ValueCase[Type[_]](
@@ -92,52 +96,41 @@ object SqlExpr {
     case Concat
 
     case Coalesce
+    case NullIf
 
     case Custom(f: String)
 }
 
-case class SelectAst[Type[_]](
-    data: SelectAst.Data[Type],
-    orderLimit: SelectAst.OrderLimit[Type]
-)
-
+sealed trait SelectAst[Type[_]]
 //noinspection ScalaUnusedSymbol
 object SelectAst {
-  sealed trait Data[Type[_]]
-  object Data {
-    case class SelectFrom[Type[_]](
-        distinct: Option[SelectAst.Distinct[Type]],
-        selectExprs: Seq[SelectAst.ExprWithAlias[Type]],
-        from: Option[SelectAst.From[Type]],
-        where: Option[SqlExpr[Type]],
-        groupBy: Option[SelectAst.GroupBy[Type]],
-        having: Option[SqlExpr[Type]]
-    ) extends Data[Type]
-
-    sealed trait SetOperatorData[Type[_]] extends Data[Type] {
-      def lhs: Data[Type]
-      def rhs: Data[Type]
-      def all: Boolean
-    }
-
-    case class Values[Type[_]](
-        valueExprs: Seq[Seq[SqlExpr[Type]]],
-        alias: Option[String],
-        columnAliases: Option[Seq[String]]
-    ) extends Data[Type]
-
-    case class Union[Type[_]](lhs: Data[Type], rhs: Data[Type], all: Boolean)     extends SetOperatorData[Type]
-    case class Intersect[Type[_]](lhs: Data[Type], rhs: Data[Type], all: Boolean) extends SetOperatorData[Type]
-    case class Except[Type[_]](lhs: Data[Type], rhs: Data[Type], all: Boolean)    extends SetOperatorData[Type]
-  }
-  case class OrderLimit[Type[_]](
+  case class SelectFrom[Type[_]](
+      distinct: Option[SelectAst.Distinct[Type]],
+      selectExprs: Seq[SelectAst.ExprWithAlias[Type]],
+      from: Option[SelectAst.From[Type]],
+      where: Option[SqlExpr[Type]],
+      groupBy: Option[SelectAst.GroupBy[Type]],
+      having: Option[SqlExpr[Type]],
       orderBy: Option[SelectAst.OrderBy[Type]],
       limitOffset: Option[SelectAst.LimitOffset],
       locks: Option[SelectAst.Locks]
-  ) {
+  ) extends SelectAst[Type]
 
-    def isEmpty: Boolean = orderBy.isEmpty && limitOffset.isEmpty && locks.isEmpty
+  sealed trait SetOperator[Type[_]] extends SelectAst[Type] {
+    def lhs: SelectAst[Type]
+    def rhs: SelectAst[Type]
+    def all: Boolean
   }
+
+  case class Values[Type[_]](
+      valueExprs: Seq[Seq[SqlExpr[Type]]],
+      alias: Option[String],
+      columnAliases: Option[Seq[String]]
+  ) extends SelectAst[Type]
+
+  case class Union[Type[_]](lhs: SelectAst[Type], rhs: SelectAst[Type], all: Boolean)     extends SetOperator[Type]
+  case class Intersect[Type[_]](lhs: SelectAst[Type], rhs: SelectAst[Type], all: Boolean) extends SetOperator[Type]
+  case class Except[Type[_]](lhs: SelectAst[Type], rhs: SelectAst[Type], all: Boolean)    extends SetOperator[Type]
 
   case class Distinct[Type[_]](on: Seq[SqlExpr[Type]])
 

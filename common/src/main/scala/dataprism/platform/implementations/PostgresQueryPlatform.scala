@@ -47,7 +47,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
     def asSqlDbVal: Option[platform.SqlDbValue[A]] = this match
       case PostgresDbValue.SqlDbValue(res) => Some(res)
-      case _                       => None
+      case _                               => None
 
     override def tpe: Type[A] = this match
       case PostgresDbValue.SqlDbValue(value)                   => value.tpe
@@ -207,7 +207,9 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
                 f(
                   PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
-                  value.map(_ => PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
+                  value.map(_ =>
+                    PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe))
+                  )
                 ).traverse(r => r.ast.map(column.name -> _))
           }
           .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
@@ -267,7 +269,9 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
                 f(
                   PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
-                  value.map(_ => PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe)))
+                  value.map(_ =>
+                    PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe))
+                  )
                 ).traverse(r => r.ast.map(column.name -> _))
           }
           .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
@@ -372,15 +376,14 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
             .map2Const(toSet)([Z] => (col: Column[Z, Type], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList)
             .toListK
             .flatten,
-          bothMeta.ast.copy(
-            data = bothMeta.ast.data match
-              case data: SelectAst.Data.SelectFrom[Type] =>
-                data.copy(
-                  selectExprs = toSetAst.toListK.map(ast => SelectAst.ExprWithAlias(ast, None)),
-                  where = Some(whereAst)
-                )
-              case _ => throw new IllegalStateException("Expected SelectFrom ast")
-          ),
+          bothMeta.ast match
+            case data: SelectAst.SelectFrom[Type] =>
+              data.copy(
+                selectExprs = toSetAst.toListK.map(ast => SelectAst.ExprWithAlias(ast, None)),
+                where = Some(whereAst)
+              )
+            case _ => throw new IllegalStateException("Expected SelectFrom ast")
+          ,
           returningAst.toListK
         ),
         returningValues.mapK([Z] => (dbVal: DbValue[Z]) => dbVal.tpe)

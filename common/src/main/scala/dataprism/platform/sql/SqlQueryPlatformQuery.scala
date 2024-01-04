@@ -6,7 +6,6 @@ import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.platform.base.MapRes
-import dataprism.sharedast.SelectAst.Data
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
@@ -43,6 +42,15 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     inline def limit(n: Int): Query[A] = take(n)
 
     inline def offset(n: Int): Query[A] = drop(n)
+
+    def union(that: Query[A]): Query[A]
+    def unionAll(that: Query[A]): Query[A]
+
+    def intersect(that: Query[A]): Query[A]
+    def intersectAll(that: Query[A]): Query[A]
+
+    def except(that: Query[A]): Query[A]
+    def exceptAll(that: Query[A]): Query[A]
 
     // TODO: Ensure the type of this will always be Long
     def size: DbValue[Long] = this.map(_ => Query.queryCount).asDbValue
@@ -117,6 +125,15 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     override def drop(n: Int): Query[A] = nested.drop(n)
 
     override def distinct: Query[A] = nested.distinct
+
+    override def union(that: Query[A]): Query[A]    = nested.union(that)
+    override def unionAll(that: Query[A]): Query[A] = nested.unionAll(that)
+
+    override def intersect(that: Query[A]): Query[A]    = nested.intersect(that)
+    override def intersectAll(that: Query[A]): Query[A] = nested.intersectAll(that)
+
+    override def except(that: Query[A]): Query[A]    = nested.except(that)
+    override def exceptAll(that: Query[A]): Query[A] = nested.exceptAll(that)
   }
 
   object SqlQuery {
@@ -152,16 +169,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     ) extends SqlQuery[A] {
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
         tagValues(values).map { case (aliases, exprWithAliases) =>
-          val selectAst = SelectAst(
-            SelectAst.Data.SelectFrom(
-              None,
-              selectExprs = exprWithAliases,
-              None,
-              None,
-              None,
-              None
-            ),
-            SelectAst.OrderLimit(None, None, None)
+          val selectAst = SelectAst.SelectFrom(
+            None,
+            selectExprs = exprWithAliases,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None
           )
 
           QueryAstMetadata(selectAst, aliases, values)
@@ -323,13 +340,25 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         defaultDistinct = true
       ).liftSqlQuery
 
+      override def union(that: Query[A]): Query[A] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(false), that))).liftSqlQuery
+      override def unionAll(that: Query[A]): Query[A] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(true), that))).liftSqlQuery
+
+      override def intersect(that: Query[A]): Query[A] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(false), that))).liftSqlQuery
+      override def intersectAll(that: Query[A]): Query[A] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(true), that))).liftSqlQuery
+
+      override def except(that: Query[A]): Query[A] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(false), that))).liftSqlQuery
+      override def exceptAll(that: Query[A]): Query[A] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(true), that))).liftSqlQuery
+
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
         valueSource.fromPartAndValues.flatMap { case ValueSourceAstMetaData(from, values) =>
           tagValues(values).map { case (aliases, exprWithAliases) =>
-            val selectAst = SelectAst(
-              SelectAst.Data.SelectFrom(None, exprWithAliases, Some(from), None, None, None),
-              SelectAst.OrderLimit(None, None, None)
-            )
+            val selectAst = SelectAst.SelectFrom(None, exprWithAliases, Some(from), None, None, None, None, None, None)
 
             QueryAstMetadata(selectAst, aliases, values)
           }
@@ -386,6 +415,24 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         defaultDistinct = true
       ).liftSqlQuery
 
+      override def union(that: Query[B]): Query[B] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(false), that))).liftSqlQuery
+
+      override def unionAll(that: Query[B]): Query[B] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(true), that))).liftSqlQuery
+
+      override def intersect(that: Query[B]): Query[B] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(false), that))).liftSqlQuery
+
+      override def intersectAll(that: Query[B]): Query[B] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(true), that))).liftSqlQuery
+
+      override def except(that: Query[B]): Query[B] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(false), that))).liftSqlQuery
+
+      override def exceptAll(that: Query[B]): Query[B] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(true), that))).liftSqlQuery
+
       override def selectAstAndValues: TagState[QueryAstMetadata[B]] =
         for
           meta <- valueSource.fromPartAndValues
@@ -394,16 +441,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           (aliases, exprWithAliases) = t
           wherePart <- whereV.traverse(f => f(meta.values).ast)
         yield QueryAstMetadata(
-          SelectAst(
-            SelectAst.Data.SelectFrom(
-              None,
-              exprWithAliases,
-              Some(meta.ast),
-              wherePart,
-              None,
-              None
-            ),
-            SelectAst.OrderLimit(None, None, None)
+          SelectAst.SelectFrom(
+            None,
+            exprWithAliases,
+            Some(meta.ast),
+            wherePart,
+            None,
+            None,
+            None,
+            None,
+            None
           ),
           aliases,
           mappedValues
@@ -464,6 +511,24 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         defaultDistinct = true
       ).liftSqlQuery
 
+      override def union(that: Query[Ma]): Query[Ma] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(false), that))).liftSqlQuery
+
+      override def unionAll(that: Query[Ma]): Query[Ma] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(true), that))).liftSqlQuery
+
+      override def intersect(that: Query[Ma]): Query[Ma] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(false), that))).liftSqlQuery
+
+      override def intersectAll(that: Query[Ma]): Query[Ma] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(true), that))).liftSqlQuery
+
+      override def except(that: Query[Ma]): Query[Ma] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(false), that))).liftSqlQuery
+
+      override def exceptAll(that: Query[Ma]): Query[Ma] =
+        SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(true), that))).liftSqlQuery
+
       override def selectAstAndValues: TagState[QueryAstMetadata[Ma]] =
         for
           meta <- query.selectAstAndValues
@@ -485,20 +550,21 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             case (None, None)           => None
           end astAnd
 
-          selectAst.data match
-            case from: Data.SelectFrom[Type] =>
+          selectAst match
+            case from: SelectAst.SelectFrom[Type] =>
               QueryAstMetadata(
-                selectAst.copy(data =
-                  from.copy(
-                    selectExprs = exprWithAliases,
-                    groupBy = Option.when(groupByAstList.nonEmpty)(SelectAst.GroupBy(groupByAstList)),
-                    having = astAnd(from.having, havingAst)
-                  )
+                from.copy(
+                  selectExprs = exprWithAliases,
+                  groupBy = Option.when(groupByAstList.nonEmpty)(SelectAst.GroupBy(groupByAstList)),
+                  having = astAnd(from.having, havingAst)
                 ),
                 aliases,
                 groupedValues
               )
-            case _ => throw new Exception("Found non SelectFrom data in groupByHaving stage. Not allowed")
+
+            case _ =>
+              // TODO: Allow
+              throw new Exception("Found non SelectFrom ast in groupByHaving stage. Not allowed")
     }
 
     case class SqlQueryDistinctStage[A[_[_]]](
@@ -525,9 +591,9 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       def selectAstAndValues: TagState[QueryAstMetadata[A]] =
         query.selectAstAndValues.flatMap { meta =>
-          meta.ast.data match
-            case data: SelectAst.Data.SelectFrom[Type] =>
-              State.pure(meta.copy(ast = meta.ast.copy(data = data.copy(distinct = Some(SelectAst.Distinct(Nil))))))
+          meta.ast match
+            case from: SelectAst.SelectFrom[Type] =>
+              State.pure(meta.copy(ast = from.copy(distinct = Some(SelectAst.Distinct(Nil)))))
             case _ =>
               for
                 queryNum <- State((s: TaggedState) => (s.withNewQueryNum(s.queryNum + 1), s.queryNum))
@@ -540,17 +606,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                 t <- tagValues(newValues)
                 (aliases, exprs) = t
               yield QueryAstMetadata(
-                SelectAst(
-                  SelectAst.Data
-                    .SelectFrom(
-                      Some(SelectAst.Distinct(Nil)),
-                      exprs,
-                      Some(SelectAst.From.FromQuery(meta.ast, queryName)),
-                      None,
-                      None,
-                      None
-                    ),
-                  SelectAst.OrderLimit(None, None, None)
+                SelectAst.SelectFrom(
+                  Some(SelectAst.Distinct(Nil)),
+                  exprs,
+                  Some(SelectAst.From.FromQuery(meta.ast, queryName)),
+                  None,
+                  None,
+                  None,
+                  None,
+                  None,
+                  None
                 ),
                 aliases,
                 newValues
@@ -614,10 +679,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             st.withNewQueryNum(queryNum + 1).withNewColumnNum(newColumnNum),
             valueExprsSt.map { valueExprs =>
               QueryAstMetadata(
-                SelectAst(
-                  SelectAst.Data.Values(valueExprs, Some(queryName), Some(aliasesList)),
-                  SelectAst.OrderLimit(None, None, None)
-                ),
+                SelectAst.Values(valueExprs, Some(queryName), Some(aliasesList)),
                 aliases,
                 dbValues
               )
@@ -648,17 +710,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         for
           meta             <- query.selectAstAndValues
           orderByValuesAst <- orderBy(meta.values).ast
-        yield
-          val oldOrderLimit = meta.ast.orderLimit
-          val newOrderLimit = oldOrderLimit.copy(orderBy =
-            Some(
-              oldOrderLimit.orderBy.fold(SelectAst.OrderBy(orderByValuesAst)) { old =>
-                old.copy(exprs = old.exprs ++ orderByValuesAst)
-              }
-            )
-          )
+        yield meta.ast match
+          case from: SelectAst.SelectFrom[Type] =>
+            val oldOrder = from.orderBy
+            val newOrder = oldOrder.fold(SelectAst.OrderBy(orderByValuesAst)) { old =>
+              old.copy(exprs = old.exprs ++ orderByValuesAst)
+            }
 
-          meta.copy(ast = meta.ast.copy(orderLimit = newOrderLimit))
+            meta.copy(ast = from.copy(orderBy = Some(newOrder)))
+
+          case _ => ???
     }
 
     case class SqlQueryLimitOffsetStage[A[_[_]]](
@@ -674,19 +735,22 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
         query.selectAstAndValues.map { meta =>
-          val oldOrderLimit = meta.ast.orderLimit
+          meta.ast match
+            case from: SelectAst.SelectFrom[Type] =>
+              val oldLimitOffset = from.limitOffset
 
-          val newLimitOffset = oldOrderLimit.limitOffset match {
-            case Some(old: SelectAst.LimitOffset) =>
-              Some(old.copy(limit = limit.orElse(old.limit), offset = if offset != 0 then offset else old.offset))
+              val newLimitOffset = oldLimitOffset match {
+                case Some(old: SelectAst.LimitOffset) =>
+                  Some(old.copy(limit = limit.orElse(old.limit), offset = if offset != 0 then offset else old.offset))
 
-            case None if limit.isDefined || offset != 0 =>
-              Some(SelectAst.LimitOffset(limit, offset, false))
+                case None if limit.isDefined || offset != 0 =>
+                  Some(SelectAst.LimitOffset(limit, offset, false))
 
-            case None => None
-          }
+                case None => None
+              }
 
-          meta.copy(ast = meta.ast.copy(orderLimit = oldOrderLimit.copy(limitOffset = newLimitOffset)))
+              meta.copy(ast = from.copy(limitOffset = newLimitOffset))
+            case _ => ???
         }
     }
 
@@ -697,13 +761,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def selectAstAndValues: TagState[QueryAstMetadata[B]] =
         query.selectAstAndValues.flatMap { case QueryAstMetadata(selectAstA, _, valuesA) =>
           val stNewValuesAndAstA: TagState[(Option[SelectAst.From[Type]], Option[SqlExpr[Type]], A[DbValue])] =
-            if selectAstA.orderLimit.isEmpty && (selectAstA.data match
-                case from: SelectAst.Data.SelectFrom[Type] =>
-                  from.distinct.isEmpty && from.groupBy.isEmpty && from.having.isEmpty
+            if selectAstA match
+                case from: SelectAst.SelectFrom[Type] =>
+                  from.distinct.isEmpty && from.groupBy.isEmpty && from.having.isEmpty && from.orderBy.isEmpty && from.limitOffset.isEmpty
                 case _ => false
-              )
             then
-              val selectFrom = selectAstA.data.asInstanceOf[SelectAst.Data.SelectFrom[Type]]
+              val selectFrom = selectAstA.asInstanceOf[SelectAst.SelectFrom[Type]]
               State.pure((selectFrom.from, selectFrom.where, valuesA))
             else SqlValueSource.FromQuery(query).fromPartAndValues.map(t => (Some(t._1), None, t._2))
 
@@ -715,23 +778,82 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
           stNewValuesAndAstA.flatMap { case (fromAOpt, whereExtra, newValuesA) =>
             f(newValuesA).selectAstAndValues.map { case QueryAstMetadata(selectAstB, aliasesB, valuesB) =>
-              val newSelectAstB = selectAstB.copy(
-                data = selectAstB.data match
-                  case from: Data.SelectFrom[Type] =>
-                    from.copy(
-                      from = combineOption(fromAOpt, from.from)(SelectAst.From.FromMulti.apply),
-                      where = combineOption(whereExtra, from.where)((a, b) =>
-                        SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd)
-                      )
+              val newSelectAstB = selectAstB match
+                case from: SelectAst.SelectFrom[Type] =>
+                  from.copy(
+                    from = combineOption(fromAOpt, from.from)(SelectAst.From.FromMulti.apply),
+                    where = combineOption(whereExtra, from.where)((a, b) =>
+                      SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd)
                     )
+                  )
 
-                  case _ => throw new Exception("Encountered flatmap on non SelectFrom data. Not possible")
-              )
+                case _ => throw new Exception("Encountered flatmap on non SelectFrom data. Not possible")
 
               QueryAstMetadata(newSelectAstB, aliasesB, valuesB)
             }
           }
         }
+    }
+
+    enum SetOperation(val all: Boolean):
+      case Union(override val all: Boolean)     extends SetOperation(all)
+      case Intersect(override val all: Boolean) extends SetOperation(all)
+      case Except(override val all: Boolean)    extends SetOperation(all)
+
+    case class SqlQuerySetOperations[A[_[_]]](head: Query[A], tail: Seq[(SetOperation, Query[A])]) extends SqlQuery[A] {
+      override private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]] =
+        head.selectAstAndValues.map2(tail.traverse(t => t._2.selectAstAndValues.map(t._1 -> _))) {
+          (headMeta, tailMeta) =>
+            val mergedAst = tailMeta.foldLeft(headMeta.ast):
+              case (acc, (SetOperation.Union(all), meta))     => SelectAst.Union(acc, meta.ast, all)
+              case (acc, (SetOperation.Intersect(all), meta)) => SelectAst.Intersect(acc, meta.ast, all)
+              case (acc, (SetOperation.Except(all), meta))    => SelectAst.Except(acc, meta.ast, all)
+
+            QueryAstMetadata(mergedAst, headMeta.aliases, headMeta.values)
+        }
+
+      override def mapK[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
+        if tail.forall(_._1.all) then
+          SqlQuerySetOperations(head.mapK(f), tail.map(t => (t._1, t._2.mapK(f)))).liftSqlQuery
+        else super.mapK(f)
+
+      override def union(that: Query[A]): Query[A] =
+        copy(tail = tail ++ Seq((SetOperation.Union(false), that))).liftSqlQuery
+
+      override def unionAll(that: Query[A]): Query[A] =
+        copy(tail = tail ++ Seq((SetOperation.Union(true), that))).liftSqlQuery
+
+      override def intersect(that: Query[A]): Query[A] =
+        copy(tail = tail ++ Seq((SetOperation.Intersect(false), that))).liftSqlQuery
+
+      override def intersectAll(that: Query[A]): Query[A] =
+        copy(tail = tail ++ Seq((SetOperation.Intersect(true), that))).liftSqlQuery
+
+      override def except(that: Query[A]): Query[A] =
+        copy(tail = tail ++ Seq((SetOperation.Except(false), that))).liftSqlQuery
+
+      override def exceptAll(that: Query[A]): Query[A] =
+        copy(tail = tail ++ Seq((SetOperation.Except(true), that))).liftSqlQuery
+
+      override def orderBy(f: A[DbValue] => OrdSeq): Query[A] =
+        SqlQueryOrderedStage(
+          this.liftSqlQuery,
+          f
+        ).liftSqlQuery
+
+      override def take(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        limit = Some(i)
+      ).liftSqlQuery
+
+      override def drop(i: Int): Query[A] = SqlQueryLimitOffsetStage(
+        this.liftSqlQuery,
+        offset = i
+      ).liftSqlQuery
+
+      override def applyK: ApplyKC[A] = head.applyK
+
+      override def traverseK: TraverseKC[A] = head.traverseK
     }
   }
 

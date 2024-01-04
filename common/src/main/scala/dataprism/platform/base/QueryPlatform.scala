@@ -1,23 +1,29 @@
 package dataprism.platform.base
 
 import scala.annotation.targetName
-
 import cats.Applicative
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
+
+import scala.util.NotGiven
 
 //noinspection ScalaUnusedSymbol
 trait QueryPlatform {
   
   trait Lift[A, B]:
     extension (a: A) def lift: B
+    
+  type Nullability[A] <: NullabilityBase[A]
+  trait NullabilityBase[A]:
+    type NNA
+    type N[_]
 
   trait DbValueBase[A]:
     def liftDbValue: DbValue[A]
     
-    @targetName("dbEquals") def ===(that: DbValue[A]): DbValue[Boolean]
-    @targetName("dbNotEquals") def !==(that: DbValue[A]): DbValue[Boolean]
-
+    @targetName("dbEquals") def ===(that: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
+    @targetName("dbNotEquals") def !==(that: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
+    
     def asc: Ord
     def desc: Ord
     
