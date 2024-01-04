@@ -5,6 +5,7 @@ import java.sql.{Date, Time, Timestamp}
 import scala.annotation.targetName
 import scala.util.NotGiven
 
+import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.platform.base.MapRes
@@ -387,23 +388,26 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.IsNull(value)    => value.ast.map(v => SqlExpr.IsNull(v))
       case SqlDbValue.IsNotNull(value) => value.ast.map(v => SqlExpr.IsNotNull(v))
 
-      case SqlDbValue.InValues(v, values, _) => v.ast.map2(values.traverse(_.ast))((v, vs) => SqlExpr.InValues(v, vs))
+      case SqlDbValue.InValues(v, values, _) =>
+        (v.ast, values.traverse(_.ast)).mapN((v, vs) => SqlExpr.InValues(v, vs))
       case SqlDbValue.NotInValues(v, values, _) =>
-        v.ast.map2(values.traverse(_.ast))((v, vs) => SqlExpr.NotInValues(v, vs))
-      case SqlDbValue.InQuery(v, query, _) => v.ast.map2(query.selectAstAndValues)((v, m) => SqlExpr.InQuery(v, m.ast))
+        (v.ast, values.traverse(_.ast)).mapN((v, vs) => SqlExpr.NotInValues(v, vs))
+      case SqlDbValue.InQuery(v, query, _) =>
+        (v.ast, query.selectAstAndValues).mapN((v, m) => SqlExpr.InQuery(v, m.ast))
       case SqlDbValue.NotInQuery(v, query, _) =>
-        v.ast.map2(query.selectAstAndValues)((v, m) => SqlExpr.NotInQuery(v, m.ast))
+        (v.ast, query.selectAstAndValues).mapN((v, m) => SqlExpr.NotInQuery(v, m.ast))
 
       case SqlDbValue.ValueCase(matchOn, cases, orElse) =>
         (
           matchOn.ast,
-          cases.toVector.traverse(c => c._1.ast.product(c._2.ast)),
+          cases.toVector.traverse(c => (c._1.ast, c._2.ast).tupled),
           orElse.ast
         ).mapN((m, cs, o) => SqlExpr.ValueCase(m, cs, o))
       case SqlDbValue.ConditionCase(cases, orElse) =>
-        cases.toVector
-          .traverse(c => c._1.ast.product(c._2.ast))
-          .map2(orElse.ast)((cs, o) => SqlExpr.ConditionCase(cs, o))
+        (
+          cases.toVector.traverse(c => (c._1.ast, c._2.ast).tupled),
+          orElse.ast
+        ).mapN((cs, o) => SqlExpr.ConditionCase(cs, o))
 
       case SqlDbValue.Custom(args, render, _) =>
         args.toVector.traverse(_.ast).map(exprs => SqlExpr.Custom(exprs, render))

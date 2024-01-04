@@ -351,8 +351,10 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
             fa._1.foldRightK(b1)(f)
 
           def traverseK[G[_]: Applicative, Y[_]](f: X :~>: Compose2[G, Y]): G[InnerJoin[A, B][Y]] =
-            fa._1.traverseK(f).product(fa._2.traverseK(f))
-
+            Applicative[G].product(
+              fa._1.traverseK(f),
+              fa._2.traverseK(f),
+            )
       }
 
       val bothQuery = from match

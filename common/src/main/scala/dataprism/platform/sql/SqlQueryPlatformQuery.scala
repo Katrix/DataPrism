@@ -214,7 +214,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             val r1 = fa._1.traverseK(f)
             val r2 = fa._2.traverseK(f)
 
-            r1.product(r2)
+            (r1, r2).tupled
 
         extension [A[_], C](fa: F[A])
           def foldLeftK[B](b: B)(f: B => A :~>#: B): B =
@@ -802,7 +802,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     case class SqlQuerySetOperations[A[_[_]]](head: Query[A], tail: Seq[(SetOperation, Query[A])]) extends SqlQuery[A] {
       override private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]] =
-        head.selectAstAndValues.map2(tail.traverse(t => t._2.selectAstAndValues.map(t._1 -> _))) {
+        (head.selectAstAndValues, tail.traverse(t => t._2.selectAstAndValues.map(t._1 -> _))).mapN {
           (headMeta, tailMeta) =>
             val mergedAst = tailMeta.foldLeft(headMeta.ast):
               case (acc, (SetOperation.Union(all), meta))     => SelectAst.Union(acc, meta.ast, all)

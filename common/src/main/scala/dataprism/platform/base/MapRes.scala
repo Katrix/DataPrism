@@ -155,9 +155,9 @@ trait LowPriorityMapRes {
 
       extension [A[_], C](fa: K[A])
         override def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[K[B]] =
-          val r1 = fa.head.traverseK(f)
-          val r2 = fa.tail.traverseK(f)
-          r1.map2(r2)(_ *: _)
+          val r1: G[KH[B]] = fa.head.traverseK(f)
+          val r2: G[KT[B]] = fa.tail.traverseK(f)
+          Applicative[G].map2(r1, r2)(_ *: _)
 
         override def foldLeftK[B](b: B)(f: B => A :~>#: B): B =
           val r1 = fa.head.foldLeftK(b)(f)
@@ -186,7 +186,7 @@ trait LowPriorityMapRes {
 
       extension [A[_], C](fa: K[A])
         override def map2K[B[_], Z[_]](fb: K[B])(f: [X] => (A[X], B[X]) => Z[X]): K[Z] =
-          fa.map2(fb)((a, b) => a.map2K(b)(f))
+          Apply[G].map2(fa, fb)((a, b) => a.map2K(b)(f))
 
         override def mapK[B[_]](f: A :~>: B): K[B] = fa.map(_.mapK(f))
     }

@@ -1,9 +1,6 @@
 ---
-layout: home
-title: "DataPrism"
+title: DataPrism
 ---
-
-{% assign versions = site.data.versions %}
 
 # DataPrism
 
@@ -25,10 +22,10 @@ report bugs and errors.
 Add DataPrism to your project by adding these statements to your `build.sbt` file.
 ```scala
 // For JDBC
-libraryDependencies += "net.katsstuff" %% "dataprism-jdbc" % "{{versions.dataprism}}"
+libraryDependencies += "net.katsstuff" %% "dataprism-jdbc" % "{{projectVersion}}"
 
 // For Skunk
-libraryDependencies += "net.katsstuff" %% "dataprism-skunk" % "{{versions.dataprism}}"
+libraryDependencies += "net.katsstuff" %% "dataprism-skunk" % "{{projectVersion}}"
 ```
 
 # More information

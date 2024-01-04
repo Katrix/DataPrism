@@ -5,12 +5,11 @@ import scala.annotation.targetName
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.sharedast.{SelectAst, SqlExpr}
+import dataprism.sql.*
 import perspective.*
 
-import dataprism.sql.*
-
 trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
-  
+
   case class ValueSourceAstMetaData[A[_[_]]](ast: SelectAst.From[Type], values: A[DbValue])
 
   trait SqlValueSourceBase[A[_[_]]] {
@@ -73,8 +72,8 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
     }
 
     def applyKC: ApplyKC[A] = this match
-      case SqlValueSource.FromQuery(q)            => q.applyK
-      case SqlValueSource.FromTable(table)        => table.FA
+      case SqlValueSource.FromQuery(q)     => q.applyK
+      case SqlValueSource.FromTable(table) => table.FA
       case SqlValueSource.InnerJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
         given ApplyKC[lt] = l.applyKC
         given ApplyKC[rt] = r.applyKC
@@ -186,9 +185,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
             val newValues =
               meta.aliases.map2K(meta.values)(
-                [X] =>
-                  (alias: String, value: DbValue[X]) =>
-                    SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).lift
+                [X] => (alias: String, value: DbValue[X]) => SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).lift
               )
 
             (
@@ -206,8 +203,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
           val queryName = s"${table.tableName}_y$queryNum"
 
           val values = table.columns.mapK(
-            [X] =>
-              (column: Column[X, Type]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).lift
+            [X] => (column: Column[X, Type]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).lift
           )
 
           (
@@ -219,7 +215,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
       case SqlValueSource.InnerJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         fromPartJoin(lhs, rhs, on, SelectAst.From.InnerJoin.apply, (a, b) => (a, b))
       case SqlValueSource.CrossJoin(lhs: ValueSource[l], rhs: ValueSource[r]) =>
-        lhs.fromPartAndValues.map2(rhs.fromPartAndValues) { case (lmeta, rmeta) =>
+        (lhs.fromPartAndValues, rhs.fromPartAndValues).mapN { (lmeta, rmeta) =>
           ValueSourceAstMetaData(SelectAst.From.CrossJoin(lmeta.ast, rmeta.ast), (lmeta.values, rmeta.values))
         }
       case SqlValueSource.LeftJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
@@ -245,5 +241,5 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
   extension (c: ValueSourceCompanion)
     @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A]
-    
+
 }

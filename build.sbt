@@ -51,42 +51,31 @@ lazy val skunk = project
   )
   .dependsOn(common)
 
-lazy val docsMappingsAPIDir = settingKey[String]("Name of subdirectory in site target directory for api docs")
-
 lazy val docs = project
-  .enablePlugins(MicrositesPlugin, ScalaUnidocPlugin, GhpagesPlugin)
+  .enablePlugins(ScalaUnidocPlugin)
   .settings(
     commonSettings,
-    micrositeName                          := "DataPrism",
-    micrositeAuthor                        := "Katrix",
-    micrositeDescription                   := "A new FRM with focus on Higher Kinded Data",
-    micrositeDocumentationUrl              := "/api/dataprism",
-    micrositeDocumentationLabelDescription := "ScalaDoc",
-    micrositeHomepage                      := "https://dataprism.katsstuff.net",
-    micrositeGithubOwner                   := "Katrix",
-    micrositeGithubRepo                    := "DataPrism",
-    micrositeGitterChannel                 := false,
-    micrositeShareOnSocial                 := false,
-    micrositeTheme                         := "pattern",
-    ghpagesCleanSite / excludeFilter       := "CNAME",
-    micrositePushSiteWith                  := GitHub4s,
-    micrositeGithubToken                   := sys.env.get("GITHUB_TOKEN"),
-    autoAPIMappings                        := true,
+    autoAPIMappings := true,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
       common,
       jdbc,
       skunk
     ),
-    docsMappingsAPIDir := "api",
-    addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, docsMappingsAPIDir),
-    // mdoc / fork := true,
-    mdocIn := sourceDirectory.value / "main" / "mdoc",
-    // ScalaUnidoc / unidoc / fork := true,
     ScalaUnidoc / unidoc / scalacOptions ++= Seq(
-      "-doc-source-url",
-      "https://github.com/Katrix/DataPrism/tree/master€{FILE_PATH}.scala",
       "-sourcepath",
-      (LocalRootProject / baseDirectory).value.getAbsolutePath
+      (LocalRootProject / baseDirectory).value.getAbsolutePath,
+      "-siteroot",
+      "docs",
+      "-project",
+      "DataPrism",
+      "-project-version",
+      version.value,
+      "-social-links:github::https://github.com/Katrix/DataPrism",
+      "-source-links:github://Katrix/DataPrism",
+      "-revision",
+      "main",
+      "-Yapi-subdirectory",
+      "api"
     )
   )
 
