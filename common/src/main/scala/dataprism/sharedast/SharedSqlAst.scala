@@ -10,6 +10,7 @@ object SqlExpr {
   case class BinOp[Type[_]](lhs: SqlExpr[Type], rhs: SqlExpr[Type], op: BinaryOperation) extends SqlExpr[Type]
   case class FunctionCall[Type[_]](functionCall: FunctionName, args: Seq[SqlExpr[Type]]) extends SqlExpr[Type]
   case class PreparedArgument[Type[_]](name: Option[String], arg: SqlArg[Type])          extends SqlExpr[Type]
+  case class Null[Type[_]]()                                                             extends SqlExpr[Type]
   case class IsNull[Type[_]](expr: SqlExpr[Type])                                        extends SqlExpr[Type]
   case class IsNotNull[Type[_]](expr: SqlExpr[Type])                                     extends SqlExpr[Type]
   case class InValues[Type[_]](expr: SqlExpr[Type], values: Seq[SqlExpr[Type]])          extends SqlExpr[Type]

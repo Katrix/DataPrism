@@ -329,6 +329,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     inline def function[T, B](name: String, tpe: Type[B])(args: T)(using mr: MapRes[DbValue, T]): DbValue[B] =
       functionK(name, tpe)(mr.toK(args))(using mr.traverseKC)
+
+    def nullV[A](using ev: NotGiven[A <:< Option[_]]): DbValue[Nullable[A]] = SqlDbValue.Null(ev).lift
   }
 
   enum SqlDbValue[A] extends SqlDbValueBase[A] {
@@ -350,6 +352,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     case SubSelect(query: Query[IdFC[A]])
 
+    case Null[B](ev: NotGiven[B <:< Option[_]])  extends SqlDbValue[Nullable[B]]
     case IsNull[B](value: DbValue[Option[B]])    extends SqlDbValue[Boolean]
     case IsNotNull[B](value: DbValue[Option[B]]) extends SqlDbValue[Boolean]
 
@@ -385,6 +388,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       case SqlDbValue.SubSelect(query) => query.selectAstAndValues.map(m => SqlExpr.SubSelect(m.ast))
 
+      case SqlDbValue.Null(_)          => State.pure(SqlExpr.Null())
       case SqlDbValue.IsNull(value)    => value.ast.map(v => SqlExpr.IsNull(v))
       case SqlDbValue.IsNotNull(value) => value.ast.map(v => SqlExpr.IsNotNull(v))
 
@@ -428,16 +432,17 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Placeholder(_, tpe)        => tpe
       case SqlDbValue.CompilePlaceholder(_, tpe) => tpe
       case SqlDbValue.SubSelect(query)           => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
-      case SqlDbValue.IsNull(_)                  => AnsiTypes.boolean
-      case SqlDbValue.IsNotNull(_)               => AnsiTypes.boolean
-      case SqlDbValue.InValues(_, _, tpe)        => tpe
-      case SqlDbValue.NotInValues(_, _, tpe)     => tpe
-      case SqlDbValue.InQuery(_, _, tpe)         => tpe
-      case SqlDbValue.NotInQuery(_, _, tpe)      => tpe
-      case SqlDbValue.ValueCase(_, _, orElse)    => orElse.tpe
-      case SqlDbValue.ConditionCase(_, orElse)   => orElse.tpe
-      case SqlDbValue.Custom(_, _, tpe)          => tpe
-      case SqlDbValue.QueryCount                 => AnsiTypes.bigint
+      case n: SqlDbValue.Null[b]              => AnsiTypes.nullable(AnsiTypes.boolean.asInstanceOf[Type[b]])(using n.ev)
+      case SqlDbValue.IsNull(_)               => AnsiTypes.boolean
+      case SqlDbValue.IsNotNull(_)            => AnsiTypes.boolean
+      case SqlDbValue.InValues(_, _, tpe)     => tpe
+      case SqlDbValue.NotInValues(_, _, tpe)  => tpe
+      case SqlDbValue.InQuery(_, _, tpe)      => tpe
+      case SqlDbValue.NotInQuery(_, _, tpe)   => tpe
+      case SqlDbValue.ValueCase(_, _, orElse) => orElse.tpe
+      case SqlDbValue.ConditionCase(_, orElse) => orElse.tpe
+      case SqlDbValue.Custom(_, _, tpe)        => tpe
+      case SqlDbValue.QueryCount               => AnsiTypes.bigint
     end tpe
 
     override def unsafeAsAnyDbVal: AnyDbValue = this.lift.unsafeAsAnyDbVal
@@ -455,7 +460,10 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   extension [A](dbValue: DbValue[A])
     @targetName("dbValueAsMany") protected inline def unsafeDbValAsMany: Many[A] = dbValue.asInstanceOf[Many[A]]
 
-  extension [A](v: A) def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).lift
+  extension [A](v: A)
+    def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).lift
+    def asNullable(tpe: Type[A])(using NotGiven[A <:< Option[_]]): DbValue[Nullable[A]] =
+      Some(v).as(AnsiTypes.nullable(tpe).asInstanceOf[Type[Option[A]]]).asInstanceOf[DbValue[Nullable[A]]]
 
   extension (boolVal: DbValue[Boolean])
     @targetName("dbValBooleanAnd") def &&(that: DbValue[Boolean]): DbValue[Boolean] =

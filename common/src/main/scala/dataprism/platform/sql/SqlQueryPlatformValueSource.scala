@@ -220,10 +220,10 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
         }
       case SqlValueSource.LeftJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         import rhs.given
-        fromPartJoin(lhs, rhs, on, SelectAst.From.RightOuterJoin.apply, (a, b) => (a, mapJoinNullable(b)))
+        fromPartJoin(lhs, rhs, on, SelectAst.From.LeftOuterJoin.apply, (a, b) => (a, mapJoinNullable(b)))
       case SqlValueSource.RightJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         import lhs.given
-        fromPartJoin(lhs, rhs, on, SelectAst.From.LeftOuterJoin.apply, (a, b) => (mapJoinNullable(a), b))
+        fromPartJoin(lhs, rhs, on, SelectAst.From.RightOuterJoin.apply, (a, b) => (mapJoinNullable(a), b))
       case SqlValueSource.FullJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         import lhs.given
         import rhs.given

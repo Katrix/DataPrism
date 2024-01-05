@@ -104,6 +104,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SqlExpr.FunctionCall(functionCall, args) => renderFunctionCall(functionCall, args)
     case SqlExpr.PreparedArgument(_, arg)         => SqlStr("?", Seq(arg))
 
+    case SqlExpr.Null()          => sql"NULL"
     case SqlExpr.IsNull(expr)    => sql"${renderExpr(expr)} IS NULL"
     case SqlExpr.IsNotNull(expr) => sql"${renderExpr(expr)} IS NOT NULL"
 
