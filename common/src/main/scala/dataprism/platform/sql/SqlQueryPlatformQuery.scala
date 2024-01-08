@@ -145,7 +145,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
         val columnNumState: State[Int, A[Const[String]]] =
           values.traverseK(
-            [X] => (_: DbValue[X]) => State[Int, Const[String][X]]((acc: Int) => (acc + 1, s"x$acc"))
+            [X] => (dbVal: DbValue[X]) => State[Int, Const[String][X]]((acc: Int) => (acc + 1, dbVal.columnName(s"x$acc")))
           )
 
         val (newColumnNum, columnAliases) = columnNumState.run(columnNum).value
@@ -661,7 +661,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
               [X] =>
                 (dbVal: DbValue[X]) =>
                   State[Int, (DbValue[X], String)]((acc: Int) =>
-                    val colName = s"x$acc"
+                    val colName = dbVal.columnName(s"x$acc")
                     (acc + 1, (SqlDbValue.QueryColumn[X](colName, queryName, dbVal.tpe).lift, colName))
                 )
             )

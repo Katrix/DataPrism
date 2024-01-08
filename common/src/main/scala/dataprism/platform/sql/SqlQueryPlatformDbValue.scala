@@ -16,6 +16,7 @@ import perspective.*
 trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   trait SqlUnaryOpBase[V, R] {
+    def name: String
     def ast: SqlExpr.UnaryOperation
 
     def tpe(v: DbValue[V]): Type[R]
@@ -24,6 +25,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   type UnaryOp[V, R] <: SqlUnaryOpBase[V, R]
 
   trait SqlBinOpBase[LHS, RHS, R] {
+    def name: String
     def ast: SqlExpr.BinaryOperation
 
     def tpe(lhs: DbValue[LHS], rhs: DbValue[RHS]): Type[R]
@@ -33,11 +35,11 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   type BinOp[LHS, RHS, R] <: SqlBinOpBase[LHS, RHS, R]
 
-  enum SqlUnaryOp[V, R](op: SqlExpr.UnaryOperation) extends SqlUnaryOpBase[V, R] {
-    case Not                                 extends SqlUnaryOp[Boolean, Boolean](SqlExpr.UnaryOperation.Not)
-    case Negative[A](numeric: SqlNumeric[A]) extends SqlUnaryOp[A, A](SqlExpr.UnaryOperation.Negation)
+  enum SqlUnaryOp[V, R](val name: String, op: SqlExpr.UnaryOperation) extends SqlUnaryOpBase[V, R] {
+    case Not                                 extends SqlUnaryOp[Boolean, Boolean]("not", SqlExpr.UnaryOperation.Not)
+    case Negative[A](numeric: SqlNumeric[A]) extends SqlUnaryOp[A, A]("negation", SqlExpr.UnaryOperation.Negation)
     case NullableOp[V1, R1](op: UnaryOp[V1, R1], ev: NotGiven[R1 <:< Option[_]])
-        extends SqlUnaryOp[Nullable[V1], Nullable[R1]](op.ast)
+        extends SqlUnaryOp[Nullable[V1], Nullable[R1]](op.name, op.ast)
 
     override def ast: SqlExpr.UnaryOperation = op
 
@@ -49,23 +51,23 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R]
 
-  enum SqlBinOp[LHS, RHS, R](op: SqlExpr.BinaryOperation) extends SqlBinOpBase[LHS, RHS, R] {
-    case Eq[A]()             extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Eq)
-    case Neq[A]()            extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.Neq)
-    case And                 extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolAnd)
-    case Or                  extends SqlBinOp[Boolean, Boolean, Boolean](SqlExpr.BinaryOperation.BoolOr)
-    case LessThan[A]()       extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.LessThan)
-    case LessOrEqual[A]()    extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.LessOrEq)
-    case GreaterThan[A]()    extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.GreaterThan)
-    case GreaterOrEqual[A]() extends SqlBinOp[A, A, Boolean](SqlExpr.BinaryOperation.GreaterOrEq)
+  enum SqlBinOp[LHS, RHS, R](val name: String, op: SqlExpr.BinaryOperation) extends SqlBinOpBase[LHS, RHS, R] {
+    case Eq[A]()             extends SqlBinOp[A, A, Boolean]("eq", SqlExpr.BinaryOperation.Eq)
+    case Neq[A]()            extends SqlBinOp[A, A, Boolean]("neq", SqlExpr.BinaryOperation.Neq)
+    case And                 extends SqlBinOp[Boolean, Boolean, Boolean]("and", SqlExpr.BinaryOperation.BoolAnd)
+    case Or                  extends SqlBinOp[Boolean, Boolean, Boolean]("or", SqlExpr.BinaryOperation.BoolOr)
+    case LessThan[A]()       extends SqlBinOp[A, A, Boolean]("lt", SqlExpr.BinaryOperation.LessThan)
+    case LessOrEqual[A]()    extends SqlBinOp[A, A, Boolean]("le", SqlExpr.BinaryOperation.LessOrEq)
+    case GreaterThan[A]()    extends SqlBinOp[A, A, Boolean]("gt", SqlExpr.BinaryOperation.GreaterThan)
+    case GreaterOrEqual[A]() extends SqlBinOp[A, A, Boolean]("ge", SqlExpr.BinaryOperation.GreaterOrEq)
 
-    case Plus[A](numeric: SqlNumeric[A])     extends SqlBinOp[A, A, A](SqlExpr.BinaryOperation.Plus)
-    case Minus[A](numeric: SqlNumeric[A])    extends SqlBinOp[A, A, A](SqlExpr.BinaryOperation.Minus)
-    case Multiply[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, A](SqlExpr.BinaryOperation.Multiply)
-    case Divide[A](numeric: SqlNumeric[A])   extends SqlBinOp[A, A, A](SqlExpr.BinaryOperation.Divide)
+    case Plus[A](numeric: SqlNumeric[A])     extends SqlBinOp[A, A, A]("plus", SqlExpr.BinaryOperation.Plus)
+    case Minus[A](numeric: SqlNumeric[A])    extends SqlBinOp[A, A, A]("minus", SqlExpr.BinaryOperation.Minus)
+    case Multiply[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, A]("times", SqlExpr.BinaryOperation.Multiply)
+    case Divide[A](numeric: SqlNumeric[A])   extends SqlBinOp[A, A, A]("divide", SqlExpr.BinaryOperation.Divide)
 
     case NullableOp[LHS1, RHS1, R1](binop: BinOp[LHS1, RHS1, R1], ev: NotGiven[R1 <:< Option[_]])
-        extends SqlBinOp[Nullable[LHS1], Nullable[RHS1], Nullable[R1]](binop.ast)
+        extends SqlBinOp[Nullable[LHS1], Nullable[RHS1], Nullable[R1]](binop.name, binop.ast)
 
     override def ast: SqlExpr.BinaryOperation = op
 
@@ -296,6 +298,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     def tpe: Type[A]
 
+    def columnName(prefix: String): String
+
     def unsafeAsAnyDbVal: AnyDbValue
   }
 
@@ -330,7 +334,11 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     inline def function[T, B](name: String, tpe: Type[B])(args: T)(using mr: MapRes[DbValue, T]): DbValue[B] =
       functionK(name, tpe)(mr.toK(args))(using mr.traverseKC)
 
-    def nullV[A](using ev: NotGiven[A <:< Option[_]]): DbValue[Nullable[A]] = SqlDbValue.Null(ev).lift
+    def nullV[A](tpe: Type[A])(using ev: NotGiven[A <:< Option[_]]): DbValue[Nullable[A]] =
+      SqlDbValue.Null(tpe, ev).lift
+
+    def trueV: DbValue[Boolean]  = SqlDbValue.True.lift
+    def falseV: DbValue[Boolean] = SqlDbValue.False.lift
   }
 
   enum SqlDbValue[A] extends SqlDbValueBase[A] {
@@ -352,9 +360,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     case SubSelect(query: Query[IdFC[A]])
 
-    case Null[B](ev: NotGiven[B <:< Option[_]])  extends SqlDbValue[Nullable[B]]
-    case IsNull[B](value: DbValue[Option[B]])    extends SqlDbValue[Boolean]
-    case IsNotNull[B](value: DbValue[Option[B]]) extends SqlDbValue[Boolean]
+    case Null[B](baseTpe: Type[B], ev: NotGiven[B <:< Option[_]]) extends SqlDbValue[Nullable[B]]
+    case IsNull[B](value: DbValue[Option[B]])                     extends SqlDbValue[Boolean]
+    case IsNotNull[B](value: DbValue[Option[B]])                  extends SqlDbValue[Boolean]
 
     case InValues[B, R](v: DbValue[B], values: Seq[DbValue[B]], override val tpe: Type[R])    extends SqlDbValue[R]
     case NotInValues[B, R](v: DbValue[B], values: Seq[DbValue[B]], override val tpe: Type[R]) extends SqlDbValue[R]
@@ -367,6 +375,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     case Custom(args: Seq[AnyDbValue], render: Seq[SqlStr[Type]] => SqlStr[Type], override val tpe: Type[A])
     case QueryCount extends SqlDbValue[Long]
+    case True       extends SqlDbValue[Boolean]
+    case False      extends SqlDbValue[Boolean]
 
     override def ast: TagState[SqlExpr[Type]] = this match
       case SqlDbValue.DbColumn(_)                         => throw new IllegalArgumentException("Value not tagged")
@@ -388,7 +398,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       case SqlDbValue.SubSelect(query) => query.selectAstAndValues.map(m => SqlExpr.SubSelect(m.ast))
 
-      case SqlDbValue.Null(_)          => State.pure(SqlExpr.Null())
+      case SqlDbValue.Null(_, _)       => State.pure(SqlExpr.Null())
       case SqlDbValue.IsNull(value)    => value.ast.map(v => SqlExpr.IsNull(v))
       case SqlDbValue.IsNotNull(value) => value.ast.map(v => SqlExpr.IsNotNull(v))
 
@@ -416,6 +426,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Custom(args, render, _) =>
         args.toVector.traverse(_.ast).map(exprs => SqlExpr.Custom(exprs, render))
       case SqlDbValue.QueryCount => State.pure(SqlExpr.QueryCount())
+      case SqlDbValue.True       => State.pure(SqlExpr.True())
+      case SqlDbValue.False      => State.pure(SqlExpr.False())
     end ast
 
     override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
@@ -432,18 +444,53 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Placeholder(_, tpe)        => tpe
       case SqlDbValue.CompilePlaceholder(_, tpe) => tpe
       case SqlDbValue.SubSelect(query)           => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
-      case n: SqlDbValue.Null[b]              => AnsiTypes.nullable(AnsiTypes.boolean.asInstanceOf[Type[b]])(using n.ev)
-      case SqlDbValue.IsNull(_)               => AnsiTypes.boolean
-      case SqlDbValue.IsNotNull(_)            => AnsiTypes.boolean
-      case SqlDbValue.InValues(_, _, tpe)     => tpe
-      case SqlDbValue.NotInValues(_, _, tpe)  => tpe
-      case SqlDbValue.InQuery(_, _, tpe)      => tpe
-      case SqlDbValue.NotInQuery(_, _, tpe)   => tpe
-      case SqlDbValue.ValueCase(_, _, orElse) => orElse.tpe
-      case SqlDbValue.ConditionCase(_, orElse) => orElse.tpe
-      case SqlDbValue.Custom(_, _, tpe)        => tpe
-      case SqlDbValue.QueryCount               => AnsiTypes.bigint
+      case SqlDbValue.Null(tpe, ev)              => AnsiTypes.nullable(tpe)(using ev)
+      case SqlDbValue.IsNull(_)                  => AnsiTypes.boolean
+      case SqlDbValue.IsNotNull(_)               => AnsiTypes.boolean
+      case SqlDbValue.InValues(_, _, tpe)        => tpe
+      case SqlDbValue.NotInValues(_, _, tpe)     => tpe
+      case SqlDbValue.InQuery(_, _, tpe)         => tpe
+      case SqlDbValue.NotInQuery(_, _, tpe)      => tpe
+      case SqlDbValue.ValueCase(_, _, orElse)    => orElse.tpe
+      case SqlDbValue.ConditionCase(_, orElse)   => orElse.tpe
+      case SqlDbValue.Custom(_, _, tpe)          => tpe
+      case SqlDbValue.QueryCount                 => AnsiTypes.bigint
+      case SqlDbValue.True                       => AnsiTypes.boolean
+      case SqlDbValue.False                      => AnsiTypes.boolean
     end tpe
+
+    override def columnName(prefix: String): String = this match
+      case SqlDbValue.DbColumn(col) => s"${prefix}_${col.name}"
+      case SqlDbValue.QueryColumn(queryName, fromName, _) =>
+        if queryName.startsWith("x") then s"${prefix}_${queryName.drop(1).dropWhile(c => c.isDigit || c == '_')}"
+        else s"${prefix}_$queryName"
+
+      case SqlDbValue.UnaryOp(v, op) => s"${v.columnName(prefix)}_${op.name}"
+      case SqlDbValue.BinOp(lhs, rhs, op) =>
+        s"${lhs.columnName(prefix)}_${rhs.columnName(prefix).substring(prefix.length)}_${op.name}"
+      case SqlDbValue.JoinNullable(value) => value.columnName(prefix)
+      case SqlDbValue.Function(name, values, _) =>
+        s"${values.headOption.fold(prefix)(_.columnName(prefix))}_${name.name}"
+      case SqlDbValue.Cast(v, _, _)            => s"${v.columnName(prefix)}_cast"
+      case SqlDbValue.AsSome(value, _)         => value.columnName(prefix)
+      case SqlDbValue.Placeholder(_, _)        => prefix
+      case SqlDbValue.CompilePlaceholder(_, _) => prefix
+      case SqlDbValue.SubSelect(query) =>
+        query.selectAstAndValues.runA(freshTaggedState).value.values.columnName(prefix)
+      case SqlDbValue.Null(_, _)           => s"${prefix}_prefix"
+      case SqlDbValue.IsNull(v)            => s"${v.columnName(prefix)}_is_null"
+      case SqlDbValue.IsNotNull(v)         => s"${v.columnName(prefix)}_is_not_null"
+      case SqlDbValue.InValues(v, _, _)    => s"${v.columnName(prefix)}_in"
+      case SqlDbValue.NotInValues(v, _, _) => s"${v.columnName(prefix)}_in"
+      case SqlDbValue.InQuery(v, _, _)     => s"${v.columnName(prefix)}_in"
+      case SqlDbValue.NotInQuery(v, _, _)  => s"${v.columnName(prefix)}_in"
+      case SqlDbValue.ValueCase(v, _, _)   => s"${v.columnName(prefix)}_case"
+      case SqlDbValue.ConditionCase(_, _)  => prefix
+      case SqlDbValue.Custom(_, _, _)      => prefix
+      case SqlDbValue.QueryCount           => s"${prefix}_count"
+      case SqlDbValue.True                 => s"${prefix}_true"
+      case SqlDbValue.False                => s"${prefix}_false"
+    end columnName
 
     override def unsafeAsAnyDbVal: AnyDbValue = this.lift.unsafeAsAnyDbVal
 

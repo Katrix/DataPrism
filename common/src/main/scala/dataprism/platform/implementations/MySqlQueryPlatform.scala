@@ -30,6 +30,9 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
     override def tpe: Type[A] = this match
       case MySqlDbValue.SqlDbValue(v) => v.tpe
 
+    override def columnName(prefix: String): String = this match
+      case MySqlDbValue.SqlDbValue(v) => v.columnName(prefix)
+
     override def unsafeAsAnyDbVal: DbValue[Any] = this.asInstanceOf[DbValue[Any]]
     override def liftDbValue: DbValue[A] = this
     override def asc: Ord = Ord.Asc(this)

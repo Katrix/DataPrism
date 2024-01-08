@@ -1,6 +1,7 @@
 package dataprism.sharedast
 
 import cats.syntax.all.*
+import dataprism.sharedast.SqlExpr.{BinaryOperation, FunctionName, UnaryOperation}
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection,SqlDialectInspection
@@ -95,7 +96,138 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
 
       case SqlExpr.FunctionName.Custom(f) => normal(f)
 
-  protected def renderExpr(expr: SqlExpr[Type]): SqlStr[Type] = expr match
+  protected def simplifyExpr(expr: SqlExpr[Type]): SqlExpr[Type] = expr match
+    case SqlExpr.QueryRef(query, column) => SqlExpr.QueryRef(query, column)
+
+    case SqlExpr.UnaryOp(expr, op) =>
+      val se = simplifyExpr(expr)
+      (op, se) match
+        case (UnaryOperation.Not, SqlExpr.True())  => SqlExpr.False()
+        case (UnaryOperation.Not, SqlExpr.False()) => SqlExpr.True()
+        case _                                     => SqlExpr.UnaryOp(se, op)
+
+    case SqlExpr.BinOp(lhs, rhs, op) =>
+      val slhs = simplifyExpr(lhs)
+      val srhs = simplifyExpr(rhs)
+
+      (op, slhs) match
+        case (BinaryOperation.BoolAnd, SqlExpr.True())  => srhs
+        case (BinaryOperation.BoolAnd, SqlExpr.False()) => SqlExpr.False()
+        case (BinaryOperation.BoolOr, SqlExpr.True())   => SqlExpr.True()
+        case (BinaryOperation.BoolOr, SqlExpr.False())  => srhs
+        case (BinaryOperation.Eq, _) if slhs == srhs && exprIsImmutable(slhs) && exprIsImmutable(srhs) => SqlExpr.True()
+        case (BinaryOperation.Neq, _) if slhs == srhs && exprIsImmutable(slhs) && exprIsImmutable(srhs) =>
+          SqlExpr.False()
+        case _ => SqlExpr.BinOp(slhs, srhs, op)
+
+    case SqlExpr.FunctionCall(functionCall, args) => SqlExpr.FunctionCall(functionCall, args.map(simplifyExpr))
+    case SqlExpr.PreparedArgument(name, arg)      => SqlExpr.PreparedArgument(name, arg)
+
+    case SqlExpr.Null()                 => SqlExpr.Null()
+    case SqlExpr.IsNull(SqlExpr.Null()) => SqlExpr.True()
+    case SqlExpr.IsNull(expr) =>
+      simplifyExpr(expr) match
+        case SqlExpr.Null()  => SqlExpr.True()
+        case SqlExpr.False() => SqlExpr.False()
+        case SqlExpr.True()  => SqlExpr.False()
+        case se              => SqlExpr.IsNull(se)
+
+    case SqlExpr.IsNotNull(SqlExpr.Null()) => SqlExpr.False()
+    case SqlExpr.IsNotNull(expr) =>
+      simplifyExpr(expr) match
+        case SqlExpr.Null()  => SqlExpr.False()
+        case SqlExpr.True()  => SqlExpr.True()
+        case SqlExpr.False() => SqlExpr.True()
+        case se              => SqlExpr.IsNull(se)
+
+    case SqlExpr.InValues(expr, values) =>
+      val se      = simplifyExpr(expr)
+      val svalues = values.map(simplifyExpr)
+
+      if svalues.contains(se) && exprIsImmutable(se) && svalues.find(_ == se).forall(exprIsImmutable) then
+        SqlExpr.True()
+      else SqlExpr.InValues(se, svalues)
+    case SqlExpr.NotInValues(expr, values) =>
+      val se      = simplifyExpr(expr)
+      val svalues = values.map(simplifyExpr)
+
+      if svalues.contains(se) && exprIsImmutable(se) && svalues.find(_ == se).forall(exprIsImmutable) then
+        SqlExpr.False()
+      else SqlExpr.NotInValues(se, svalues)
+
+    case SqlExpr.InQuery(expr, selectAst)    => SqlExpr.InQuery(simplifyExpr(expr), selectAst)
+    case SqlExpr.NotInQuery(expr, selectAst) => SqlExpr.NotInQuery(simplifyExpr(expr), selectAst)
+    case SqlExpr.Cast(expr, asType)          => SqlExpr.Cast(simplifyExpr(expr), asType)
+    case SqlExpr.ValueCase(matchOn, cases, orElse) =>
+      val smatchOn = simplifyExpr(matchOn)
+      val scases   = cases.map(t => simplifyExpr(t._1) -> simplifyExpr(t._2))
+
+      scases
+        .collectFirst { case (`smatchOn`, thenV) =>
+          thenV
+        }
+        .getOrElse(
+          if scases.isEmpty then simplifyExpr(orElse)
+          else SqlExpr.ValueCase(smatchOn, scases, simplifyExpr(orElse))
+        )
+
+      SqlExpr.ValueCase(
+        simplifyExpr(matchOn),
+        cases.map(t => simplifyExpr(t._1) -> simplifyExpr(t._2)),
+        simplifyExpr(orElse)
+      )
+    case SqlExpr.ConditionCase(cases, orElse) =>
+      val scases = cases.map(t => simplifyExpr(t._1) -> simplifyExpr(t._2)).filter {
+        case (SqlExpr.False(), _) => false
+        case _                    => true
+      }
+
+      scases
+        .collectFirst { case (SqlExpr.True(), thenV) =>
+          thenV
+        }
+        .getOrElse(
+          if scases.isEmpty then simplifyExpr(orElse)
+          else SqlExpr.ConditionCase(scases, simplifyExpr(orElse))
+        )
+
+    case SqlExpr.SubSelect(selectAst) => SqlExpr.SubSelect(selectAst)
+    case SqlExpr.QueryCount()         => SqlExpr.QueryCount()
+    case SqlExpr.True()               => SqlExpr.True()
+    case SqlExpr.False()              => SqlExpr.False()
+    case SqlExpr.Custom(args, render) => SqlExpr.Custom(args.map(simplifyExpr), render)
+
+  protected def functionIsImmutable(func: SqlExpr.FunctionName): Boolean = func match
+    case FunctionName.Custom(f) => false
+    case _                      => true
+
+  protected def exprIsImmutable(expr: SqlExpr[Type]): Boolean = expr match
+    case SqlExpr.QueryRef(_, _)                   => true
+    case SqlExpr.UnaryOp(expr, _)                 => exprIsImmutable(expr)
+    case SqlExpr.BinOp(lhs, rhs, _)               => exprIsImmutable(lhs) && exprIsImmutable(rhs)
+    case SqlExpr.FunctionCall(functionCall, args) => args.forall(exprIsImmutable) && functionIsImmutable(functionCall)
+    case SqlExpr.PreparedArgument(_, _)           => true
+    case SqlExpr.Null()                           => true
+    case SqlExpr.IsNull(expr)                     => exprIsImmutable(expr)
+    case SqlExpr.IsNotNull(expr)                  => exprIsImmutable(expr)
+    case SqlExpr.InValues(expr, values)           => exprIsImmutable(expr) && values.forall(exprIsImmutable)
+    case SqlExpr.NotInValues(expr, values)        => exprIsImmutable(expr) && values.forall(exprIsImmutable)
+    case SqlExpr.InQuery(_, _)                    => false
+    case SqlExpr.NotInQuery(_, _)                 => false
+    case SqlExpr.Cast(expr, _)                    => exprIsImmutable(expr)
+    case SqlExpr.ValueCase(matchOn, cases, orElse) =>
+      exprIsImmutable(matchOn) && cases.forall(t => exprIsImmutable(t._1) && exprIsImmutable(t._2)) && exprIsImmutable(
+        orElse
+      )
+    case SqlExpr.ConditionCase(cases, orElse) =>
+      cases.forall(t => exprIsImmutable(t._1) && exprIsImmutable(t._2)) && exprIsImmutable(orElse)
+    case SqlExpr.SubSelect(_) => false
+    case SqlExpr.QueryCount() => true
+    case SqlExpr.True()       => true
+    case SqlExpr.False()      => true
+    case SqlExpr.Custom(_, _) => false
+
+  protected def renderExpr(expr: SqlExpr[Type]): SqlStr[Type] = simplifyExpr(expr) match
     case SqlExpr.QueryRef(query, column) => SqlStr.const(s"$query.$column")
 
     case SqlExpr.UnaryOp(expr, op)   => renderUnaryOp(expr, op)
@@ -128,6 +260,8 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SqlExpr.SubSelect(selectAst) => sql"(${renderSelect(selectAst)})"
 
     case SqlExpr.QueryCount()         => sql"COUNT(*)"
+    case SqlExpr.True()               => sql"TRUE"
+    case SqlExpr.False()              => sql"FALSE"
     case SqlExpr.Custom(args, render) => render(args.map(renderExpr))
 
   protected def spaceConcat(args: SqlStr[Type]*): SqlStr[Type] =
@@ -308,13 +442,17 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
       sql"${renderFrom(lhs)} FULL OUTER JOIN ${renderFrom(rhs)} ON ${renderExpr(on)}"
 
   protected def renderWhere(where: SqlExpr[Type]): SqlStr[Type] =
-    spaceConcat(sql"WHERE", renderExpr(where))
+    val e = simplifyExpr(where)
+    if e == SqlExpr.True() then sql""
+    else spaceConcat(sql"WHERE", renderExpr(e))
 
   protected def renderGroupBy(groupBy: SelectAst.GroupBy[Type]): SqlStr[Type] =
     spaceConcat(sql"GROUP BY", groupBy.exprs.map(renderExpr).intercalate(sql", "))
 
   protected def renderHaving(having: SqlExpr[Type]): SqlStr[Type] =
-    spaceConcat(sql"HAVING", renderExpr(having))
+    val e = simplifyExpr(having)
+    if e == SqlExpr.True() then sql""
+    else spaceConcat(sql"HAVING", renderExpr(e))
 
   protected def renderSetOperatorData(data: SelectAst.SetOperator[Type]): SqlStr[Type] =
     val keyword = data match

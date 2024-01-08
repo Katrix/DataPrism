@@ -21,9 +21,6 @@ class DataSourceDb(ds: DataSource)(using ExecutionContext) extends Db[Future, Jd
   private def makePrepared[A](sql: SqlStr[JdbcType])(f: Using.Manager ?=> (PreparedStatement, Connection) => A): Future[A] =
     Future {
       Using.Manager { implicit man =>
-        println("Making prepared statement")
-        println(sql.str)
-
         val con = ds.getConnection.acquired
         val ps = con.prepareStatement(sql.str).acquired
 

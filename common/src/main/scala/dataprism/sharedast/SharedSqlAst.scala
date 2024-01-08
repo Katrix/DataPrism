@@ -29,6 +29,8 @@ object SqlExpr {
 
   case class SubSelect[Type[_]](selectAst: SelectAst[Type]) extends SqlExpr[Type]
   case class QueryCount[Type[_]]()                          extends SqlExpr[Type]
+  case class True[Type[_]]()                                extends SqlExpr[Type]
+  case class False[Type[_]]()                               extends SqlExpr[Type]
 
   case class Custom[Type[_]](args: Seq[SqlExpr[Type]], render: Seq[SqlStr[Type]] => SqlStr[Type]) extends SqlExpr[Type]
 
@@ -100,6 +102,10 @@ object SqlExpr {
     case NullIf
 
     case Custom(f: String)
+
+    def name: String = this match
+      case FunctionName.Custom(s) => s
+      case _                      => this.toString
 }
 
 sealed trait SelectAst[Type[_]]

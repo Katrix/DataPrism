@@ -54,6 +54,10 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       case PostgresDbValue.ArrayOf(_, tpe, extraArrayTypeArgs) => arrayType(tpe)(using extraArrayTypeArgs)
     end tpe
 
+    override def columnName(prefix: String): String = this match
+      case PostgresDbValue.SqlDbValue(v)         => v.columnName(prefix)
+      case PostgresDbValue.ArrayOf(values, _, _) => s"${values.headOption.fold(prefix)(_.columnName(prefix))}_array"
+
     def singletonArray(using extraArrayTypeArgs: ArrayTypeArgs[A]): DbValue[Seq[A]] =
       PostgresDbValue.ArrayOf(Seq(this), tpe, extraArrayTypeArgs)
 
@@ -353,7 +357,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
           def traverseK[G[_]: Applicative, Y[_]](f: X :~>: Compose2[G, Y]): G[InnerJoin[A, B][Y]] =
             Applicative[G].product(
               fa._1.traverseK(f),
-              fa._2.traverseK(f),
+              fa._2.traverseK(f)
             )
       }
 
