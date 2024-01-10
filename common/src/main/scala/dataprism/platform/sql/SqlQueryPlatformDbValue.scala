@@ -33,20 +33,32 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   extension [A](tpe: Type[A]) @targetName("typeName") def name: String
 
+  extension [A](tpe: Type[A])
+    @targetName("typeTypedChoiceNotNull") protected def typedChoice(
+        using NotGiven[A <:< Option[_]]
+    ): NullabilityTypeChoice[A, Codec] = tpe.choice.asInstanceOf[NullabilityTypeChoice[A, Codec]]
+
+  extension [A](tpe: Type[Nullable[A]])
+    @targetName("typeTypedChoiceNullable") protected def typedChoice: NullabilityTypeChoice[A, Codec] =
+      tpe.choice.asInstanceOf[NullabilityTypeChoice[A, Codec]]
+
   type BinOp[LHS, RHS, R] <: SqlBinOpBase[LHS, RHS, R]
 
   enum SqlUnaryOp[V, R](val name: String, op: SqlExpr.UnaryOperation) extends SqlUnaryOpBase[V, R] {
-    case Not                                 extends SqlUnaryOp[Boolean, Boolean]("not", SqlExpr.UnaryOperation.Not)
-    case Negative[A](numeric: SqlNumeric[A]) extends SqlUnaryOp[A, A]("negation", SqlExpr.UnaryOperation.Negation)
-    case NullableOp[V1, R1](op: UnaryOp[V1, R1], ev: NotGiven[R1 <:< Option[_]])
-        extends SqlUnaryOp[Nullable[V1], Nullable[R1]](op.name, op.ast)
+    case Not                                     extends SqlUnaryOp[Boolean, Boolean]("not", SqlExpr.UnaryOperation.Not)
+    case Negative[A](numeric: SqlNumeric[A])     extends SqlUnaryOp[A, A]("negation", SqlExpr.UnaryOperation.Negation)
+    case NullableOp[V1, R1](op: UnaryOp[V1, R1]) extends SqlUnaryOp[Nullable[V1], Nullable[R1]](op.name, op.ast)
 
     override def ast: SqlExpr.UnaryOperation = op
 
     override def tpe(v: DbValue[V]): Type[R] = this match
-      case Not                    => AnsiTypes.boolean
-      case Negative(numeric)      => numeric.tpe(v, v)
-      case nop: NullableOp[v1, _] => AnsiTypes.nullable(nop.op.tpe(v.asInstanceOf[DbValue[v1]]))(using nop.ev)
+      case Not               => AnsiTypes.boolean.notNull
+      case Negative(numeric) => numeric.tpe(v, v)
+      case nop: NullableOp[v1, r1] =>
+        given ev1: (DbValue[V] =:= DbValue[Nullable[v1]]) = <:<.refl
+        given ev2: (Type[Nullable[r1]] =:= Type[R])       = <:<.refl
+
+        ev2(nop.op.tpe(ev1(v).unsafeGet).typedChoice.nullable)
   }
 
   extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R]
@@ -66,40 +78,48 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case Multiply[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, A]("times", SqlExpr.BinaryOperation.Multiply)
     case Divide[A](numeric: SqlNumeric[A])   extends SqlBinOp[A, A, A]("divide", SqlExpr.BinaryOperation.Divide)
 
-    case NullableOp[LHS1, RHS1, R1](binop: BinOp[LHS1, RHS1, R1], ev: NotGiven[R1 <:< Option[_]])
+    case NullableOp[LHS1, RHS1, R1](binop: BinOp[LHS1, RHS1, R1])
         extends SqlBinOp[Nullable[LHS1], Nullable[RHS1], Nullable[R1]](binop.name, binop.ast)
 
     override def ast: SqlExpr.BinaryOperation = op
 
     override def tpe(lhs: DbValue[LHS], rhs: DbValue[RHS]): Type[R] = this match
-      case Eq()             => AnsiTypes.boolean
-      case Neq()            => AnsiTypes.boolean
-      case And              => AnsiTypes.boolean
-      case Or               => AnsiTypes.boolean
-      case LessThan()       => AnsiTypes.boolean
-      case LessOrEqual()    => AnsiTypes.boolean
-      case GreaterThan()    => AnsiTypes.boolean
-      case GreaterOrEqual() => AnsiTypes.boolean
+      case Eq()             => AnsiTypes.boolean.notNull
+      case Neq()            => AnsiTypes.boolean.notNull
+      case And              => AnsiTypes.boolean.notNull
+      case Or               => AnsiTypes.boolean.notNull
+      case LessThan()       => AnsiTypes.boolean.notNull
+      case LessOrEqual()    => AnsiTypes.boolean.notNull
+      case GreaterThan()    => AnsiTypes.boolean.notNull
+      case GreaterOrEqual() => AnsiTypes.boolean.notNull
 
       case Plus(numeric)     => numeric.tpe(lhs, rhs)
       case Minus(numeric)    => numeric.tpe(lhs, rhs)
       case Multiply(numeric) => numeric.tpe(lhs, rhs)
       case Divide(numeric)   => numeric.tpe(lhs, rhs)
 
-      case nop: NullableOp[lhs1, rhs1, _] =>
-        AnsiTypes.nullable(nop.binop.tpe(lhs.asInstanceOf[DbValue[lhs1]], rhs.asInstanceOf[DbValue[rhs1]]))(
-          using nop.ev
-        )
+      case nop: NullableOp[lhs1, rhs1, r1] =>
+        given ev1: (DbValue[LHS] =:= DbValue[Nullable[lhs1]]) = <:<.refl
+        given ev2: (DbValue[RHS] =:= DbValue[Nullable[rhs1]]) = <:<.refl
+        given ev3: (Type[Nullable[r1]] =:= Type[R])           = <:<.refl
+
+        ev3(nop.binop.tpe(ev1(lhs).unsafeGet, ev2(rhs).unsafeGet).typedChoice.nullable)
     end tpe
   }
 
   extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R]
 
   trait Nullability[A] extends NullabilityBase[A]:
+    def wrapDbVal[B](dbVal: DbValue[B]): DbValue[N[B]]
     def wrapType[B](tpe: Type[B]): Type[N[B]]
     def wrapBinOp[LHS, RHS, R](binOp: BinOp[LHS, RHS, R]): BinOp[N[LHS], N[RHS], N[R]]
     def wrapUnaryOp[V, R](unaryOp: UnaryOp[V, R]): UnaryOp[N[V], N[R]]
     def castDbVal(dbVal: DbValue[A]): DbValue[N[A]] = dbVal.asInstanceOf[DbValue[N[A]]]
+
+  type NullabilityOf[A] <: Nullability[A] = A match {
+    case Option[b] => Nullability.Aux[A, b, Nullable]
+    case _         => Nullability.Aux[A, A, Id]
+  }
 
   object Nullability:
     type Aux[A, NNA0, N0[_]] = Nullability[A] { type N[B] = N0[B]; type NNA = NNA0 }
@@ -107,18 +127,22 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     given notNull[A](using NotGiven[A <:< Option[_]]): Nullability.Aux[A, A, Id] = new Nullability[A]:
       type N[B] = B
       type NNA  = A
-      override def wrapType[B](tpe: Type[B]): Type[B]                                    = tpe
+
+      override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[B]                           = dbVal
+      override def wrapType[B](tpe: Type[B]): Type[B]                                    = tpe.typedChoice.notNull
       override def wrapBinOp[LHS, RHS, R](binOp: BinOp[LHS, RHS, R]): BinOp[LHS, RHS, R] = binOp
       override def wrapUnaryOp[V, R](unaryOp: UnaryOp[V, R]): UnaryOp[V, R]              = unaryOp
 
     given nullable[A, NN](using A <:< Option[NN]): Nullability.Aux[A, NN, Nullable] = new Nullability[A]:
       type N[B] = Nullable[B]
       type NNA  = NN
-      override def wrapType[B](tpe: Type[B]): Type[Nullable[B]] = AnsiTypes.nullable(tpe)(using NotGiven.value)
+
+      override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[Nullable[B]] = dbVal.asSome
+      override def wrapType[B](tpe: Type[B]): Type[Nullable[B]]          = tpe.typedChoice.nullable
       override def wrapBinOp[LHS, RHS, R](binOp: BinOp[LHS, RHS, R]): BinOp[Nullable[LHS], Nullable[RHS], Nullable[R]] =
-        SqlBinOp.NullableOp(binOp, NotGiven.value).liftSqlBinOp
+        SqlBinOp.NullableOp(binOp).liftSqlBinOp
       override def wrapUnaryOp[V, R](unaryOp: UnaryOp[V, R]): UnaryOp[Nullable[V], Nullable[R]] =
-        SqlUnaryOp.NullableOp(unaryOp, NotGiven.value).liftSqlUnaryOp
+        SqlUnaryOp.NullableOp(unaryOp).liftSqlUnaryOp
 
   trait SqlNumeric[A]:
     def tpe(lhs: DbValue[A], rhs: DbValue[A]): Type[A]
@@ -133,19 +157,21 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     extension (lhs: Many[A])
       // TODO: Having these in here is quite broad. Might want to tighten this
       def avg: DbValue[Nullable[A]] =
+        import Many.unsafeAsDbValue
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Avg,
             Seq(lhs.unsafeAsAnyDbVal),
-            AnsiTypes.nullable(lhs.asInstanceOf[DbValue[A]].tpe)(using NotGiven.value)
+            lhs.unsafeAsDbValue.tpe.typedChoice.nullable
           )
           .lift
       def sum: DbValue[Nullable[A]] =
+        import Many.unsafeAsDbValue
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Sum,
             Seq(lhs.unsafeAsAnyDbVal),
-            AnsiTypes.nullable(lhs.asInstanceOf[DbValue[A]].tpe)(using NotGiven.value)
+            lhs.unsafeAsDbValue.tpe.typedChoice.nullable
           )
           .lift
 
@@ -178,7 +204,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   given sqlNumericBigDecimal: SqlNumeric[BigDecimal]            = SqlNumeric.defaultInstance
   given sqlNumericOptBigDecimal: SqlNumeric[Option[BigDecimal]] = SqlNumeric.defaultInstance
 
-  trait SqlOrdered[A]:
+  trait SqlOrdered[A](using val n: NullabilityOf[A]):
     def greatest(head: DbValue[A], tail: DbValue[A]*): DbValue[A] =
       SqlDbValue.Function(SqlExpr.FunctionName.Greatest, (head +: tail).map(_.unsafeAsAnyDbVal), head.tpe).lift
 
@@ -186,10 +212,10 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       SqlDbValue.Function(SqlExpr.FunctionName.Least, (head +: tail).map(_.unsafeAsAnyDbVal), head.tpe).lift
 
     extension (lhs: DbValue[A])
-      @targetName("lessThan") def <(rhs: DbValue[A]): DbValue[Boolean]
-      @targetName("lessOrEqual") def <=(rhs: DbValue[A]): DbValue[Boolean]
-      @targetName("greaterOrEqual") def >=(rhs: DbValue[A]): DbValue[Boolean]
-      @targetName("greatherThan") def >(rhs: DbValue[A]): DbValue[Boolean]
+      @targetName("lessThan") def <(rhs: DbValue[A]): DbValue[n.N[Boolean]]
+      @targetName("lessOrEqual") def <=(rhs: DbValue[A]): DbValue[n.N[Boolean]]
+      @targetName("greaterOrEqual") def >=(rhs: DbValue[A]): DbValue[n.N[Boolean]]
+      @targetName("greatherThan") def >(rhs: DbValue[A]): DbValue[n.N[Boolean]]
 
       @targetName("leastExtension") def least(rhss: DbValue[A]*): DbValue[A]       = this.least(lhs, rhss*)
       @targetName("greatestExtension") def greatest(rhss: DbValue[A]*): DbValue[A] = this.greatest(lhs, rhss*)
@@ -197,33 +223,35 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     extension (lhs: Many[A])
       // TODO: Having these in here is quite broad. Might want to tighten this
       def min: DbValue[Nullable[A]] =
+        import Many.unsafeAsDbValue
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Min,
             Seq(lhs.unsafeAsAnyDbVal),
-            AnsiTypes.nullable(lhs.asInstanceOf[DbValue[A]].tpe)(using NotGiven.value)
+            lhs.unsafeAsDbValue.tpe.typedChoice.nullable
           )
           .lift
       def max: DbValue[Nullable[A]] =
+        import Many.unsafeAsDbValue
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Max,
             Seq(lhs.unsafeAsAnyDbVal),
-            AnsiTypes.nullable(lhs.asInstanceOf[DbValue[A]].tpe)(using NotGiven.value)
+            lhs.unsafeAsDbValue.tpe.typedChoice.nullable
           )
           .lift
 
   object SqlOrdered:
-    def defaultInstance[A]: SqlOrdered[A] = new SqlOrdered[A]:
+    def defaultInstance[A](using na: NullabilityOf[A]): SqlOrdered[A] = new SqlOrdered[A]:
       extension (lhs: DbValue[A])
-        @targetName("lessThan") def <(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessThan().liftSqlBinOp).lift
-        @targetName("lessOrEqual") def <=(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessOrEqual().liftSqlBinOp).lift
-        @targetName("greaterOrEqual") def >=(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterOrEqual().liftSqlBinOp).lift
-        @targetName("greatherThan") def >(rhs: DbValue[A]): DbValue[Boolean] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift
+        @targetName("lessThan") def <(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
+          n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessThan().liftSqlBinOp).lift)
+        @targetName("lessOrEqual") def <=(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
+          n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessOrEqual().liftSqlBinOp).lift)
+        @targetName("greaterOrEqual") def >=(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
+          n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterOrEqual().liftSqlBinOp).lift)
+        @targetName("greatherThan") def >(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
+          n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift)
 
   given sqlOrderedShort: SqlOrdered[Short]                    = SqlOrdered.defaultInstance
   given sqlOrderedOptShort: SqlOrdered[Option[Short]]         = SqlOrdered.defaultInstance
@@ -270,29 +298,29 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     @targetName("dbValInValues") def in(head: DbValue[A], tail: DbValue[A]*)(
         using n: Nullability[A]
     ): DbValue[n.N[Boolean]] =
-      SqlDbValue.InValues(this.liftDbValue, head +: tail, n.wrapType(AnsiTypes.boolean)).lift
+      SqlDbValue.InValues(this.liftDbValue, head +: tail, n.wrapType(AnsiTypes.boolean.notNull)).lift
 
     @targetName("dbValNotInValues") def notIn(head: DbValue[A], tail: DbValue[A]*)(
         using n: Nullability[A]
     ): DbValue[n.N[Boolean]] =
-      SqlDbValue.NotInValues(this.liftDbValue, head +: tail, n.wrapType(AnsiTypes.boolean)).lift
+      SqlDbValue.NotInValues(this.liftDbValue, head +: tail, n.wrapType(AnsiTypes.boolean.notNull)).lift
 
     @targetName("dbValInQuery") def in(query: Query[IdFC[A]])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
-      SqlDbValue.InQuery(this.liftDbValue, query, n.wrapType(AnsiTypes.boolean)).lift
+      SqlDbValue.InQuery(this.liftDbValue, query, n.wrapType(AnsiTypes.boolean.notNull)).lift
 
     @targetName("dbValNotInQuery") def notIn(query: Query[IdFC[A]])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
-      SqlDbValue.NotInQuery(this.liftDbValue, query, n.wrapType(AnsiTypes.boolean)).lift
+      SqlDbValue.NotInQuery(this.liftDbValue, query, n.wrapType(AnsiTypes.boolean.notNull)).lift
 
     @targetName("dbValNullIf") def nullIf(arg: DbValue[A]): DbValue[Nullable[A]] =
       SqlDbValue
         .Function(
           SqlExpr.FunctionName.NullIf,
           Seq(this.unsafeAsAnyDbVal, arg.unsafeAsAnyDbVal),
-          AnsiTypes.nullable(arg.tpe)
+          arg.tpe.typedChoice.nullable
         )
         .lift
 
-    def ast: TagState[SqlExpr[Type]]
+    def ast: TagState[SqlExpr[Codec]]
 
     def asSqlDbVal: Option[SqlDbValue[A]]
 
@@ -309,7 +337,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   type DbValueCompanion <: SqlDbValueCompanion
   trait SqlDbValueCompanion {
     def rawK[A[_[_]]: TraverseKC, B](args: A[DbValue], tpe: Type[B])(
-        render: A[Const[SqlStr[Type]]] => SqlStr[Type]
+        render: A[Const[SqlStr[Codec]]] => SqlStr[Codec]
     ): DbValue[B] =
       val argsList: List[AnyDbValue] = args.foldMapK([X] => (v: DbValue[X]) => List(v.unsafeAsAnyDbVal))
       val indicesState: State[Int, A[Const[Int]]] =
@@ -318,7 +346,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       SqlDbValue.Custom(argsList, strArgs => render(indices.mapConst([X] => (i: Int) => strArgs(i))), tpe).lift
 
     inline def raw[T, A](args: T, tpe: Type[A])(using mr: MapRes[DbValue, T])(
-        render: mr.K[Const[SqlStr[Type]]] => SqlStr[Type]
+        render: mr.K[Const[SqlStr[Codec]]] => SqlStr[Codec]
     ): DbValue[A] =
       rawK(mr.toK(args), tpe)(render)(using mr.traverseKC)
 
@@ -342,7 +370,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   }
 
   enum SqlDbValue[A] extends SqlDbValueBase[A] {
-    case DbColumn(column: Column[A, Type])
+    case DbColumn(column: Column[A, Codec])
 
     case QueryColumn(queryName: String, fromName: String, override val tpe: Type[A])
 
@@ -353,6 +381,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     case Function(name: SqlExpr.FunctionName, values: Seq[AnyDbValue], override val tpe: Type[A])
     case Cast(value: AnyDbValue, typeName: String, override val tpe: Type[A])
+
+    case GetNullable(value: DbValue[Nullable[A]], ev: NotGiven[A <:< Option[_]])
     case AsSome[B](value: DbValue[B], ev: NotGiven[B <:< Option[_]]) extends SqlDbValue[Nullable[B]]
 
     case Placeholder(value: A, override val tpe: Type[A])
@@ -361,8 +391,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case SubSelect(query: Query[IdFC[A]])
 
     case Null[B](baseTpe: Type[B], ev: NotGiven[B <:< Option[_]]) extends SqlDbValue[Nullable[B]]
-    case IsNull[B](value: DbValue[Option[B]])                     extends SqlDbValue[Boolean]
-    case IsNotNull[B](value: DbValue[Option[B]])                  extends SqlDbValue[Boolean]
+    case IsNull[B](value: DbValue[Nullable[B]])                   extends SqlDbValue[Boolean]
+    case IsNotNull[B](value: DbValue[Nullable[B]])                extends SqlDbValue[Boolean]
 
     case InValues[B, R](v: DbValue[B], values: Seq[DbValue[B]], override val tpe: Type[R])    extends SqlDbValue[R]
     case NotInValues[B, R](v: DbValue[B], values: Seq[DbValue[B]], override val tpe: Type[R]) extends SqlDbValue[R]
@@ -373,12 +403,12 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         extends SqlDbValue[R]
     case ConditionCase(cases: IndexedSeq[(DbValue[Boolean], DbValue[A])], orElse: DbValue[A])
 
-    case Custom(args: Seq[AnyDbValue], render: Seq[SqlStr[Type]] => SqlStr[Type], override val tpe: Type[A])
+    case Custom(args: Seq[AnyDbValue], render: Seq[SqlStr[Codec]] => SqlStr[Codec], override val tpe: Type[A])
     case QueryCount extends SqlDbValue[Long]
     case True       extends SqlDbValue[Boolean]
     case False      extends SqlDbValue[Boolean]
 
-    override def ast: TagState[SqlExpr[Type]] = this match
+    override def ast: TagState[SqlExpr[Codec]] = this match
       case SqlDbValue.DbColumn(_)                         => throw new IllegalArgumentException("Value not tagged")
       case SqlDbValue.QueryColumn(queryName, fromName, _) => State.pure(SqlExpr.QueryRef(fromName, queryName))
 
@@ -389,12 +419,14 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Function(f, values, _) =>
         values.toList.traverse(_.ast).map(exprs => SqlExpr.FunctionCall(f, exprs))
       case SqlDbValue.Cast(value, typeName, _) => value.ast.map(v => SqlExpr.Cast(v, typeName))
-      case SqlDbValue.AsSome(value, _)         => value.ast
+
+      case SqlDbValue.GetNullable(value, _) => value.ast
+      case SqlDbValue.AsSome(value, _)      => value.ast
 
       case SqlDbValue.Placeholder(value, tpe) =>
-        State.pure(SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe)))
+        State.pure(SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe.codec)))
       case SqlDbValue.CompilePlaceholder(identifier, tpe) =>
-        State.pure(SqlExpr.PreparedArgument(None, SqlArg.CompileArg(identifier, tpe)))
+        State.pure(SqlExpr.PreparedArgument(None, SqlArg.CompileArg(identifier, tpe.codec)))
 
       case SqlDbValue.SubSelect(query) => query.selectAstAndValues.map(m => SqlExpr.SubSelect(m.ast))
 
@@ -433,30 +465,39 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
 
     override def tpe: Type[A] = this match
-      case SqlDbValue.DbColumn(col)              => col.tpe
-      case SqlDbValue.QueryColumn(_, _, tpe)     => tpe
-      case SqlDbValue.UnaryOp(v, op)             => op.tpe(v)
-      case SqlDbValue.BinOp(lhs, rhs, op)        => op.tpe(lhs, rhs)
-      case SqlDbValue.JoinNullable(value)        => AnsiTypes.nullable(value.tpe).asInstanceOf[Type[A]]
-      case SqlDbValue.Function(_, _, tpe)        => tpe
-      case SqlDbValue.Cast(_, _, tpe)            => tpe
-      case SqlDbValue.AsSome(value, ev)          => AnsiTypes.nullable(value.tpe)(using ev)
+      case SqlDbValue.DbColumn(col)          => col.tpe
+      case SqlDbValue.QueryColumn(_, _, tpe) => tpe
+      case SqlDbValue.UnaryOp(v, op)         => op.tpe(v)
+      case SqlDbValue.BinOp(lhs, rhs, op)    => op.tpe(lhs, rhs)
+      case SqlDbValue.JoinNullable(value) =>
+        value.tpe.typedChoice.nullable
+
+      case SqlDbValue.Function(_, _, tpe) => tpe
+      case SqlDbValue.Cast(_, _, tpe)     => tpe
+      case v @ SqlDbValue.GetNullable(value, _) =>
+        import v.given
+        value.tpe.typedChoice.notNull
+      case v @ SqlDbValue.AsSome(value, _) =>
+        import v.given
+        value.tpe.typedChoice.nullable
       case SqlDbValue.Placeholder(_, tpe)        => tpe
       case SqlDbValue.CompilePlaceholder(_, tpe) => tpe
       case SqlDbValue.SubSelect(query)           => query.selectAstAndValues.runA(freshTaggedState).value.values.tpe
-      case SqlDbValue.Null(tpe, ev)              => AnsiTypes.nullable(tpe)(using ev)
-      case SqlDbValue.IsNull(_)                  => AnsiTypes.boolean
-      case SqlDbValue.IsNotNull(_)               => AnsiTypes.boolean
-      case SqlDbValue.InValues(_, _, tpe)        => tpe
-      case SqlDbValue.NotInValues(_, _, tpe)     => tpe
-      case SqlDbValue.InQuery(_, _, tpe)         => tpe
-      case SqlDbValue.NotInQuery(_, _, tpe)      => tpe
-      case SqlDbValue.ValueCase(_, _, orElse)    => orElse.tpe
-      case SqlDbValue.ConditionCase(_, orElse)   => orElse.tpe
-      case SqlDbValue.Custom(_, _, tpe)          => tpe
-      case SqlDbValue.QueryCount                 => AnsiTypes.bigint
-      case SqlDbValue.True                       => AnsiTypes.boolean
-      case SqlDbValue.False                      => AnsiTypes.boolean
+      case v @ SqlDbValue.Null(tpe, _) =>
+        import v.given
+        tpe.typedChoice.nullable
+      case SqlDbValue.IsNull(_)                => AnsiTypes.boolean.notNull
+      case SqlDbValue.IsNotNull(_)             => AnsiTypes.boolean.notNull
+      case SqlDbValue.InValues(_, _, tpe)      => tpe
+      case SqlDbValue.NotInValues(_, _, tpe)   => tpe
+      case SqlDbValue.InQuery(_, _, tpe)       => tpe
+      case SqlDbValue.NotInQuery(_, _, tpe)    => tpe
+      case SqlDbValue.ValueCase(_, _, orElse)  => orElse.tpe
+      case SqlDbValue.ConditionCase(_, orElse) => orElse.tpe
+      case SqlDbValue.Custom(_, _, tpe)        => tpe
+      case SqlDbValue.QueryCount               => AnsiTypes.bigint.notNull
+      case SqlDbValue.True                     => AnsiTypes.boolean.notNull
+      case SqlDbValue.False                    => AnsiTypes.boolean.notNull
     end tpe
 
     override def columnName(prefix: String): String = this match
@@ -472,6 +513,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case SqlDbValue.Function(name, values, _) =>
         s"${values.headOption.fold(prefix)(_.columnName(prefix))}_${name.name}"
       case SqlDbValue.Cast(v, _, _)            => s"${v.columnName(prefix)}_cast"
+      case SqlDbValue.GetNullable(value, _)    => value.columnName(prefix)
       case SqlDbValue.AsSome(value, _)         => value.columnName(prefix)
       case SqlDbValue.Placeholder(_, _)        => prefix
       case SqlDbValue.CompilePlaceholder(_, _) => prefix
@@ -508,9 +550,16 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     @targetName("dbValueAsMany") protected inline def unsafeDbValAsMany: Many[A] = dbValue.asInstanceOf[Many[A]]
 
   extension [A](v: A)
-    def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).lift
-    def asNullable(tpe: Type[A])(using NotGiven[A <:< Option[_]]): DbValue[Nullable[A]] =
-      Some(v).as(AnsiTypes.nullable(tpe).asInstanceOf[Type[Option[A]]]).asInstanceOf[DbValue[Nullable[A]]]
+    @targetName("valueAs") def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).lift
+    @targetName("valueAsFromChoice") def as(tpe: NullabilityTypeChoice[A, Codec]): DbValue[A] = as(tpe.notNull)
+    @targetName("valueAsNullable") def asNullable(
+        tpe: Type[A]
+    )(using NotGiven[A <:< Option[_]], Option[A] =:= Nullable[A]): DbValue[Nullable[A]] =
+      (Some(v): Nullable[A]).as(tpe.typedChoice.nullable)
+    @targetName("valueAsNullableFromChoice") def asNullable(
+        tpe: NullabilityTypeChoice[A, Codec]
+    )(using NotGiven[A <:< Option[_]], Option[A] =:= Nullable[A]): DbValue[Nullable[A]] =
+      (Some(v): Nullable[A]).as(tpe.nullable: Type[Nullable[A]])
 
   extension (boolVal: DbValue[Boolean])
     @targetName("dbValBooleanAnd") def &&(that: DbValue[Boolean]): DbValue[Boolean] =
@@ -528,7 +577,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         .BinOp(
           boolVal,
           that,
-          SqlBinOp.NullableOp(SqlBinOp.And.liftSqlBinOp, summon[NotGiven[Boolean <:< Option[_]]]).liftSqlBinOp
+          SqlBinOp.NullableOp(SqlBinOp.And.liftSqlBinOp).liftSqlBinOp
         )
         .lift
 
@@ -537,7 +586,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         .BinOp(
           boolVal,
           that,
-          SqlBinOp.NullableOp(SqlBinOp.Or.liftSqlBinOp, summon[NotGiven[Boolean <:< Option[_]]]).liftSqlBinOp
+          SqlBinOp.NullableOp(SqlBinOp.Or.liftSqlBinOp).liftSqlBinOp
         )
         .lift
 
@@ -545,12 +594,12 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       SqlDbValue
         .UnaryOp(
           boolVal,
-          SqlUnaryOp.NullableOp(SqlUnaryOp.Not.liftSqlUnaryOp, summon[NotGiven[Boolean <:< Option[_]]]).liftSqlUnaryOp
+          SqlUnaryOp.NullableOp(SqlUnaryOp.Not.liftSqlUnaryOp).liftSqlUnaryOp
         )
         .lift
 
   trait SqlOrdSeqBase extends OrdSeqBase {
-    def ast: TagState[Seq[SelectAst.OrderExpr[Type]]]
+    def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]]
   }
 
   type OrdSeq <: SqlOrdSeqBase
@@ -561,7 +610,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long] =
         SqlDbValue
-          .Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.unsafeAsAnyDbVal), AnsiTypes.bigint)
+          .Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.unsafeAsAnyDbVal), AnsiTypes.bigint.notNull)
           .lift
 
       inline def unsafeAsDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
@@ -572,11 +621,14 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B] =
       f(mr.toK(t).asInstanceOf[mr.K[DbValue]]).asInstanceOf[Many[B]]
 
-  extension [A](optVal: DbValue[Option[A]])
+  extension [A](optVal: DbValue[Nullable[A]])
+    @targetName("dbValOptgetUnsafe") def unsafeGet(using ev: NotGiven[A <:< Option[_]]): DbValue[A] =
+      SqlDbValue.GetNullable(optVal, ev).lift
+
     @targetName("dbValOptIsEmpty") def isEmpty: DbValue[Boolean]     = SqlDbValue.IsNull(optVal).lift
     @targetName("dbValOptIsDefined") def isDefined: DbValue[Boolean] = SqlDbValue.IsNotNull(optVal).lift
 
-    @targetName("dbValOptOrElse") def orElse(other: DbValue[Option[A]]): DbValue[Option[A]] =
+    @targetName("dbValOptOrElse") def orElse(other: DbValue[Nullable[A]]): DbValue[Nullable[A]] =
       SqlDbValue
         .Function(
           SqlExpr.FunctionName.Coalesce,

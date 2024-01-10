@@ -14,7 +14,7 @@ import perspective.*
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
 trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
-  val sqlRenderer: PostgresAstRenderer[Type] = new PostgresAstRenderer[Type](AnsiTypes)
+  val sqlRenderer: PostgresAstRenderer[Codec] = new PostgresAstRenderer[Codec](AnsiTypes)
   type ArrayTypeArgs[A]
   protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
 
@@ -28,7 +28,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   override type CastType[A] = Type[A]
 
   extension [A](t: CastType[A])
-    override def castTypeName: String  = t.name
+    override def castTypeName: String   = t.name
     override def castTypeType: Type[A] = t
 
   type DbValue[A] = PostgresDbValue[A]
@@ -37,7 +37,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     case ArrayOf(values: Seq[DbValue[A]], elemType: Type[A], extraArrayTypeArgs: ArrayTypeArgs[A])
         extends DbValue[Seq[A]]
 
-    def ast: TagState[SqlExpr[Type]] = this match
+    def ast: TagState[SqlExpr[Codec]] = this match
       case PostgresDbValue.SqlDbValue(value) => value.ast
       case PostgresDbValue.ArrayOf(values, _, _) =>
         values.toList
@@ -85,7 +85,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
     case Asc(value: DbValue[_])
     case Desc(value: DbValue[_])
 
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Type]]] = this match
+    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = this match
       case Ord.Asc(value)  => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
       case Ord.Desc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Desc, None)))
 
@@ -93,7 +93,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end Ord
 
   case class MultiOrdSeq(init: OrdSeq, tail: Ord) extends OrdSeq:
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Type]]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
+    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
 
     override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
   end MultiOrdSeq
@@ -145,7 +145,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       with ResultOperation[Res](using query.applyK, query.traverseK)
 
   case class DeleteOperation[A[_[_]], B[_[_]]](
-      from: Table[A, Type],
+      from: Table[A, Codec],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlDeleteOperation[A, B](from, usingV, where):
@@ -159,7 +159,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       returningK((a, b) => MR.toK(f(a, b)))(using MR.applyKC, MR.traverseKC)
 
   case class DeleteReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
-      from: Table[A, Type],
+      from: Table[A, Codec],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
       returning: (A[DbValue], B[DbValue]) => C[DbValue]
@@ -169,7 +169,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
     given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
 
-    override def sqlAndTypes: (SqlStr[Type], C[Type]) =
+    override def sqlAndTypes: (SqlStr[Codec], C[Type]) =
       given FunctorKC[C] = summon[ApplyKC[C]]
 
       val q = usingV match
@@ -192,12 +192,12 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end DeleteReturningOperation
 
   case class InsertOperation[A[_[_]]](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       values: Query[Optional[A]],
-      conflictOn: A[[Z] =>> Column[Z, Type]] => List[Column[_, Type]],
+      conflictOn: A[[Z] =>> Column[Z, Codec]] => List[Column[_, Codec]],
       onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]
   ) extends SqlInsertOperation[A](table, values):
-    override def sqlAndTypes: (SqlStr[Type], Type[Int]) =
+    override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
       import table.given
 
       val ret = for
@@ -205,7 +205,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         computedOnConflict <- onConflict
           .map2Const(computedValues.values.tupledK(table.columns)) {
             [Z] =>
-              (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z, Type])) =>
+              (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z, Codec])) =>
                 val value  = t._1
                 val column = t._2
 
@@ -216,12 +216,12 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
                   )
                 ).traverse(r => r.ast.map(column.name -> _))
           }
-          .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
+          .traverseK[TagState, Const[Option[(SqlStr[Codec], SqlExpr[Codec])]]](FunctionK.identity)
       yield sqlRenderer.renderInsert(
         table.name,
         table.columns
           .map2Const(computedValues.values)(
-            [Z] => (column: Column[Z, Type], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
+            [Z] => (column: Column[Z, Codec], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
           )
           .toListK
           .flatMap(_.toList),
@@ -231,35 +231,35 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         Nil
       )
 
-      (ret.runA(freshTaggedState).value, AnsiTypes.integer)
+      (ret.runA(freshTaggedState).value, AnsiTypes.integer.notNull)
 
     def onConflict(
-        on: A[[Z] =>> Column[Z, Type]] => NonEmptyList[Column[_, Type]],
+        on: A[[Z] =>> Column[Z, Codec]] => NonEmptyList[Column[_, Codec]],
         a: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]]
     ): InsertOperation[A] =
       copy(conflictOn = on.andThen(_.toList), onConflict = a)
 
-    def onConflictUpdate(on: A[[Z] =>> Column[Z, Type]] => NonEmptyList[Column[_, Type]]): InsertOperation[A] =
+    def onConflictUpdate(on: A[[Z] =>> Column[Z, Codec]] => NonEmptyList[Column[_, Codec]]): InsertOperation[A] =
       import table.FA
       onConflict(
         on,
-        table.columns.mapK([Z] => (_: Column[Z, Type]) => (_: DbValue[Z], newV: Option[DbValue[Z]]) => newV)
+        table.columns.mapK([Z] => (_: Column[Z, Codec]) => (_: DbValue[Z], newV: Option[DbValue[Z]]) => newV)
       )
 
     def returning[B[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => B[DbValue]): InsertReturningOperation[A, B] =
       InsertReturningOperation(table, values, conflictOn, onConflict, f)
 
   case class InsertReturningOperation[A[_[_]], C[_[_]]: ApplyKC: TraverseKC](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       values: Query[Optional[A]],
-      conflictOn: A[[Z] =>> Column[Z, Type]] => List[Column[_, Type]],
+      conflictOn: A[[Z] =>> Column[Z, Codec]] => List[Column[_, Codec]],
       onConflict: A[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]],
       returning: A[DbValue] => C[DbValue]
   ) extends ResultOperation[C]:
 
     override type Types = C[Type]
 
-    override def sqlAndTypes: (SqlStr[Type], C[Type]) =
+    override def sqlAndTypes: (SqlStr[Codec], C[Type]) =
       import table.given
 
       val ret = for
@@ -267,7 +267,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         computedOnConflict <- onConflict
           .map2Const(computedValues.values.tupledK(table.columns)) {
             [Z] =>
-              (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z, Type])) =>
+              (f: (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]], t: (Option[DbValue[Z]], Column[Z, Codec])) =>
                 val value  = t._1
                 val column = t._2
 
@@ -278,22 +278,22 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
                   )
                 ).traverse(r => r.ast.map(column.name -> _))
           }
-          .traverseK[TagState, Const[Option[(SqlStr[Type], SqlExpr[Type])]]](FunctionK.identity)
+          .traverseK[TagState, Const[Option[(SqlStr[Codec], SqlExpr[Codec])]]](FunctionK.identity)
         returningValues = returning(
           table.columns.mapK(
             [Z] =>
-              (col: Column[Z, Type]) =>
+              (col: Column[Z, Codec]) =>
                 PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe))
           )
         )
         computedReturning <-
-          returningValues.traverseK[TagState, Const[SqlExpr[Type]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
+          returningValues.traverseK[TagState, Const[SqlExpr[Codec]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
       yield (
         sqlRenderer.renderInsert(
           table.name,
           table.columns
             .map2Const(computedValues.values)(
-              [Z] => (column: Column[Z, Type], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
+              [Z] => (column: Column[Z, Codec], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
             )
             .toListK
             .flatMap(_.toList),
@@ -309,7 +309,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end InsertReturningOperation
 
   case class UpdateOperation[A[_[_]], B[_[_]]](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       from: Option[Query[B]],
       setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -320,14 +320,14 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
       UpdateReturningOperation(table, from, setValues, where, f)
 
   case class UpdateReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       from: Option[Query[B]],
       setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
       returning: (A[DbValue], B[DbValue]) => C[DbValue]
   ) extends ResultOperation[C]:
 
-    override def sqlAndTypes: (SqlStr[Type], C[Type]) = {
+    override def sqlAndTypes: (SqlStr[Codec], C[Type]) = {
       import table.given
       given ApplyKC[B] = from.fold(table.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
 
@@ -369,21 +369,21 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         bothMeta <- bothQuery.selectAstAndValues
         whereAst <- where.tupled(bothMeta.values).ast
         toSet = setValues.tupled(bothMeta.values)
-        toSetAst <- table.FT.traverseK(toSet)[TagState, Const[Option[SqlExpr[Type]]]](
+        toSetAst <- table.FT.traverseK(toSet)[TagState, Const[Option[SqlExpr[Codec]]]](
           [Z] => (vo: Option[DbValue[Z]]) => vo.traverse(v => v.ast)
         )
         returningValues = returning.tupled(bothMeta.values)
-        returningAst <- returningValues.traverseK[TagState, Const[SqlExpr[Type]]](
+        returningAst <- returningValues.traverseK[TagState, Const[SqlExpr[Codec]]](
           [Z] => (dbVal: DbValue[Z]) => dbVal.ast
         )
       yield (
         sqlRenderer.renderUpdate(
           table.columns
-            .map2Const(toSet)([Z] => (col: Column[Z, Type], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList)
+            .map2Const(toSet)([Z] => (col: Column[Z, Codec], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList)
             .toListK
             .flatten,
           bothMeta.ast match
-            case data: SelectAst.SelectFrom[Type] =>
+            case data: SelectAst.SelectFrom[Codec] =>
               data.copy(
                 selectExprs = toSetAst.toListK.map(ast => SelectAst.ExprWithAlias(ast, None)),
                 where = Some(whereAst)
@@ -400,9 +400,9 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end UpdateReturningOperation
 
   trait DeleteCompanion extends SqlDeleteCompanion:
-    override def from[A[_[_]]](from: Table[A, Type]): DeleteFrom[A, A] = DeleteFrom(from)
+    override def from[A[_[_]]](from: Table[A, Codec]): DeleteFrom[A, A] = DeleteFrom(from)
 
-  case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Type], using: Option[Query[B]] = None)
+  case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Codec], using: Option[Query[B]] = None)
       extends SqlDeleteFrom[A, B](from, using):
     def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1] = DeleteFrom(from, Some(query))
 
@@ -410,9 +410,9 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end DeleteFrom
 
   trait InsertCompanion extends SqlInsertCompanion:
-    override def into[A[_[_]]](table: Table[A, Type]): InsertInto[A] = InsertInto(table)
+    override def into[A[_[_]]](table: Table[A, Codec]): InsertInto[A] = InsertInto(table)
 
-  case class InsertInto[A[_[_]]](table: Table[A, Type]) extends SqlInsertInto[A]:
+  case class InsertInto[A[_[_]]](table: Table[A, Codec]) extends SqlInsertInto[A]:
 
     def values(query: Query[A]): InsertOperation[A] =
       import table.given
@@ -426,7 +426,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         query.mapK[[F[_]] =>> A[Compose2[Option, F]]](a => a.mapK([Z] => (dbVal: DbValue[Z]) => Some(dbVal))),
         _ => Nil,
         table.columns.mapK[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]](
-          [Z] => (_: Column[Z, Type]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
+          [Z] => (_: Column[Z, Codec]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
         )
       )
 
@@ -438,15 +438,15 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
         query,
         _ => Nil,
         table.columns.mapK[[Z] =>> (DbValue[Z], Option[DbValue[Z]]) => Option[DbValue[Z]]](
-          [Z] => (_: Column[Z, Type]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
+          [Z] => (_: Column[Z, Codec]) => (_: DbValue[Z], _: Option[DbValue[Z]]) => None: Option[DbValue[Z]]
         )
       )
   end InsertInto
 
   trait UpdateCompanion extends SqlUpdateCompanion:
-    override def table[A[_[_]]](table: Table[A, Type]): UpdateTable[A, A] = UpdateTable(table)
+    override def table[A[_[_]]](table: Table[A, Codec]): UpdateTable[A, A] = UpdateTable(table)
 
-  case class UpdateTable[A[_[_]], B[_[_]]](table: Table[A, Type], from: Option[Query[B]] = None)
+  case class UpdateTable[A[_[_]], B[_[_]]](table: Table[A, Codec], from: Option[Query[B]] = None)
       extends SqlUpdateTable[A, B]:
 
     def from[B1[_[_]]](fromQ: Query[B1]): UpdateTable[A, B1] = UpdateTable(table, Some(fromQ))
@@ -456,7 +456,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end UpdateTable
 
   case class UpdateTableWhere[A[_[_]], B[_[_]]](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       from: Option[Query[B]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlUpdateTableWhere[A, B]:

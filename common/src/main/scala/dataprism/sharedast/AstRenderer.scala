@@ -5,19 +5,19 @@ import dataprism.sharedast.SqlExpr.{BinaryOperation, FunctionName, UnaryOperatio
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection,SqlDialectInspection
-class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
+class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
 
-  protected def renderUnaryOp(expr: SqlExpr[Type], op: SqlExpr.UnaryOperation): SqlStr[Type] =
+  protected def renderUnaryOp(expr: SqlExpr[Codec], op: SqlExpr.UnaryOperation): SqlStr[Codec] =
     val rendered = renderExpr(expr)
     op match
       case SqlExpr.UnaryOperation.Not        => sql"(NOT $rendered)"
       case SqlExpr.UnaryOperation.Negation   => sql"(-$rendered)"
       case SqlExpr.UnaryOperation.BitwiseNot => sql"(~$rendered)"
 
-  protected def renderBinaryOp(lhs: SqlExpr[Type], rhs: SqlExpr[Type], op: SqlExpr.BinaryOperation): SqlStr[Type] =
+  protected def renderBinaryOp(lhs: SqlExpr[Codec], rhs: SqlExpr[Codec], op: SqlExpr.BinaryOperation): SqlStr[Codec] =
     val lhsr                                    = renderExpr(lhs)
     val rhsr                                    = renderExpr(rhs)
-    inline def normal(op: String): SqlStr[Type] = sql"($lhsr ${SqlStr.const(op)} $rhsr)"
+    inline def normal(op: String): SqlStr[Codec] = sql"($lhsr ${SqlStr.const(op)} $rhsr)"
 
     op match
       case SqlExpr.BinaryOperation.Eq          => normal("=")
@@ -57,9 +57,9 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
 
       case SqlExpr.BinaryOperation.Custom(op) => normal(op)
 
-  protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Type]]): SqlStr[Type] =
+  protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]]): SqlStr[Codec] =
     val rendered                               = args.map(renderExpr).intercalate(sql", ")
-    inline def normal(f: String): SqlStr[Type] = sql"${SqlStr.const(f)}($rendered)"
+    inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
 
     call match
       case SqlExpr.FunctionName.ACos  => normal("acos")
@@ -96,7 +96,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
 
       case SqlExpr.FunctionName.Custom(f) => normal(f)
 
-  protected def simplifyExpr(expr: SqlExpr[Type]): SqlExpr[Type] = expr match
+  protected def simplifyExpr(expr: SqlExpr[Codec]): SqlExpr[Codec] = expr match
     case SqlExpr.QueryRef(query, column) => SqlExpr.QueryRef(query, column)
 
     case SqlExpr.UnaryOp(expr, op) =>
@@ -201,7 +201,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case FunctionName.Custom(f) => false
     case _                      => true
 
-  protected def exprIsImmutable(expr: SqlExpr[Type]): Boolean = expr match
+  protected def exprIsImmutable(expr: SqlExpr[Codec]): Boolean = expr match
     case SqlExpr.QueryRef(_, _)                   => true
     case SqlExpr.UnaryOp(expr, _)                 => exprIsImmutable(expr)
     case SqlExpr.BinOp(lhs, rhs, _)               => exprIsImmutable(lhs) && exprIsImmutable(rhs)
@@ -227,7 +227,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SqlExpr.False()      => true
     case SqlExpr.Custom(_, _) => false
 
-  protected def renderExpr(expr: SqlExpr[Type]): SqlStr[Type] = simplifyExpr(expr) match
+  protected def renderExpr(expr: SqlExpr[Codec]): SqlStr[Codec] = simplifyExpr(expr) match
     case SqlExpr.QueryRef(query, column) => SqlStr.const(s"$query.$column")
 
     case SqlExpr.UnaryOp(expr, op)   => renderUnaryOp(expr, op)
@@ -264,14 +264,14 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SqlExpr.False()              => sql"FALSE"
     case SqlExpr.Custom(args, render) => render(args.map(renderExpr))
 
-  protected def spaceConcat(args: SqlStr[Type]*): SqlStr[Type] =
+  protected def spaceConcat(args: SqlStr[Codec]*): SqlStr[Codec] =
     args.filter(_.nonEmpty).intercalate(sql" ")
 
   def renderUpdate(
-      columnNames: List[SqlStr[Type]],
-      valuesAst: SelectAst[Type],
-      returningExprs: List[SqlExpr[Type]]
-  ): SqlStr[Type] =
+                    columnNames: List[SqlStr[Codec]],
+                    valuesAst: SelectAst[Codec],
+                    returningExprs: List[SqlExpr[Codec]]
+  ): SqlStr[Codec] =
     val (table, alias, fromV, where, exprs) = valuesAst match {
       case SelectAst.SelectFrom(
             None,
@@ -317,16 +317,16 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     )
 
   def renderInsert(
-      table: SqlStr[Type],
-      columns: List[SqlStr[Type]],
-      values: SelectAst[Type],
-      conflictOn: List[SqlStr[Type]],
-      onConflict: List[(SqlStr[Type], SqlExpr[Type])],
-      returning: List[SqlExpr[Type]]
-  ): SqlStr[Type] =
+                    table: SqlStr[Codec],
+                    columns: List[SqlStr[Codec]],
+                    values: SelectAst[Codec],
+                    conflictOn: List[SqlStr[Codec]],
+                    onConflict: List[(SqlStr[Codec], SqlExpr[Codec])],
+                    returning: List[SqlExpr[Codec]]
+  ): SqlStr[Codec] =
     // Fix the AST so that an alias isn't included for VALUES, as we then end up with (VALUES) AS ... (...)
     val fixedValues = values match
-      case data: SelectAst.Values[Type] => data.copy(alias = None, columnAliases = None)
+      case data: SelectAst.Values[Codec] => data.copy(alias = None, columnAliases = None)
       case _                            => values
 
     spaceConcat(
@@ -344,7 +344,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
       if returning.isEmpty then sql"" else sql"RETURNING ${returning.map(renderExpr).intercalate(sql",  ")}"
     )
 
-  def renderDelete(query: SelectAst[Type], returning: Boolean): SqlStr[Type] =
+  def renderDelete(query: SelectAst[Codec], returning: Boolean): SqlStr[Codec] =
     val (table, alias, usingV, where, exprs) = query match {
       case SelectAst.SelectFrom(
             None,
@@ -387,12 +387,12 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     )
   end renderDelete
 
-  def renderSelect(data: SelectAst[Type]): SqlStr[Type] = data match
-    case d: SelectAst.SelectFrom[Type]  => renderSelectFrom(d)
-    case d: SelectAst.Values[Type]      => renderSelectValues(d)
-    case d: SelectAst.SetOperator[Type] => renderSetOperatorData(d)
+  def renderSelect(data: SelectAst[Codec]): SqlStr[Codec] = data match
+    case d: SelectAst.SelectFrom[Codec]  => renderSelectFrom(d)
+    case d: SelectAst.Values[Codec]      => renderSelectValues(d)
+    case d: SelectAst.SetOperator[Codec] => renderSetOperatorData(d)
 
-  protected def renderSelectFrom(data: SelectAst.SelectFrom[Type]): SqlStr[Type] =
+  protected def renderSelectFrom(data: SelectAst.SelectFrom[Codec]): SqlStr[Codec] =
     val distinct    = data.distinct.fold(sql"")(renderDistinct)
     val exprs       = data.selectExprs.map(renderExprWithAlias).intercalate(sql", ")
     val from        = data.from.fold(sql"")(f => sql"FROM ${renderFrom(f)}")
@@ -404,7 +404,7 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
 
     spaceConcat(sql"SELECT", distinct, exprs, from, where, groupBy, having, orderBy, limitOffset)
 
-  protected def renderSelectValues(values: SelectAst.Values[Type]): SqlStr[Type] =
+  protected def renderSelectValues(values: SelectAst.Values[Codec]): SqlStr[Codec] =
     val res = spaceConcat(
       sql"VALUES ",
       values.valueExprs.map(v => sql"(${v.map(renderExpr).intercalate(sql", ")})").intercalate(sql", "),
@@ -413,20 +413,20 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     )
     if values.alias.isDefined || values.columnAliases.isDefined then sql"($res)" else res
 
-  protected def renderDistinct(distinct: SelectAst.Distinct[Type]): SqlStr[Type] =
+  protected def renderDistinct(distinct: SelectAst.Distinct[Codec]): SqlStr[Codec] =
     spaceConcat(
       sql"DISTINCT",
       if distinct.on.isEmpty then sql"" else sql"ON",
       distinct.on.map(renderExpr).intercalate(sql", ")
     )
 
-  protected def renderExprWithAlias(exprWithAlias: SelectAst.ExprWithAlias[Type]): SqlStr[Type] =
+  protected def renderExprWithAlias(exprWithAlias: SelectAst.ExprWithAlias[Codec]): SqlStr[Codec] =
     spaceConcat(
       renderExpr(exprWithAlias.expr),
       exprWithAlias.alias.fold(sql"")(a => sql"AS ${SqlStr.const(a)}")
     )
 
-  protected def renderFrom(from: SelectAst.From[Type]): SqlStr[Type] = from match
+  protected def renderFrom(from: SelectAst.From[Codec]): SqlStr[Codec] = from match
     case SelectAst.From.FromQuery(query, alias) => sql"(${renderSelect(query)}) ${SqlStr.const(alias)}"
     case SelectAst.From.FromTable(table, alias) =>
       spaceConcat(SqlStr.const(table), alias.fold(sql"")(a => sql"${SqlStr.const(a)}"))
@@ -441,54 +441,54 @@ class AstRenderer[Type[_]](ansiTypes: AnsiTypes[Type]) {
     case SelectAst.From.FullOuterJoin(lhs, rhs, on) =>
       sql"${renderFrom(lhs)} FULL OUTER JOIN ${renderFrom(rhs)} ON ${renderExpr(on)}"
 
-  protected def renderWhere(where: SqlExpr[Type]): SqlStr[Type] =
+  protected def renderWhere(where: SqlExpr[Codec]): SqlStr[Codec] =
     val e = simplifyExpr(where)
     if e == SqlExpr.True() then sql""
     else spaceConcat(sql"WHERE", renderExpr(e))
 
-  protected def renderGroupBy(groupBy: SelectAst.GroupBy[Type]): SqlStr[Type] =
+  protected def renderGroupBy(groupBy: SelectAst.GroupBy[Codec]): SqlStr[Codec] =
     spaceConcat(sql"GROUP BY", groupBy.exprs.map(renderExpr).intercalate(sql", "))
 
-  protected def renderHaving(having: SqlExpr[Type]): SqlStr[Type] =
+  protected def renderHaving(having: SqlExpr[Codec]): SqlStr[Codec] =
     val e = simplifyExpr(having)
     if e == SqlExpr.True() then sql""
     else spaceConcat(sql"HAVING", renderExpr(e))
 
-  protected def renderSetOperatorData(data: SelectAst.SetOperator[Type]): SqlStr[Type] =
+  protected def renderSetOperatorData(data: SelectAst.SetOperator[Codec]): SqlStr[Codec] =
     val keyword = data match
-      case _: SelectAst.Union[Type]     => "UNION"
-      case _: SelectAst.Intersect[Type] => "INTERSECT"
-      case _: SelectAst.Except[Type]    => "EXCEPT"
+      case _: SelectAst.Union[Codec]     => "UNION"
+      case _: SelectAst.Intersect[Codec] => "INTERSECT"
+      case _: SelectAst.Except[Codec]    => "EXCEPT"
 
     val all = if data.all then sql"ALL" else sql""
 
     spaceConcat(sql"(${renderSelect(data.lhs)})", SqlStr.const(keyword), all, sql"(${renderSelect(data.rhs)})")
 
-  protected def renderOrderBy(orderBy: SelectAst.OrderBy[Type]): SqlStr[Type] =
+  protected def renderOrderBy(orderBy: SelectAst.OrderBy[Codec]): SqlStr[Codec] =
     sql"ORDER BY ${orderBy.exprs.map(renderOrderExpr).intercalate(sql", ")}"
 
-  protected def renderOrderExpr(orderExpr: SelectAst.OrderExpr[Type]): SqlStr[Type] =
+  protected def renderOrderExpr(orderExpr: SelectAst.OrderExpr[Codec]): SqlStr[Codec] =
     spaceConcat(
       renderExpr(orderExpr.expr),
       renderOrderDir(orderExpr.dir),
       orderExpr.nullsOrder.fold(sql"")(renderNullsOrder)
     )
 
-  protected def renderOrderDir(dir: SelectAst.OrderDir): SqlStr[Type] = dir match
+  protected def renderOrderDir(dir: SelectAst.OrderDir): SqlStr[Codec] = dir match
     case SelectAst.OrderDir.Asc  => sql"ASC"
     case SelectAst.OrderDir.Desc => sql"DESC"
 
-  protected def renderNullsOrder(nullsOrder: SelectAst.NullsOrder): SqlStr[Type] = nullsOrder match
+  protected def renderNullsOrder(nullsOrder: SelectAst.NullsOrder): SqlStr[Codec] = nullsOrder match
     case SelectAst.NullsOrder.NullsFirst => sql"NULLS FIRST"
     case SelectAst.NullsOrder.NullsLast  => sql"NULLS LAST"
 
-  protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Type] =
+  protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Codec] =
     spaceConcat(renderOffset(limitOffset), renderLimit(limitOffset).getOrElse(sql""))
 
-  protected def renderOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Type] =
-    sql"OFFSET ${limitOffset.offset.asArg(ansiTypes.integer)}"
+  protected def renderOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Codec] =
+    sql"OFFSET ${limitOffset.offset.asArg(ansiTypes.integer.notNull.codec)}"
 
-  protected def renderLimit(limitOffset: SelectAst.LimitOffset): Option[SqlStr[Type]] =
+  protected def renderLimit(limitOffset: SelectAst.LimitOffset): Option[SqlStr[Codec]] =
     val tiesPart = if limitOffset.withTies then sql"WITH TIES" else sql"ONLY"
-    limitOffset.limit.map(l => sql"FETCH NEXT ${l.asArg(ansiTypes.integer)} ROWS $tiesPart")
+    limitOffset.limit.map(l => sql"FETCH NEXT ${l.asArg(ansiTypes.integer.notNull.codec)} ROWS $tiesPart")
 }

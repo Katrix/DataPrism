@@ -13,11 +13,11 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   sealed trait Operation[A]:
     type Types
 
-    def sqlAndTypes: (SqlStr[Type], Types)
+    def sqlAndTypes: (SqlStr[Codec], Types)
 
-    def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Type], types: Types)(using db: Db[F, Type]): F[A]
+    def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Codec], types: Types)(using db: Db[F, Codec]): F[A]
 
-    def run[F[_]](using Db[F, Type]): F[A] =
+    def run[F[_]](using Db[F, Codec]): F[A] =
       val (sqlStr, types) = sqlAndTypes
       runWithSqlAndTypes(sqlStr, types)
   end Operation
@@ -25,7 +25,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   trait IntOperation extends Operation[Int]:
     type Types = Type[Int]
 
-    override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Type], types: Type[Int])(using db: Db[F, Type]): F[Int] =
+    override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Codec], types: Type[Int])(using db: Db[F, Codec]): F[Int] =
       db.run(sqlStr)
 
   trait ResultOperation[Res[_[_]]](
@@ -34,15 +34,15 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   ) extends Operation[QueryResult[Res[Id]]]:
     type Types = Res[Type]
 
-    override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Type], types: Res[Type])(
-        using db: Db[F, Type]
+    override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Codec], types: Res[Type])(
+        using db: Db[F, Codec]
     ): F[QueryResult[Res[Id]]] =
-      db.runIntoRes(sqlStr, types)
+      db.runIntoRes(sqlStr, types.mapK([X] => (tpe: Type[X]) => tpe.codec))
 
   type SelectOperation[Res[_[_]]] <: SqlSelectOperation[Res]
 
   trait SqlSelectOperation[Res[_[_]]](query: Query[Res]) extends ResultOperation[Res]:
-    override def sqlAndTypes: (SqlStr[Type], Res[Type]) =
+    override def sqlAndTypes: (SqlStr[Codec], Res[Type]) =
       import query.given
 
       given FunctorKC[Res] = summon[ApplyKC[Res]]
@@ -56,14 +56,14 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type DeleteOperation[A[_[_]], B[_[_]]] <: SqlDeleteOperation[A, B]
   trait SqlDeleteOperation[A[_[_]], B[_[_]]](
-      from: Table[A, Type],
+      from: Table[A, Codec],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends IntOperation:
     given ApplyKC[B]    = usingV.fold(from.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
     given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
 
-    override def sqlAndTypes: (SqlStr[Type], Type[Int]) =
+    override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
       val q = usingV match
         case Some(usingQ) => Query.from(from).flatMap(a => usingQ.where(b => where(a, b)))
         case None         => Query.from(from).where(a => where(a, a.asInstanceOf[B[DbValue]])).asInstanceOf[Query[B]]
@@ -73,17 +73,17 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
           q.selectAstAndValues.runA(freshTaggedState).value.ast,
           returning = false
         ),
-        AnsiTypes.integer
+        AnsiTypes.integer.notNull
       )
   end SqlDeleteOperation
 
   type DeleteCompanion <: SqlDeleteCompanion
   trait SqlDeleteCompanion:
-    def from[A[_[_]]](from: Table[A, Type]): DeleteFrom[A, A]
+    def from[A[_[_]]](from: Table[A, Codec]): DeleteFrom[A, A]
   end SqlDeleteCompanion
 
   type DeleteFrom[A[_[_]], B[_[_]]] <: SqlDeleteFrom[A, B]
-  trait SqlDeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Type], using: Option[Query[B]] = None):
+  trait SqlDeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Codec], using: Option[Query[B]] = None):
     def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1]
     def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B]
   end SqlDeleteFrom
@@ -111,10 +111,10 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   }
 
   trait SqlInsertOperation[A[_[_]]](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       values: Query[Optional[A]]
   ) extends IntOperation:
-    override def sqlAndTypes: (SqlStr[Type], Type[Int]) =
+    override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
       import table.given
 
       val ret = values.selectAstAndValues.map { computedValues =>
@@ -122,7 +122,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
           table.name,
           table.columns
             .map2Const(computedValues.values)(
-              [Z] => (column: Column[Z, Type], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
+              [Z] => (column: Column[Z, Codec], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
             )
             .toListK
             .flatMap(_.toList),
@@ -133,13 +133,13 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         )
       }
 
-      (ret.runA(freshTaggedState).value, AnsiTypes.integer)
+      (ret.runA(freshTaggedState).value, AnsiTypes.integer.notNull)
 
   type InsertCompanion <: SqlInsertCompanion
   trait SqlInsertCompanion:
-    def into[A[_[_]]](table: Table[A, Type]): InsertInto[A]
+    def into[A[_[_]]](table: Table[A, Codec]): InsertInto[A]
 
-    def values[A[_[_]]](table: Table[A, Type], value: A[Id], values: Seq[A[Id]] = Nil): InsertOperation[A] =
+    def values[A[_[_]]](table: Table[A, Codec], value: A[Id], values: Seq[A[Id]] = Nil): InsertOperation[A] =
       into(table).values(Query.valuesOf(table, value, values))
   end SqlInsertCompanion
 
@@ -153,13 +153,13 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type UpdateOperation[A[_[_]], B[_[_]]] <: SqlUpdateOperation[A, B]
   trait SqlUpdateOperation[A[_[_]], B[_[_]]](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       from: Option[Query[B]],
       setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends IntOperation:
 
-    override def sqlAndTypes: (SqlStr[Type], Type[Int]) =
+    override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
 
       import table.given
       given (ApplyKC[Optional[A]] & TraverseKC[Optional[A]]) = optValuesInstance[A]
@@ -178,7 +178,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         yield sqlRenderer.renderUpdate(
           table.columns
             .map2Const(meta.values)(
-              [Z] => (col: Column[Z, Type], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList
+              [Z] => (col: Column[Z, Codec], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList
             )
             .toListK
             .flatten,
@@ -186,11 +186,11 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
           Nil
         )
 
-      (ret.runA(freshTaggedState).value, AnsiTypes.integer)
+      (ret.runA(freshTaggedState).value, AnsiTypes.integer.notNull)
 
   type UpdateCompanion <: SqlUpdateCompanion
   trait SqlUpdateCompanion:
-    def table[A[_[_]]](table: Table[A, Type]): UpdateTable[A, A]
+    def table[A[_[_]]](table: Table[A, Codec]): UpdateTable[A, A]
 
   type UpdateTable[A[_[_]], B[_[_]]] <: SqlUpdateTable[A, B]
   trait SqlUpdateTable[A[_[_]], B[_[_]]]:
@@ -227,10 +227,13 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     ): A[Id] => B =
       given FunctorKC[A] = summon[ApplyKC[A]]
 
-      val tpesWithIdentifiers: A[Tuple2K[Const[Object], Type]] = types.mapK([Z] => (tpe: Type[Z]) => (new Object, tpe))
+      val tpesWithIdentifiers: A[Tuple2K[Const[Object], Type]] =
+        types.mapK([Z] => (tpe: Type[Z]) => (new Object, tpe))
 
       val dbValues =
-        tpesWithIdentifiers.mapK([Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).liftDbValue)
+        tpesWithIdentifiers.mapK(
+          [Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).liftDbValue
+        )
       val b = f(dbValues)
 
       (values: A[Id]) => {
@@ -239,16 +242,16 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         doReplacement(b, replacements)
       }
 
-    def rawK[A[_[_]]: ApplyKC: TraverseKC](types: A[Type])(f: A[DbValue] => SqlStr[Type]): A[Id] => SqlStr[Type] =
+    def rawK[A[_[_]]: ApplyKC: TraverseKC](types: A[Type])(f: A[DbValue] => SqlStr[Codec]): A[Id] => SqlStr[Codec] =
       simple(types)(f)(_.compileWithValues(_))
 
     inline def raw[A](types: A)(using res: MapRes[Type, A])(
-        f: res.K[DbValue] => SqlStr[Type]
-    ): res.K[Id] => SqlStr[Type] =
+        f: res.K[DbValue] => SqlStr[Codec]
+    ): res.K[Id] => SqlStr[Codec] =
       rawK(res.toK(types))(f)(using res.applyKC, res.traverseKC)
 
     def operationK[A[_[_]]: ApplyKC: TraverseKC, B, F[_]](types: A[Type])(f: A[DbValue] => Operation[B])(
-        using db: Db[F, Type]
+        using db: Db[F, Codec]
     ): A[Id] => F[B] =
       simple(types)(f.andThen(op => (op, op.sqlAndTypes))) { case ((op, (rawSqlStr, resultTypes)), replacements) =>
         (op, (rawSqlStr.compileWithValues(replacements), resultTypes))
@@ -259,7 +262,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     inline def operation[A, B, F[_]](types: A)(using res: MapRes[Type, A])(
         f: res.K[DbValue] => Operation[B]
     )(
-        using db: Db[F, Type]
+        using db: Db[F, Codec]
     ): res.K[Id] => F[B] =
       operationK(res.toK(types))(f)(using res.applyKC, res.traverseKC, db)
 }

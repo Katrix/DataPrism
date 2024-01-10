@@ -14,28 +14,28 @@ import perspective.derivation.ProductKPar
 //noinspection ScalaUnusedSymbol
 trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
-  case class QueryAstMetadata[A[_[_]]](ast: SelectAst[Type], aliases: A[Const[String]], values: A[DbValue])
+  case class QueryAstMetadata[A[_[_]]](ast: SelectAst[Codec], aliases: A[Const[String]], values: A[DbValue])
 
   trait SqlQueryBase[A[_[_]]] extends QueryBase[A] {
 
     private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]]
 
-    def selectAst: SelectAst[Type] = selectAstAndValues.runA(freshTaggedState).value.ast
+    def selectAst: SelectAst[Codec] = selectAstAndValues.runA(freshTaggedState).value.ast
 
     def distinct: Query[A]
 
-    def join[B[_[_]]](that: Table[B, Type])(
+    def join[B[_[_]]](that: Table[B, Codec])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[InnerJoin[A, B]] = this.join(Query.from(that))(on)
 
-    def crossJoin[B[_[_]]](that: Table[B, Type]): Query[InnerJoin[A, B]] =
+    def crossJoin[B[_[_]]](that: Table[B, Codec]): Query[InnerJoin[A, B]] =
       this.crossJoin(Query.from(that))
 
-    def leftJoin[B[_[_]]](that: Table[B, Type])(
+    def leftJoin[B[_[_]]](that: Table[B, Codec])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[LeftJoin[A, B]] = this.leftJoin(Query.from(that))(on)
 
-    def fullJoin[B[_[_]]](that: Table[B, Type])(
+    def fullJoin[B[_[_]]](that: Table[B, Codec])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]] = this.fullJoin(Query.from(that))(on)
 
@@ -106,7 +106,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[RightJoin[A, B]] = nested.rightJoin(that)(on)
 
-    def rightJoin[B[_[_]]](that: Table[B, Type])(
+    def rightJoin[B[_[_]]](that: Table[B, Codec])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[RightJoin[A, B]] = this.rightJoin(Query.from(that))(on)
 
@@ -139,8 +139,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
   object SqlQuery {
     private def tagValues[A[_[_]]](
         values: A[DbValue]
-    )(using TraverseKC[A], ApplyKC[A]): TagState[(A[Const[String]], Seq[SelectAst.ExprWithAlias[Type]])] =
-      State[TaggedState, (A[Const[String]], TagState[List[SelectAst.ExprWithAlias[Type]]])] { st =>
+    )(using TraverseKC[A], ApplyKC[A]): TagState[(A[Const[String]], Seq[SelectAst.ExprWithAlias[Codec]])] =
+      State[TaggedState, (A[Const[String]], TagState[List[SelectAst.ExprWithAlias[Codec]]])] { st =>
         val columnNum = st.columnNum
 
         val columnNumState: State[Int, A[Const[String]]] =
@@ -150,13 +150,13 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
         val (newColumnNum, columnAliases) = columnNumState.run(columnNum).value
 
-        val valuesAstSt = values.traverseK[TagState, Const[SqlExpr[Type]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
+        val valuesAstSt = values.traverseK[TagState, Const[SqlExpr[Codec]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
 
         val exprWithAliasesSt = valuesAstSt.map { valuesAst =>
           valuesAst
             .tupledK(columnAliases)
             .foldMapK(
-              [X] => (t: (SqlExpr[Type], String)) => List(SelectAst.ExprWithAlias(t._1, Some(t._2)))
+              [X] => (t: (SqlExpr[Codec], String)) => List(SelectAst.ExprWithAlias(t._1, Some(t._2)))
             )
         }
 
@@ -534,7 +534,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           meta <- query.selectAstAndValues
           QueryAstMetadata(selectAst, _, values) = meta
           groupedBy                              = group(values)
-          groupByAst <- groupedBy.traverseK[TagState, Const[SqlExpr[Type]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
+          groupByAst <- groupedBy.traverseK[TagState, Const[SqlExpr[Codec]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
           groupByAstList = groupByAst.toListK
 
           havingAst <- having.traverse(f => f(values).ast)
@@ -543,7 +543,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           t <- tagValues(groupedValues)
           (aliases, exprWithAliases) = t
         yield
-          def astAnd(lhs: Option[SqlExpr[Type]], rhs: Option[SqlExpr[Type]]): Option[SqlExpr[Type]] = (lhs, rhs) match
+          def astAnd(lhs: Option[SqlExpr[Codec]], rhs: Option[SqlExpr[Codec]]): Option[SqlExpr[Codec]] = (lhs, rhs) match
             case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
             case (Some(lhs), None)      => Some(lhs)
             case (None, Some(rhs))      => Some(rhs)
@@ -551,7 +551,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           end astAnd
 
           selectAst match
-            case from: SelectAst.SelectFrom[Type] =>
+            case from: SelectAst.SelectFrom[Codec] =>
               QueryAstMetadata(
                 from.copy(
                   selectExprs = exprWithAliases,
@@ -592,7 +592,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       def selectAstAndValues: TagState[QueryAstMetadata[A]] =
         query.selectAstAndValues.flatMap { meta =>
           meta.ast match
-            case from: SelectAst.SelectFrom[Type] =>
+            case from: SelectAst.SelectFrom[Codec] =>
               State.pure(meta.copy(ast = from.copy(distinct = Some(SelectAst.Distinct(Nil)))))
             case _ =>
               for
@@ -672,7 +672,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           val aliasesList             = aliases.toListK
 
           val valueExprsSt = (value +: values).traverse { a =>
-            a.traverseK[TagState, Const[SqlExpr[Type]]]([Z] => (v: DbValue[Z]) => v.ast).map(_.toListK)
+            a.traverseK[TagState, Const[SqlExpr[Codec]]]([Z] => (v: DbValue[Z]) => v.ast).map(_.toListK)
           }
 
           (
@@ -711,7 +711,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           meta             <- query.selectAstAndValues
           orderByValuesAst <- orderBy(meta.values).ast
         yield meta.ast match
-          case from: SelectAst.SelectFrom[Type] =>
+          case from: SelectAst.SelectFrom[Codec] =>
             val oldOrder = from.orderBy
             val newOrder = oldOrder.fold(SelectAst.OrderBy(orderByValuesAst)) { old =>
               old.copy(exprs = old.exprs ++ orderByValuesAst)
@@ -736,7 +736,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
         query.selectAstAndValues.map { meta =>
           meta.ast match
-            case from: SelectAst.SelectFrom[Type] =>
+            case from: SelectAst.SelectFrom[Codec] =>
               val oldLimitOffset = from.limitOffset
 
               val newLimitOffset = oldLimitOffset match {
@@ -760,13 +760,13 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     ) extends SqlQuery[B] {
       override def selectAstAndValues: TagState[QueryAstMetadata[B]] =
         query.selectAstAndValues.flatMap { case QueryAstMetadata(selectAstA, _, valuesA) =>
-          val stNewValuesAndAstA: TagState[(Option[SelectAst.From[Type]], Option[SqlExpr[Type]], A[DbValue])] =
+          val stNewValuesAndAstA: TagState[(Option[SelectAst.From[Codec]], Option[SqlExpr[Codec]], A[DbValue])] =
             if selectAstA match
-                case from: SelectAst.SelectFrom[Type] =>
+                case from: SelectAst.SelectFrom[Codec] =>
                   from.distinct.isEmpty && from.groupBy.isEmpty && from.having.isEmpty && from.orderBy.isEmpty && from.limitOffset.isEmpty
                 case _ => false
             then
-              val selectFrom = selectAstA.asInstanceOf[SelectAst.SelectFrom[Type]]
+              val selectFrom = selectAstA.asInstanceOf[SelectAst.SelectFrom[Codec]]
               State.pure((selectFrom.from, selectFrom.where, valuesA))
             else SqlValueSource.FromQuery(query).fromPartAndValues.map(t => (Some(t._1), None, t._2))
 
@@ -779,7 +779,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           stNewValuesAndAstA.flatMap { case (fromAOpt, whereExtra, newValuesA) =>
             f(newValuesA).selectAstAndValues.map { case QueryAstMetadata(selectAstB, aliasesB, valuesB) =>
               val newSelectAstB = selectAstB match
-                case from: SelectAst.SelectFrom[Type] =>
+                case from: SelectAst.SelectFrom[Codec] =>
                   from.copy(
                     from = combineOption(fromAOpt, from.from)(SelectAst.From.FromMulti.apply),
                     where = combineOption(whereExtra, from.where)((a, b) =>
@@ -863,7 +863,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   extension (q: QueryCompanion)
     @targetName("queryCompanionFrom")
-    def from[A[_[_]]](table: Table[A, Type]): Query[A] =
+    def from[A[_[_]]](table: Table[A, Codec]): Query[A] =
       import table.given
       SqlQuery.SqlQueryFromStage(SqlValueSource.FromTable(table).liftSqlValueSource).liftSqlQuery
     end from
@@ -886,10 +886,10 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         )
         .liftSqlQuery
 
-    def valuesOf[A[_[_]]](table: Table[A, Type], value: A[Id], values: Seq[A[Id]] = Nil): Query[A] =
+    def valuesOf[A[_[_]]](table: Table[A, Codec], value: A[Id], values: Seq[A[Id]] = Nil): Query[A] =
       import table.given
       given FunctorKC[A] = table.FA
-      Query.values(table.columns.mapK([Z] => (col: Column[Z, Type]) => col.tpe), value, values)
+      Query.values(table.columns.mapK([Z] => (col: Column[Z, Codec]) => col.tpe), value, values)
 
     def valueOpt[A[_[_]]](types: A[Type], value: A[Option])(
         using FA: ApplyKC[A],
@@ -914,10 +914,10 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       values(types.map2K(value)([X] => (tpe: Type[X], opt: Option[X]) => opt.map(_ => tpe)), value, Nil)
 
-    def valueOfOpt[A[_[_]]](table: Table[A, Type], value: A[Option]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
+    def valueOfOpt[A[_[_]]](table: Table[A, Codec], value: A[Option]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
       import table.given
       given FunctorKC[A] = table.FA
-      valueOpt(table.columns.mapK([Z] => (col: Column[Z, Type]) => col.tpe), value)
+      valueOpt(table.columns.mapK([Z] => (col: Column[Z, Codec]) => col.tpe), value)
 
   extension [A](query: Query[[F[_]] =>> F[A]])
     // TODO: Make use of an implicit conversion here?

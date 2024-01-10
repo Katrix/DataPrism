@@ -14,10 +14,11 @@ trait SqlQueryPlatform
     with SqlQueryPlatformQuery
     with SqlQueryPlatformOperation { platform =>
 
-  type Type[_]
-  def AnsiTypes: AnsiTypes[Type]
+  type Codec[_]
+  type Type[A] = SelectedType[A, Codec]
+  def AnsiTypes: AnsiTypes[Codec]
 
-  val sqlRenderer: AstRenderer[Type]
+  val sqlRenderer: AstRenderer[Codec]
 
   trait SqlTaggedState {
     def queryNum: Int

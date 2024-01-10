@@ -1,6 +1,7 @@
 package dataprism.platform.implementations
 
 import scala.annotation.targetName
+
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sharedast.{MySqlAstRenderer, SelectAst, SqlExpr}
 import dataprism.sql.*
@@ -8,7 +9,7 @@ import perspective.*
 
 trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
 
-  val sqlRenderer: MySqlAstRenderer[Type] = new MySqlAstRenderer[Type](AnsiTypes)
+  val sqlRenderer: MySqlAstRenderer[Codec] = new MySqlAstRenderer[Codec](AnsiTypes)
 
   override type UnaryOp[V, R] = SqlUnaryOp[V, R]
 
@@ -21,7 +22,7 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   enum MySqlDbValue[A] extends SqlDbValueBase[A]:
     case SqlDbValue(value: platform.SqlDbValue[A])
 
-    override def ast: TagState[SqlExpr[Type]] = this match
+    override def ast: TagState[SqlExpr[Codec]] = this match
       case MySqlDbValue.SqlDbValue(v) => v.ast
 
     override def asSqlDbVal: Option[platform.SqlDbValue[A]] = this match
@@ -34,9 +35,9 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
       case MySqlDbValue.SqlDbValue(v) => v.columnName(prefix)
 
     override def unsafeAsAnyDbVal: DbValue[Any] = this.asInstanceOf[DbValue[Any]]
-    override def liftDbValue: DbValue[A] = this
-    override def asc: Ord = Ord.Asc(this)
-    override def desc: Ord = Ord.Desc(this)
+    override def liftDbValue: DbValue[A]        = this
+    override def asc: Ord                       = Ord.Asc(this)
+    override def desc: Ord                      = Ord.Desc(this)
   end MySqlDbValue
 
   type DbValueCompanion = SqlDbValueCompanion
@@ -54,7 +55,7 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
     case Asc(value: DbValue[_])
     case Desc(value: DbValue[_])
 
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Type]]] = this match
+    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = this match
       case Ord.Asc(value)  => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
       case Ord.Desc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Desc, None)))
 
@@ -62,7 +63,7 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   end Ord
 
   case class MultiOrdSeq(init: OrdSeq, tail: Ord) extends OrdSeq:
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Type]]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
+    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
 
     override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
   end MultiOrdSeq
@@ -105,25 +106,25 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
       with ResultOperation[Res](using query.applyK, query.traverseK)
 
   case class DeleteOperation[A[_[_]], B[_[_]]](
-      from: Table[A, Type],
+      from: Table[A, Codec],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlDeleteOperation[A, B](from, usingV, where)
 
-  case class InsertOperation[A[_[_]]](table: Table[A, Type], values: Query[Optional[A]])
+  case class InsertOperation[A[_[_]]](table: Table[A, Codec], values: Query[Optional[A]])
       extends SqlInsertOperation[A](table, values)
 
   case class UpdateOperation[A[_[_]], B[_[_]]](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       from: Option[Query[B]],
       setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlUpdateOperation[A, B](table, from, setValues, where)
 
   trait DeleteCompanion extends SqlDeleteCompanion:
-    override def from[A[_[_]]](from: Table[A, Type]): DeleteFrom[A, A] = DeleteFrom(from)
+    override def from[A[_[_]]](from: Table[A, Codec]): DeleteFrom[A, A] = DeleteFrom(from)
 
-  case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Type], using: Option[Query[B]] = None)
+  case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Codec], using: Option[Query[B]] = None)
       extends SqlDeleteFrom[A, B](from, using):
     def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1] = DeleteFrom(from, Some(query))
 
@@ -131,9 +132,9 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   end DeleteFrom
 
   trait InsertCompanion extends SqlInsertCompanion:
-    override def into[A[_[_]]](table: Table[A, Type]): InsertInto[A] = InsertInto(table)
+    override def into[A[_[_]]](table: Table[A, Codec]): InsertInto[A] = InsertInto(table)
 
-  case class InsertInto[A[_[_]]](table: Table[A, Type]) extends SqlInsertInto[A]:
+  case class InsertInto[A[_[_]]](table: Table[A, Codec]) extends SqlInsertInto[A]:
 
     def values(query: Query[A]): InsertOperation[A] =
       import table.given
@@ -152,9 +153,9 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   end InsertInto
 
   trait UpdateCompanion extends SqlUpdateCompanion:
-    override def table[A[_[_]]](table: Table[A, Type]): UpdateTable[A, A] = UpdateTable(table)
+    override def table[A[_[_]]](table: Table[A, Codec]): UpdateTable[A, A] = UpdateTable(table)
 
-  case class UpdateTable[A[_[_]], B[_[_]]](table: Table[A, Type], from: Option[Query[B]] = None)
+  case class UpdateTable[A[_[_]], B[_[_]]](table: Table[A, Codec], from: Option[Query[B]] = None)
       extends SqlUpdateTable[A, B]:
 
     def from[B1[_[_]]](fromQ: Query[B1]): UpdateTable[A, B1] = UpdateTable(table, Some(fromQ))
@@ -164,7 +165,7 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   end UpdateTable
 
   case class UpdateTableWhere[A[_[_]], B[_[_]]](
-      table: Table[A, Type],
+      table: Table[A, Codec],
       from: Option[Query[B]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlUpdateTableWhere[A, B]:

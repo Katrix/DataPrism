@@ -2,37 +2,38 @@ package dataprism.sharedast
 
 import dataprism.sql.*
 
-sealed trait SqlExpr[Type[_]]
+sealed trait SqlExpr[Codec[_]]
 //noinspection ScalaUnusedSymbol
 object SqlExpr {
-  case class QueryRef[Type[_]](query: String, column: String)                            extends SqlExpr[Type]
-  case class UnaryOp[Type[_]](expr: SqlExpr[Type], op: UnaryOperation)                   extends SqlExpr[Type]
-  case class BinOp[Type[_]](lhs: SqlExpr[Type], rhs: SqlExpr[Type], op: BinaryOperation) extends SqlExpr[Type]
-  case class FunctionCall[Type[_]](functionCall: FunctionName, args: Seq[SqlExpr[Type]]) extends SqlExpr[Type]
-  case class PreparedArgument[Type[_]](name: Option[String], arg: SqlArg[Type])          extends SqlExpr[Type]
-  case class Null[Type[_]]()                                                             extends SqlExpr[Type]
-  case class IsNull[Type[_]](expr: SqlExpr[Type])                                        extends SqlExpr[Type]
-  case class IsNotNull[Type[_]](expr: SqlExpr[Type])                                     extends SqlExpr[Type]
-  case class InValues[Type[_]](expr: SqlExpr[Type], values: Seq[SqlExpr[Type]])          extends SqlExpr[Type]
-  case class NotInValues[Type[_]](expr: SqlExpr[Type], values: Seq[SqlExpr[Type]])       extends SqlExpr[Type]
-  case class InQuery[Type[_]](expr: SqlExpr[Type], selectAst: SelectAst[Type])           extends SqlExpr[Type]
-  case class NotInQuery[Type[_]](expr: SqlExpr[Type], selectAst: SelectAst[Type])        extends SqlExpr[Type]
-  case class Cast[Type[_]](expr: SqlExpr[Type], asType: String)                          extends SqlExpr[Type]
+  case class QueryRef[Codec[_]](query: String, column: String)                              extends SqlExpr[Codec]
+  case class UnaryOp[Codec[_]](expr: SqlExpr[Codec], op: UnaryOperation)                    extends SqlExpr[Codec]
+  case class BinOp[Codec[_]](lhs: SqlExpr[Codec], rhs: SqlExpr[Codec], op: BinaryOperation) extends SqlExpr[Codec]
+  case class FunctionCall[Codec[_]](functionCall: FunctionName, args: Seq[SqlExpr[Codec]])  extends SqlExpr[Codec]
+  case class PreparedArgument[Codec[_]](name: Option[String], arg: SqlArg[Codec])           extends SqlExpr[Codec]
+  case class Null[Codec[_]]()                                                               extends SqlExpr[Codec]
+  case class IsNull[Codec[_]](expr: SqlExpr[Codec])                                         extends SqlExpr[Codec]
+  case class IsNotNull[Codec[_]](expr: SqlExpr[Codec])                                      extends SqlExpr[Codec]
+  case class InValues[Codec[_]](expr: SqlExpr[Codec], values: Seq[SqlExpr[Codec]])          extends SqlExpr[Codec]
+  case class NotInValues[Codec[_]](expr: SqlExpr[Codec], values: Seq[SqlExpr[Codec]])       extends SqlExpr[Codec]
+  case class InQuery[Codec[_]](expr: SqlExpr[Codec], selectAst: SelectAst[Codec])           extends SqlExpr[Codec]
+  case class NotInQuery[Codec[_]](expr: SqlExpr[Codec], selectAst: SelectAst[Codec])        extends SqlExpr[Codec]
+  case class Cast[Codec[_]](expr: SqlExpr[Codec], asType: String)                           extends SqlExpr[Codec]
 
-  case class ValueCase[Type[_]](
-      matchOn: SqlExpr[Type],
-      cases: IndexedSeq[(SqlExpr[Type], SqlExpr[Type])],
-      orElse: SqlExpr[Type]
-  ) extends SqlExpr[Type]
-  case class ConditionCase[Type[_]](cases: IndexedSeq[(SqlExpr[Type], SqlExpr[Type])], orElse: SqlExpr[Type])
-      extends SqlExpr[Type]
+  case class ValueCase[Codec[_]](
+      matchOn: SqlExpr[Codec],
+      cases: IndexedSeq[(SqlExpr[Codec], SqlExpr[Codec])],
+      orElse: SqlExpr[Codec]
+  ) extends SqlExpr[Codec]
+  case class ConditionCase[Codec[_]](cases: IndexedSeq[(SqlExpr[Codec], SqlExpr[Codec])], orElse: SqlExpr[Codec])
+      extends SqlExpr[Codec]
 
-  case class SubSelect[Type[_]](selectAst: SelectAst[Type]) extends SqlExpr[Type]
-  case class QueryCount[Type[_]]()                          extends SqlExpr[Type]
-  case class True[Type[_]]()                                extends SqlExpr[Type]
-  case class False[Type[_]]()                               extends SqlExpr[Type]
+  case class SubSelect[Codec[_]](selectAst: SelectAst[Codec]) extends SqlExpr[Codec]
+  case class QueryCount[Codec[_]]()                           extends SqlExpr[Codec]
+  case class True[Codec[_]]()                                 extends SqlExpr[Codec]
+  case class False[Codec[_]]()                                extends SqlExpr[Codec]
 
-  case class Custom[Type[_]](args: Seq[SqlExpr[Type]], render: Seq[SqlStr[Type]] => SqlStr[Type]) extends SqlExpr[Type]
+  case class Custom[Codec[_]](args: Seq[SqlExpr[Codec]], render: Seq[SqlStr[Codec]] => SqlStr[Codec])
+      extends SqlExpr[Codec]
 
   enum UnaryOperation:
     case Not
@@ -108,57 +109,57 @@ object SqlExpr {
       case _                      => this.toString
 }
 
-sealed trait SelectAst[Type[_]]
+sealed trait SelectAst[Codec[_]]
 //noinspection ScalaUnusedSymbol
 object SelectAst {
-  case class SelectFrom[Type[_]](
-      distinct: Option[SelectAst.Distinct[Type]],
-      selectExprs: Seq[SelectAst.ExprWithAlias[Type]],
-      from: Option[SelectAst.From[Type]],
-      where: Option[SqlExpr[Type]],
-      groupBy: Option[SelectAst.GroupBy[Type]],
-      having: Option[SqlExpr[Type]],
-      orderBy: Option[SelectAst.OrderBy[Type]],
+  case class SelectFrom[Codec[_]](
+      distinct: Option[SelectAst.Distinct[Codec]],
+      selectExprs: Seq[SelectAst.ExprWithAlias[Codec]],
+      from: Option[SelectAst.From[Codec]],
+      where: Option[SqlExpr[Codec]],
+      groupBy: Option[SelectAst.GroupBy[Codec]],
+      having: Option[SqlExpr[Codec]],
+      orderBy: Option[SelectAst.OrderBy[Codec]],
       limitOffset: Option[SelectAst.LimitOffset],
       locks: Option[SelectAst.Locks]
-  ) extends SelectAst[Type]
+  ) extends SelectAst[Codec]
 
-  sealed trait SetOperator[Type[_]] extends SelectAst[Type] {
-    def lhs: SelectAst[Type]
-    def rhs: SelectAst[Type]
+  sealed trait SetOperator[Codec[_]] extends SelectAst[Codec] {
+    def lhs: SelectAst[Codec]
+    def rhs: SelectAst[Codec]
     def all: Boolean
   }
 
-  case class Values[Type[_]](
-      valueExprs: Seq[Seq[SqlExpr[Type]]],
+  case class Values[Codec[_]](
+      valueExprs: Seq[Seq[SqlExpr[Codec]]],
       alias: Option[String],
       columnAliases: Option[Seq[String]]
-  ) extends SelectAst[Type]
+  ) extends SelectAst[Codec]
 
-  case class Union[Type[_]](lhs: SelectAst[Type], rhs: SelectAst[Type], all: Boolean)     extends SetOperator[Type]
-  case class Intersect[Type[_]](lhs: SelectAst[Type], rhs: SelectAst[Type], all: Boolean) extends SetOperator[Type]
-  case class Except[Type[_]](lhs: SelectAst[Type], rhs: SelectAst[Type], all: Boolean)    extends SetOperator[Type]
+  case class Union[Codec[_]](lhs: SelectAst[Codec], rhs: SelectAst[Codec], all: Boolean)     extends SetOperator[Codec]
+  case class Intersect[Codec[_]](lhs: SelectAst[Codec], rhs: SelectAst[Codec], all: Boolean) extends SetOperator[Codec]
+  case class Except[Codec[_]](lhs: SelectAst[Codec], rhs: SelectAst[Codec], all: Boolean)    extends SetOperator[Codec]
 
-  case class Distinct[Type[_]](on: Seq[SqlExpr[Type]])
+  case class Distinct[Codec[_]](on: Seq[SqlExpr[Codec]])
 
-  case class ExprWithAlias[Type[_]](expr: SqlExpr[Type], alias: Option[String])
+  case class ExprWithAlias[Codec[_]](expr: SqlExpr[Codec], alias: Option[String])
 
-  sealed trait From[Type[_]]
+  sealed trait From[Codec[_]]
   object From {
-    case class FromTable[Type[_]](table: String, alias: Option[String])                     extends From[Type]
-    case class FromQuery[Type[_]](selectAst: SelectAst[Type], alias: String)                extends From[Type]
-    case class FromMulti[Type[_]](fst: From[Type], snd: From[Type])                         extends From[Type]
-    case class CrossJoin[Type[_]](lhs: From[Type], rhs: From[Type])                         extends From[Type]
-    case class InnerJoin[Type[_]](lhs: From[Type], rhs: From[Type], on: SqlExpr[Type])      extends From[Type]
-    case class LeftOuterJoin[Type[_]](lhs: From[Type], rhs: From[Type], on: SqlExpr[Type])  extends From[Type]
-    case class RightOuterJoin[Type[_]](lhs: From[Type], rhs: From[Type], on: SqlExpr[Type]) extends From[Type]
-    case class FullOuterJoin[Type[_]](lhs: From[Type], rhs: From[Type], on: SqlExpr[Type])  extends From[Type]
+    case class FromTable[Codec[_]](table: String, alias: Option[String])                        extends From[Codec]
+    case class FromQuery[Codec[_]](selectAst: SelectAst[Codec], alias: String)                  extends From[Codec]
+    case class FromMulti[Codec[_]](fst: From[Codec], snd: From[Codec])                          extends From[Codec]
+    case class CrossJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec])                          extends From[Codec]
+    case class InnerJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])      extends From[Codec]
+    case class LeftOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
+    case class RightOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec]) extends From[Codec]
+    case class FullOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
   }
 
-  case class GroupBy[Type[_]](exprs: Seq[SqlExpr[Type]])
-  case class OrderBy[Type[_]](exprs: Seq[OrderExpr[Type]])
+  case class GroupBy[Codec[_]](exprs: Seq[SqlExpr[Codec]])
+  case class OrderBy[Codec[_]](exprs: Seq[OrderExpr[Codec]])
 
-  case class OrderExpr[Type[_]](expr: SqlExpr[Type], dir: OrderDir, nullsOrder: Option[NullsOrder])
+  case class OrderExpr[Codec[_]](expr: SqlExpr[Codec], dir: OrderDir, nullsOrder: Option[NullsOrder])
   enum OrderDir:
     case Asc
     case Desc

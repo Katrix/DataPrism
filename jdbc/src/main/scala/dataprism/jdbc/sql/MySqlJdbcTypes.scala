@@ -1,22 +1,30 @@
 package dataprism.jdbc.sql
 import java.sql.{Date, Time, Types}
 
-case class MySqlJdbcTypeCastable[A](name: String, tpe: JdbcType[A])
+import dataprism.sql.NullabilityTypeChoice
+
+case class MySqlJdbcTypeCastable[A](name: String, tpe: NullabilityTypeChoice[A, JdbcCodec])
 trait MySqlJdbcTypes extends JdbcAnsiTypes:
   self =>
-  val text: JdbcType[String] = JdbcType.simple("TEXT", Types.VARCHAR, _.getString(_), _.setString(_, _))
+  private def tc[A](codec: JdbcCodec[Option[A]])(
+      using NullabilityTypeChoice.Nullable[A] =:= Option[A],
+      JdbcCodec[Option[A]] =:= JdbcCodec[NullabilityTypeChoice.Nullable[A]]
+  ): TypeOf[A] =
+    NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
-  val decimal: JdbcType[BigDecimal] = JdbcType
-    .simple("DECIMAL", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
-    .imap(jbd => BigDecimal(jbd))(bd => bd.bigDecimal)
+  val text: TypeOf[String] = tc(JdbcCodec.byClass[String]("TEXT", Types.VARCHAR))
 
-  def decimalN(m: Int): JdbcType[BigDecimal] = JdbcType
-    .simple(s"DECIMAL($m)", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
-    .imap(jbd => BigDecimal(jbd))(bd => bd.bigDecimal)
+  val decimal: TypeOf[BigDecimal] = tc(
+    JdbcCodec.byClass[java.math.BigDecimal]("DECIMAL", Types.DECIMAL)
+  ).imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
 
-  def decimalN(m: Int, n: Int): JdbcType[BigDecimal] = JdbcType
-    .simple(s"DECIMAL($m, $n)", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
-    .imap(jbd => BigDecimal(jbd))(bd => bd.bigDecimal)
+  def decimalN(m: Int): TypeOf[BigDecimal] = tc(
+    JdbcCodec.byClass[java.math.BigDecimal](s"DECIMAL($m)", Types.DECIMAL)
+  ).imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
+
+  def decimalN(m: Int, n: Int): TypeOf[BigDecimal] = tc(
+    JdbcCodec.byClass[java.math.BigDecimal](s"DECIMAL($m, $n)", Types.DECIMAL)
+  ).imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
 
   object castType:
     val binary: MySqlJdbcTypeCastable[Seq[Byte]] = MySqlJdbcTypeCastable("BINARY", self.blob)

@@ -7,7 +7,7 @@ import scala.concurrent.Future
 
 import dataprism.KMacros
 import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform
-import dataprism.jdbc.sql.{JdbcType, PostgresJdbcTypes}
+import dataprism.jdbc.sql.{JdbcCodec, PostgresJdbcTypes}
 import dataprism.platform.base.MapRes
 import dataprism.sql.*
 import perspective.*
@@ -36,7 +36,7 @@ object HomeK {
   ): HomeK[F] =
     HomeK(uuid, string, instant, instant, double, double, double, float, float, uuid)
 
-  val table: Table[HomeK, JdbcType] = Table(
+  val table: Table[HomeK, JdbcCodec] = Table(
     "homes",
     HomeK(
       owner = Column("owner", PostgresJdbcTypes.uuid),
@@ -76,7 +76,7 @@ object ResidentK {
   ): ResidentK[F] =
     ResidentK(uuid, string, uuid, instant)
 
-  val table: Table[ResidentK, JdbcType] = Table(
+  val table: Table[ResidentK, JdbcCodec] = Table(
     "home_residents",
     ResidentK(
       Column("home_owner", PostgresJdbcTypes.uuid),
@@ -93,14 +93,14 @@ case class DepartmentK[F[_]](dpt: F[String])
 object DepartmentK {
   given KMacros.RepresentableTraverseKC[DepartmentK] = KMacros.deriveRepresentableTraverseKC[DepartmentK]
 
-  val table: Table[DepartmentK, JdbcType] = Table("departments", DepartmentK(Column("dpt", PostgresJdbcTypes.text)))
+  val table: Table[DepartmentK, JdbcCodec] = Table("departments", DepartmentK(Column("dpt", PostgresJdbcTypes.text)))
 }
 
 case class EmployeK[F[_]](dpt: F[String], emp: F[String])
 object EmployeK {
   given KMacros.RepresentableTraverseKC[EmployeK] = KMacros.deriveRepresentableTraverseKC[EmployeK]
 
-  val table: Table[EmployeK, JdbcType] =
+  val table: Table[EmployeK, JdbcCodec] =
     Table("employees", EmployeK(Column("dpt", PostgresJdbcTypes.text), Column("emp", PostgresJdbcTypes.text)))
 }
 
@@ -108,7 +108,7 @@ case class TaskK[F[_]](emp: F[String], tsk: F[String])
 object TaskK {
   given KMacros.RepresentableTraverseKC[TaskK] = KMacros.deriveRepresentableTraverseKC[TaskK]
 
-  val table: Table[TaskK, JdbcType] =
+  val table: Table[TaskK, JdbcCodec] =
     Table("tasks", TaskK(Column("emp", PostgresJdbcTypes.text), Column("tsk", PostgresJdbcTypes.text)))
 }
 
@@ -127,23 +127,23 @@ object Testing {
 
   import PostgresJdbcPlatform.*
 
-  def printSqlStr(str: SqlStr[JdbcType]): Unit =
+  def printSqlStr(str: SqlStr[JdbcCodec]): Unit =
     if str.str.isEmpty then println("ERROR: Empty string") else println(str.str)
     println()
 
   def printQuery[A[_[_]]](q: Query[A]): Unit =
     printSqlStr(PostgresJdbcPlatform.sqlRenderer.renderSelect(q.selectAst))
 
-  given Db[Future, JdbcType] with {
-    override def run(sql: SqlStr[JdbcType]): Future[Int] =
+  given Db[Future, JdbcCodec] with {
+    override def run(sql: SqlStr[JdbcCodec]): Future[Int] =
       printSqlStr(sql)
       Future.successful(0)
 
-    override def runIntoSimple[Res](sql: SqlStr[JdbcType], dbTypes: JdbcType[Res]): Future[QueryResult[Res]] =
+    override def runIntoSimple[Res](sql: SqlStr[JdbcCodec], dbTypes: JdbcCodec[Res]): Future[QueryResult[Res]] =
       printSqlStr(sql)
       Future.successful(QueryResult(Nil))
 
-    override def runIntoRes[Res[_[_]]](sql: SqlStr[JdbcType], dbTypes: Res[JdbcType])(
+    override def runIntoRes[Res[_[_]]](sql: SqlStr[JdbcCodec], dbTypes: Res[JdbcCodec])(
         using FT: TraverseKC[Res]
     ): Future[QueryResult[Res[Id]]] =
       printSqlStr(sql)

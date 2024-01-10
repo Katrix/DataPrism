@@ -1,16 +1,17 @@
 package dataprism.skunk
 
-import perspective.*
+import java.time.{Instant, ZoneOffset}
+import java.util.UUID
+
 import cats.effect.IO
 import dataprism.KMacros
 import dataprism.skunk.platform.implementations.PostgresSkunkPlatform
+import dataprism.skunk.sql.SkunkAnsiTypes.*
 import dataprism.skunk.sql.SkunkDb
 import dataprism.sql.*
-import skunk.{Codec, Session}
+import perspective.*
 import skunk.codec.all.*
-
-import java.time.{Instant, ZoneOffset}
-import java.util.UUID
+import skunk.{Codec, Session}
 
 case class HomeK[F[_]](
     owner: F[UUID],
@@ -38,18 +39,16 @@ object HomeK {
   val table: Table[HomeK, Codec] = Table(
     "homes",
     HomeK(
-      owner = Column("owner", uuid),
-      name = Column("name", text),
-      createdAt =
-        Column("created_at", timestamptz.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))),
-      updatedAt =
-        Column("updated_at", timestamptz.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))),
-      x = Column("x", float8),
-      y = Column("y", float8),
-      z = Column("z", float8),
-      yaw = Column("yaw", float4),
-      pitch = Column("pitch", float4),
-      worldUuid = Column("world_uuid", uuid)
+      owner = Column("owner", uuid.wrap),
+      name = Column("name", text.wrap),
+      createdAt = Column("created_at", timestamptz.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)).wrap),
+      updatedAt = Column("updated_at", timestamptz.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)).wrap),
+      x = Column("x", float8.wrap),
+      y = Column("y", float8.wrap),
+      z = Column("z", float8.wrap),
+      yaw = Column("yaw", float4.wrap),
+      pitch = Column("pitch", float4.wrap),
+      worldUuid = Column("world_uuid", uuid.wrap)
     )
   )
 
@@ -74,13 +73,13 @@ object ResidentK {
   val table: Table[ResidentK, Codec] = Table(
     "home_residents",
     ResidentK(
-      Column("home_owner", uuid),
-      Column("home_name", text),
-      Column("resident", uuid),
-      Column("created_at", timestamptz.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)))
+      Column("home_owner", uuid.wrap),
+      Column("home_name", text.wrap),
+      Column("resident", uuid.wrap),
+      Column("created_at", timestamptz.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)).wrap)
     )
   )
-  
+
   given KMacros.RepresentableTraverseKC[ResidentK] = KMacros.deriveRepresentableTraverseKC[ResidentK]
 }
 
@@ -88,11 +87,12 @@ object Testing {
   import PostgresSkunkPlatform.*
 
   val session: Session[IO] = ???
-  given db: SkunkDb[IO] = SkunkDb(session)
+  given db: SkunkDb[IO]    = SkunkDb(session)
 
-  Select(Query.from(HomeK.table).filter(_.name === "some_name".as(text))).run
+  Select(Query.from(HomeK.table).filter(_.name === "some_name".as(text.wrap))).run
 
-  val homeQuery: skunk.Query[(UUID, String), HomeK[Id]] = Compile.query((uuid, text)) { case (ownerId, homeName) =>
-    Select(Query.from(HomeK.table).filter(h => h.name === homeName && h.owner === ownerId))
-  }
+  val homeQuery: skunk.Query[(UUID, String), HomeK[Id]] =
+    Compile.query((uuid.wrap.notNull: Type[UUID], text.wrap.notNull: Type[String])) { case (ownerId, homeName) =>
+      Select(Query.from(HomeK.table).filter(h => h.name === homeName && h.owner === ownerId))
+    }
 }

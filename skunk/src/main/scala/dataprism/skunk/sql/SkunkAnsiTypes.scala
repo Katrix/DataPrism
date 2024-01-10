@@ -5,45 +5,45 @@ import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTim
 
 import scala.util.NotGiven
 
-import dataprism.sql.AnsiTypes
+import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}
 import skunk.Codec
 import skunk.codec.all
 
 object SkunkAnsiTypes extends AnsiTypes[Codec] {
+  extension [A](skunkCodec: Codec[A])
+    def wrap(using NotGiven[A <:< Option[_]], Codec[Option[A]] =:= Codec[NullabilityTypeChoice.Nullable[A]]): TypeOf[A] =
+      NullabilityTypeChoice.notNullByDefault(skunkCodec, _.opt)
 
-  override def smallint: Codec[Short] = all.int2
+  override def smallint: TypeOf[Short] = all.int2.wrap
 
-  override def integer: Codec[Int] = all.int4
+  override def integer: TypeOf[Int] = all.int4.wrap
 
-  override def bigint: Codec[Long] = all.int8
+  override def bigint: TypeOf[Long] = all.int8.wrap
 
-  override def real: Codec[Float] = all.float4
+  override def real: TypeOf[Float] = all.float4.wrap
 
-  override def doublePrecision: Codec[Double] = all.float8
+  override def doublePrecision: TypeOf[Double] = all.float8.wrap
 
-  override def varchar(n: Int): Codec[String] = all.varchar(n)
+  override def varchar(n: Int): TypeOf[String] = all.varchar(n).wrap
 
-  override def defaultStringType: Codec[String] = all.text
+  override def defaultStringType: TypeOf[String] = all.text.wrap
 
-  override def date: Codec[Date] = all.date.imap(d => java.sql.Date.valueOf(d))(d => d.toLocalDate)
+  override def date: TypeOf[Date] = all.date.imap(d => java.sql.Date.valueOf(d))(d => d.toLocalDate).wrap
 
-  override def time: Codec[Time] = all.time.imap(d => java.sql.Time.valueOf(d))(d => d.toLocalTime)
+  override def time: TypeOf[Time] = all.time.imap(d => java.sql.Time.valueOf(d))(d => d.toLocalTime).wrap
 
-  override def timeWithTimezone: Codec[Time] =
-    all.timetz.imap(d => java.sql.Time.valueOf(d.toLocalTime))(d => d.toLocalTime.atOffset(ZoneOffset.UTC))
+  override def timeWithTimezone: TypeOf[Time] =
+    all.timetz.imap(d => java.sql.Time.valueOf(d.toLocalTime))(d => d.toLocalTime.atOffset(ZoneOffset.UTC)).wrap
 
-  override def timestamp: Codec[Timestamp] =
-    all.timestamp.imap(t => java.sql.Timestamp.valueOf(t))(t => t.toLocalDateTime)
+  override def timestamp: TypeOf[Timestamp] =
+    all.timestamp.imap(t => java.sql.Timestamp.valueOf(t))(t => t.toLocalDateTime).wrap
 
-  override def timestampWithTimezone: Codec[Timestamp] =
-    all.timestamptz.imap(t => java.sql.Timestamp.valueOf(t.toLocalDateTime))(t =>
-      t.toLocalDateTime.atOffset(ZoneOffset.UTC)
-    )
+  override def timestampWithTimezone: TypeOf[Timestamp] =
+    all.timestamptz
+      .imap(t => java.sql.Timestamp.valueOf(t.toLocalDateTime))(t => t.toLocalDateTime.atOffset(ZoneOffset.UTC))
+      .wrap
 
-  override def boolean: Codec[Boolean] = all.bool
+  override def boolean: TypeOf[Boolean] = all.bool.wrap
 
-  override def blob: Codec[Seq[Byte]] = all.bytea.imap(_.toSeq)(_.toArray)
-
-  override def nullable[A](tpe: Codec[A])(using ev: NotGiven[A <:< Option[?]]): Codec[Nullable[A]] =
-    tpe.opt.asInstanceOf[Codec[Nullable[A]]]
+  override def blob: TypeOf[Seq[Byte]] = all.bytea.imap(_.toSeq)(_.toArray).wrap
 }

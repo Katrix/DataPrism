@@ -1,6 +1,6 @@
 package dataprism.jdbc.platform.implementations
 
-import dataprism.jdbc.sql.{JdbcType, PostgresJdbcTypes}
+import dataprism.jdbc.sql.{JdbcCodec, PostgresJdbcTypes}
 import dataprism.platform.implementations.PostgresQueryPlatform
 import dataprism.sql.AnsiTypes
 
@@ -9,16 +9,17 @@ import scala.annotation.targetName
 trait PostgresJdbcPlatform extends PostgresQueryPlatform {
 
   override type ArrayTypeArgs[A] = PostgresJdbcTypes.ArrayMapping[A]
-  override type Type[A]          = JdbcType[A]
-  extension [A](tpe: JdbcType[A])
+  override type Codec[A]          = JdbcCodec[A]
+  extension [A](tpe: Type[A])
     @targetName("typeName")
-    override def name: String = tpe.name
+    override def name: String = tpe.codec.name
 
-  override protected def arrayType[A](elemType: JdbcType[A])(
+  override protected def arrayType[A](elemType: Type[A])(
       using extraArrayTypeArgs: PostgresJdbcTypes.ArrayMapping[A]
-  ): JdbcType[Seq[A]] = PostgresJdbcTypes.array(elemType)
+  ): Type[Seq[A]] = 
+    PostgresJdbcTypes.array(elemType).notNull
 
-  override def AnsiTypes: AnsiTypes[JdbcType] = PostgresJdbcTypes
+  override def AnsiTypes: AnsiTypes[JdbcCodec] = PostgresJdbcTypes
 
   type Compile = SqlCompile
   object Compile extends SqlCompile

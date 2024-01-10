@@ -3,89 +3,69 @@ package dataprism.jdbc.sql
 import java.sql.{Connection, Date, PreparedStatement, ResultSet, Time, Timestamp, Types}
 
 import scala.annotation.unused
-import scala.util.NotGiven
+import scala.reflect.ClassTag
 
-import dataprism.sql.AnsiTypes
+import dataprism.sql.{AnsiTypes, NullabilityTypeChoice, SelectedType}
 
-trait JdbcAnsiTypes extends AnsiTypes[JdbcType]:
-  val smallint: JdbcType[Short] = JdbcType.simple("SMALLINT", Types.SMALLINT, _.getShort(_), _.setShort(_, _))
-  val integer: JdbcType[Int]    = JdbcType.simple("INTEGER", Types.INTEGER, _.getInt(_), _.setInt(_, _))
-  val bigint: JdbcType[Long]    = JdbcType.simple("BIGINT", Types.BIGINT, _.getLong(_), _.setLong(_, _))
-  val real: JdbcType[Float]     = JdbcType.simple("REAL", Types.REAL, _.getFloat(_), _.setFloat(_, _))
-  val doublePrecision: JdbcType[Double] =
-    JdbcType.simple("DOUBLE PRECISION", Types.DOUBLE, _.getDouble(_), _.setDouble(_, _))
-  val boolean: JdbcType[Boolean] = JdbcType.simple("BOOLEAN", Types.BOOLEAN, _.getBoolean(_), _.setBoolean(_, _))
+trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
+  private def tc[A](codec: JdbcCodec[Option[A]])(
+      using NullabilityTypeChoice.Nullable[A] =:= Option[A],
+      JdbcCodec[Option[A]] =:= JdbcCodec[NullabilityTypeChoice.Nullable[A]]
+  ): TypeOf[A] =
+    NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
-  def varchar(n: Int): JdbcType[String] =
-    JdbcType.simple(s"VARCHAR($n)", Types.VARCHAR, _.getString(_), _.setString(_, _))
+  private def primitive[A <: AnyRef: ClassTag, B <: AnyVal](
+      name: String,
+      sqlType: Int,
+      unbox: A => B,
+      box: B => A
+  ): TypeOf[B] =
+    tc(JdbcCodec.byClass[A](name, sqlType).imap[Option[B]](_.map(unbox))(_.map(box)))
 
-  override def defaultStringType: JdbcType[String] = varchar(254)
+  val smallint: TypeOf[Short] = primitive[java.lang.Short, Short]("SMALLINT", Types.SMALLINT, _.shortValue(), Short.box)
+  val integer: TypeOf[Int]    = primitive[java.lang.Integer, Int]("INTEGER", Types.INTEGER, _.intValue(), Int.box)
+  val bigint: TypeOf[Long]    = primitive[java.lang.Long, Long]("BIGINT", Types.BIGINT, _.longValue(), Long.box)
+  val real: TypeOf[Float]     = primitive[java.lang.Float, Float]("REAL", Types.REAL, _.floatValue(), Float.box)
+  val doublePrecision: TypeOf[Double] =
+    primitive[java.lang.Double, Double]("DOUBLE PRECISION", Types.DOUBLE, _.doubleValue(), Double.box)
+  val boolean: TypeOf[Boolean] =
+    primitive[java.lang.Boolean, Boolean]("BOOLEAN", Types.BOOLEAN, _.booleanValue(), Boolean.box)
 
-  val date: JdbcType[Date] = JdbcType.simple(
-    "DATE",
-    Types.DATE,
-    _.getDate(_),
-    (a, b, c) => a.setDate(b, c)
-  )
+  def varchar(n: Int): TypeOf[String] = tc(JdbcCodec.byClass[String](s"VARCHAR($n)", Types.VARCHAR))
 
-  val time: JdbcType[Time] = JdbcType.simple(
-    "TIME",
-    Types.TIME,
-    _.getTime(_),
-    (a, b, c) => a.setTime(b, c)
-  )
+  override def defaultStringType: TypeOf[String] = varchar(254)
 
-  val timeWithTimezone: JdbcType[Time] = JdbcType.simple(
-    "TIME WITH TIMEZONE",
-    Types.TIME_WITH_TIMEZONE,
-    _.getTime(_),
-    (a, b, c) => a.setTime(b, c)
-  )
+  val date: TypeOf[Date] = tc(JdbcCodec.byClass[Date]("DATE", Types.DATE))
+  val time: TypeOf[Time] = tc(JdbcCodec.byClass[Time]("TIME", Types.TIME))
 
-  val timestamp: JdbcType[Timestamp] = JdbcType.simple(
-    "TIMESTAMP",
-    Types.TIMESTAMP,
-    _.getTimestamp(_),
-    (a, b, c) => a.setTimestamp(b, c)
-  )
+  val timeWithTimezone: TypeOf[Time] = tc(JdbcCodec.byClass[Time]("TIME WITH TIMEZONE", Types.TIME_WITH_TIMEZONE))
 
-  val timestampWithTimezone: JdbcType[Timestamp] =
-    JdbcType.simple(
-      "TIMESTAMP WITH TIMEZONE",
-      Types.TIMESTAMP_WITH_TIMEZONE,
-      _.getTimestamp(_),
-      (a, b, c) => a.setTimestamp(b, c)
-    )
+  val timestamp: TypeOf[Timestamp] = tc(JdbcCodec.byClass[Timestamp]("TIMESTAMP", Types.TIMESTAMP))
+
+  val timestampWithTimezone: TypeOf[Timestamp] =
+    tc(JdbcCodec.byClass[Timestamp]("TIMESTAMP WITH TIMEZONE", Types.TIMESTAMP_WITH_TIMEZONE))
 
   trait ArrayMapping[A]:
-    def makeArrayType(inner: JdbcType[A]): JdbcType[Seq[A]]
+    def makeArrayType(inner: SelectedType[A, JdbcCodec]): TypeOf[Seq[A]]
 
   def ArrayMapping: ArrayMappingCompanion
   trait ArrayMappingCompanion:
     given ArrayMapping[Byte] with
-      override def makeArrayType(inner: JdbcType[Byte]): JdbcType[Seq[Byte]] =
-        JdbcType.simple("BLOB", Types.BLOB, _.getBytes(_).toSeq, (a, b, c) => a.setBytes(b, c.toArray))
+      override def makeArrayType(inner: SelectedType[Byte, JdbcCodec]): TypeOf[Seq[Byte]] =
+        tc(
+          JdbcCodec.simple(
+            "BLOB",
+            (a, b) => Option(a.getBytes(b)).map(_.toSeq),
+            (a, b, c) => a.setBytes(b, c.fold(null)(_.toArray))
+          )
+        )
 
-  val blob: JdbcType[Seq[Byte]] = ArrayMapping.given_ArrayMapping_Byte.makeArrayType(
-    JdbcType.simple("BYTE", Types.TINYINT, _.getByte(_), (a, b, c) => a.setByte(b, c))
+  val blob: TypeOf[Seq[Byte]] = ArrayMapping.given_ArrayMapping_Byte.makeArrayType(
+    primitive[java.lang.Byte, Byte]("BYTE", Types.TINYINT, _.byteValue(), Byte.box).notNull
   )
 
-  def array[A](inner: JdbcType[A])(using mapping: ArrayMapping[A]): JdbcType[Seq[A]] =
+  def array[A](inner: SelectedType[A, JdbcCodec])(using mapping: ArrayMapping[A]): TypeOf[Seq[A]] =
     mapping.makeArrayType(inner)
-
-  def nullable[A](inner: JdbcType[A])(using @unused ev: NotGiven[A <:< Option[_]]): JdbcType[Nullable[A]] =
-    if inner.isNullable then inner.asInstanceOf[JdbcType[Nullable[A]]]
-    else
-      JdbcType
-        .withConnection(
-          inner.name,
-          inner.sqlType,
-          (a: ResultSet, b: Int, c: Connection) => if a.getObject(b) == null then None else Some(inner.get(a, b, c)),
-          (a: PreparedStatement, b: Int, c: Option[A], d: Connection) =>
-            c.fold(a.setNull(b, inner.sqlType))(c2 => inner.set(a, b, c2, d)),
-          isNullable = true
-        )
-        .asInstanceOf[JdbcType[Nullable[A]]]
 
 object JdbcAnsiTypes extends JdbcAnsiTypes:
   override def ArrayMapping: ArrayMappingCompanion = new ArrayMappingCompanion {}

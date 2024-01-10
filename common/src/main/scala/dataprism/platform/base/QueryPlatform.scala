@@ -1,18 +1,17 @@
 package dataprism.platform.base
 
 import scala.annotation.targetName
+
 import cats.Applicative
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 
-import scala.util.NotGiven
-
 //noinspection ScalaUnusedSymbol
 trait QueryPlatform {
-  
+
   trait Lift[A, B]:
     extension (a: A) def lift: B
-    
+
   type Nullability[A] <: NullabilityBase[A]
   trait NullabilityBase[A]:
     type NNA
@@ -20,13 +19,13 @@ trait QueryPlatform {
 
   trait DbValueBase[A]:
     def liftDbValue: DbValue[A]
-    
+
     @targetName("dbEquals") def ===(that: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
     @targetName("dbNotEquals") def !==(that: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
-    
+
     def asc: Ord
     def desc: Ord
-    
+
   type DbValue[A] <: DbValueBase[A]
 
   trait OrdSeqBase:
@@ -89,8 +88,8 @@ trait QueryPlatform {
         f: A[Many] => B[DbValue]
     ): QueryGrouped[B] =
       given TraverseKC[[F[_]] =>> Unit] with {
-        extension [X[__], C](fa: Unit) 
-          def foldLeftK[Y](b: Y)(f: Y => X :~>#: Y): Y = b
+        extension [X[__], C](fa: Unit)
+          def foldLeftK[Y](b: Y)(f: Y => X :~>#: Y): Y    = b
           def foldRightK[Y](b: Y)(f: X :~>#: (Y => Y)): Y = b
 
         extension [X[_], C](fa: Unit)
