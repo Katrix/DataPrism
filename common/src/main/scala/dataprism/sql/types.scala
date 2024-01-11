@@ -5,52 +5,49 @@ import scala.util.NotGiven
 import cats.Invariant
 import cats.syntax.all.*
 
-class NullabilityTypeChoice[A, Codec[_]](
+class NullabilityTypeChoice[Codec[_], A](
     notNullCodec: Codec[A],
-    nullableCodec: Codec[NullabilityTypeChoice.Nullable[A]]
-):
-  val notNull: SelectedType[A, Codec] { type NNA = A } = NotNullType(notNullCodec, this)
-  val nullable: SelectedType[NullabilityTypeChoice.Nullable[A], Codec] { type NNA = A } =
+    nullableCodec: Codec[Option[A]]
+) extends SelectedType[Codec, A]:
+  val notNull: SelectedType[Codec, A] { type NNA = A } = NotNullType(notNullCodec, this)
+  val nullable: SelectedType[Codec, Option[A]] { type NNA = A } =
     NullableType(nullableCodec, this)
+
+  override type NNA = A
+  override def codec: Codec[A]                         = notNullCodec
+  override def choice: NullabilityTypeChoice[Codec, A] = this
 
   def imap[B](f: A => B)(
       g: B => A
-  )(using NotGiven[B <:< Option[_]], Invariant[Codec]): NullabilityTypeChoice[B, Codec] =
+  )(using NotGiven[B <:< Option[_]], Invariant[Codec]): NullabilityTypeChoice[Codec, B] =
     NullabilityTypeChoice(
       notNullCodec.imap[B](f)(g),
-      nullableCodec.imap[NullabilityTypeChoice.Nullable[B]](na =>
-        na.asInstanceOf[Option[A]].map(f).asInstanceOf[NullabilityTypeChoice.Nullable[B]]
-      )((b: NullabilityTypeChoice.Nullable[B]) =>
-        b.asInstanceOf[Option[B]].map(g).asInstanceOf[NullabilityTypeChoice.Nullable[A]]
-      )
+      nullableCodec.imap[Option[B]](na => na.map(f))((b: Option[B]) => b.map(g))
     )
 
 object NullabilityTypeChoice:
-  type Nullable[A] = A match {
-    case Option[b] => Option[b]
-    case _         => Option[A]
-  }
-
-  def nullableByDefault[A, Codec[_]](
-      codec: Codec[Nullable[A]],
-      get: Codec[Nullable[A]] => Codec[A]
-  ): NullabilityTypeChoice[A, Codec] = NullabilityTypeChoice(get(codec), codec)
-  def notNullByDefault[A, Codec[_]](
+  def nullableByDefault[Codec[_], A](
+      codec: Codec[Option[A]],
+      get: Codec[Option[A]] => Codec[A]
+  ): NullabilityTypeChoice[Codec, A] = NullabilityTypeChoice(get(codec), codec)
+  def notNullByDefault[Codec[_], A](
       codec: Codec[A],
-      nullable: Codec[A] => Codec[Nullable[A]]
-  ): NullabilityTypeChoice[A, Codec] = NullabilityTypeChoice(codec, nullable(codec))
+      nullable: Codec[A] => Codec[Option[A]]
+  ): NullabilityTypeChoice[Codec, A] = NullabilityTypeChoice(codec, nullable(codec))
 
-sealed trait SelectedType[A, Codec[_]]:
+sealed trait SelectedType[Codec[_], A]:
   type NNA
   def codec: Codec[A]
-  def choice: NullabilityTypeChoice[NNA, Codec]
+  def choice: NullabilityTypeChoice[Codec, NNA]
 
-case class NotNullType[A, Codec[_]](codec: Codec[A], choice: NullabilityTypeChoice[A, Codec])
-    extends SelectedType[A, Codec]:
+  inline def forgetNNA: SelectedType[Codec, A] = this
+
+case class NotNullType[Codec[_], A](codec: Codec[A], choice: NullabilityTypeChoice[Codec, A])
+    extends SelectedType[Codec, A]:
   type NNA = A
 
-case class NullableType[A, Codec[_]](
-    codec: Codec[NullabilityTypeChoice.Nullable[A]],
-    choice: NullabilityTypeChoice[A, Codec]
-) extends SelectedType[NullabilityTypeChoice.Nullable[A], Codec]:
+case class NullableType[Codec[_], A](
+    codec: Codec[Option[A]],
+    choice: NullabilityTypeChoice[Codec, A]
+) extends SelectedType[Codec, Option[A]]:
   type NNA = A

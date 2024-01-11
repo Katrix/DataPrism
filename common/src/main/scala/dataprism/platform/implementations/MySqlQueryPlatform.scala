@@ -106,25 +106,25 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
       with ResultOperation[Res](using query.applyK, query.traverseK)
 
   case class DeleteOperation[A[_[_]], B[_[_]]](
-      from: Table[A, Codec],
+      from: Table[Codec, A],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlDeleteOperation[A, B](from, usingV, where)
 
-  case class InsertOperation[A[_[_]]](table: Table[A, Codec], values: Query[Optional[A]])
+  case class InsertOperation[A[_[_]]](table: Table[Codec, A], values: Query[Optional[A]])
       extends SqlInsertOperation[A](table, values)
 
   case class UpdateOperation[A[_[_]], B[_[_]]](
-      table: Table[A, Codec],
+      table: Table[Codec, A],
       from: Option[Query[B]],
       setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlUpdateOperation[A, B](table, from, setValues, where)
 
   trait DeleteCompanion extends SqlDeleteCompanion:
-    override def from[A[_[_]]](from: Table[A, Codec]): DeleteFrom[A, A] = DeleteFrom(from)
+    override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A, A] = DeleteFrom(from)
 
-  case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Codec], using: Option[Query[B]] = None)
+  case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[Codec, A], using: Option[Query[B]] = None)
       extends SqlDeleteFrom[A, B](from, using):
     def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1] = DeleteFrom(from, Some(query))
 
@@ -132,9 +132,9 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   end DeleteFrom
 
   trait InsertCompanion extends SqlInsertCompanion:
-    override def into[A[_[_]]](table: Table[A, Codec]): InsertInto[A] = InsertInto(table)
+    override def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A] = InsertInto(table)
 
-  case class InsertInto[A[_[_]]](table: Table[A, Codec]) extends SqlInsertInto[A]:
+  case class InsertInto[A[_[_]]](table: Table[Codec, A]) extends SqlInsertInto[A]:
 
     def values(query: Query[A]): InsertOperation[A] =
       import table.given
@@ -153,9 +153,9 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   end InsertInto
 
   trait UpdateCompanion extends SqlUpdateCompanion:
-    override def table[A[_[_]]](table: Table[A, Codec]): UpdateTable[A, A] = UpdateTable(table)
+    override def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A, A] = UpdateTable(table)
 
-  case class UpdateTable[A[_[_]], B[_[_]]](table: Table[A, Codec], from: Option[Query[B]] = None)
+  case class UpdateTable[A[_[_]], B[_[_]]](table: Table[Codec, A], from: Option[Query[B]] = None)
       extends SqlUpdateTable[A, B]:
 
     def from[B1[_[_]]](fromQ: Query[B1]): UpdateTable[A, B1] = UpdateTable(table, Some(fromQ))
@@ -165,7 +165,7 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
   end UpdateTable
 
   case class UpdateTableWhere[A[_[_]], B[_[_]]](
-      table: Table[A, Codec],
+      table: Table[Codec, A],
       from: Option[Query[B]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlUpdateTableWhere[A, B]:

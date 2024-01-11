@@ -3,13 +3,10 @@ import java.sql.{Date, Time, Types}
 
 import dataprism.sql.NullabilityTypeChoice
 
-case class MySqlJdbcTypeCastable[A](name: String, tpe: NullabilityTypeChoice[A, JdbcCodec])
+case class MySqlJdbcTypeCastable[A](name: String, tpe: NullabilityTypeChoice[JdbcCodec, A])
 trait MySqlJdbcTypes extends JdbcAnsiTypes:
   self =>
-  private def tc[A](codec: JdbcCodec[Option[A]])(
-      using NullabilityTypeChoice.Nullable[A] =:= Option[A],
-      JdbcCodec[Option[A]] =:= JdbcCodec[NullabilityTypeChoice.Nullable[A]]
-  ): TypeOf[A] =
+  private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] =
     NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
   val text: TypeOf[String] = tc(JdbcCodec.byClass[String]("TEXT", Types.VARCHAR))

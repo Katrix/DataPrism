@@ -26,7 +26,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
   enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
     case FromQuery(q: Query[A])
-    case FromTable(t: Table[A, Codec])
+    case FromTable(t: Table[Codec, A])
     case InnerJoin[A[_[_]], B[_[_]]](
         lhs: ValueSource[A],
         rhs: ValueSource[B],
@@ -203,7 +203,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
           val queryName = s"${table.tableName}_y$queryNum"
 
           val values = table.columns.mapK(
-            [X] => (column: Column[X, Codec]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).lift
+            [X] => (column: Column[Codec, X]) => SqlDbValue.QueryColumn[X](column.nameStr, queryName, column.tpe).lift
           )
 
           (

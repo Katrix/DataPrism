@@ -10,10 +10,7 @@ import scala.util.NotGiven
 import dataprism.sql.{NullabilityTypeChoice, SelectedType}
 
 trait PostgresJdbcTypes extends JdbcAnsiTypes:
-  private def tc[A](codec: JdbcCodec[Option[A]])(
-      using NullabilityTypeChoice.Nullable[A] =:= Option[A],
-      JdbcCodec[Option[A]] =:= JdbcCodec[NullabilityTypeChoice.Nullable[A]]
-  ): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
+  private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
   val text: TypeOf[String] = tc(JdbcCodec.byClass[String]("TEXT", 25))
 
@@ -26,7 +23,7 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
   trait LowPriorityArrayMappings:
     // TODO: Null handling
     given [A](using @unused ev: NotGiven[A <:< Seq[_]]): ArrayMapping[A] with
-      override def makeArrayType(inner: SelectedType[A, JdbcCodec]): TypeOf[Seq[A]] = tc(
+      override def makeArrayType(inner: SelectedType[JdbcCodec, A]): TypeOf[Seq[A]] = tc(
         JdbcCodec.withConnection(
           s"ARRAY ${inner.codec.name}",
           (rs: ResultSet, i: Int, _: Connection) =>

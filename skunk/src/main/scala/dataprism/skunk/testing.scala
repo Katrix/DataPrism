@@ -36,7 +36,7 @@ object HomeK {
   ): HomeK[F] =
     HomeK(uuid, string, instant, instant, double, double, double, float, float, uuid)
 
-  val table: Table[HomeK, Codec] = Table(
+  val table: Table[Codec, HomeK] = Table(
     "homes",
     HomeK(
       owner = Column("owner", uuid.wrap),
@@ -70,7 +70,7 @@ object ResidentK {
   ): ResidentK[F] =
     ResidentK(uuid, string, uuid, instant)
 
-  val table: Table[ResidentK, Codec] = Table(
+  val table: Table[Codec, ResidentK] = Table(
     "home_residents",
     ResidentK(
       Column("home_owner", uuid.wrap),
@@ -92,7 +92,7 @@ object Testing {
   Select(Query.from(HomeK.table).filter(_.name === "some_name".as(text.wrap))).run
 
   val homeQuery: skunk.Query[(UUID, String), HomeK[Id]] =
-    Compile.query((uuid.wrap.notNull: Type[UUID], text.wrap.notNull: Type[String])) { case (ownerId, homeName) =>
+    Compile.query((uuid.wrap.notNull.forgetNNA, text.wrap.notNull.forgetNNA)) { case (ownerId, homeName) =>
       Select(Query.from(HomeK.table).filter(h => h.name === homeName && h.owner === ownerId))
     }
 }

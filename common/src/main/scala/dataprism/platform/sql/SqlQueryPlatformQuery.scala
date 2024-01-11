@@ -24,18 +24,18 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     def distinct: Query[A]
 
-    def join[B[_[_]]](that: Table[B, Codec])(
+    def join[B[_[_]]](that: Table[Codec, B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     )(using TraverseKC[B]): Query[InnerJoin[A, B]] = this.join(Query.from(that))(on)
 
-    def crossJoin[B[_[_]]](that: Table[B, Codec]): Query[InnerJoin[A, B]] =
+    def crossJoin[B[_[_]]](that: Table[Codec, B]): Query[InnerJoin[A, B]] =
       this.crossJoin(Query.from(that))
 
-    def leftJoin[B[_[_]]](that: Table[B, Codec])(
+    def leftJoin[B[_[_]]](that: Table[Codec, B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[LeftJoin[A, B]] = this.leftJoin(Query.from(that))(on)
 
-    def fullJoin[B[_[_]]](that: Table[B, Codec])(
+    def fullJoin[B[_[_]]](that: Table[Codec, B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]] = this.fullJoin(Query.from(that))(on)
 
@@ -106,7 +106,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[RightJoin[A, B]] = nested.rightJoin(that)(on)
 
-    def rightJoin[B[_[_]]](that: Table[B, Codec])(
+    def rightJoin[B[_[_]]](that: Table[Codec, B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[RightJoin[A, B]] = this.rightJoin(Query.from(that))(on)
 
@@ -863,7 +863,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   extension (q: QueryCompanion)
     @targetName("queryCompanionFrom")
-    def from[A[_[_]]](table: Table[A, Codec]): Query[A] =
+    def from[A[_[_]]](table: Table[Codec, A]): Query[A] =
       import table.given
       SqlQuery.SqlQueryFromStage(SqlValueSource.FromTable(table).liftSqlValueSource).liftSqlQuery
     end from
@@ -886,10 +886,10 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         )
         .liftSqlQuery
 
-    def valuesOf[A[_[_]]](table: Table[A, Codec], value: A[Id], values: Seq[A[Id]] = Nil): Query[A] =
+    def valuesOf[A[_[_]]](table: Table[Codec, A], value: A[Id], values: Seq[A[Id]] = Nil): Query[A] =
       import table.given
       given FunctorKC[A] = table.FA
-      Query.values(table.columns.mapK([Z] => (col: Column[Z, Codec]) => col.tpe), value, values)
+      Query.values(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values)
 
     def valueOpt[A[_[_]]](types: A[Type], value: A[Option])(
         using FA: ApplyKC[A],
@@ -914,10 +914,10 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       values(types.map2K(value)([X] => (tpe: Type[X], opt: Option[X]) => opt.map(_ => tpe)), value, Nil)
 
-    def valueOfOpt[A[_[_]]](table: Table[A, Codec], value: A[Option]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
+    def valueOfOpt[A[_[_]]](table: Table[Codec, A], value: A[Option]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
       import table.given
       given FunctorKC[A] = table.FA
-      valueOpt(table.columns.mapK([Z] => (col: Column[Z, Codec]) => col.tpe), value)
+      valueOpt(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value)
 
   extension [A](query: Query[[F[_]] =>> F[A]])
     // TODO: Make use of an implicit conversion here?

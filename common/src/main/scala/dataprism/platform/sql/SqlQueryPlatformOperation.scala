@@ -56,7 +56,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type DeleteOperation[A[_[_]], B[_[_]]] <: SqlDeleteOperation[A, B]
   trait SqlDeleteOperation[A[_[_]], B[_[_]]](
-      from: Table[A, Codec],
+      from: Table[Codec, A],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends IntOperation:
@@ -79,11 +79,11 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type DeleteCompanion <: SqlDeleteCompanion
   trait SqlDeleteCompanion:
-    def from[A[_[_]]](from: Table[A, Codec]): DeleteFrom[A, A]
+    def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A, A]
   end SqlDeleteCompanion
 
   type DeleteFrom[A[_[_]], B[_[_]]] <: SqlDeleteFrom[A, B]
-  trait SqlDeleteFrom[A[_[_]], B[_[_]]](from: Table[A, Codec], using: Option[Query[B]] = None):
+  trait SqlDeleteFrom[A[_[_]], B[_[_]]](from: Table[Codec, A], using: Option[Query[B]] = None):
     def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1]
     def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B]
   end SqlDeleteFrom
@@ -111,7 +111,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   }
 
   trait SqlInsertOperation[A[_[_]]](
-      table: Table[A, Codec],
+      table: Table[Codec, A],
       values: Query[Optional[A]]
   ) extends IntOperation:
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
@@ -122,7 +122,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
           table.name,
           table.columns
             .map2Const(computedValues.values)(
-              [Z] => (column: Column[Z, Codec], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
+              [Z] => (column: Column[Codec, Z], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
             )
             .toListK
             .flatMap(_.toList),
@@ -137,9 +137,9 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type InsertCompanion <: SqlInsertCompanion
   trait SqlInsertCompanion:
-    def into[A[_[_]]](table: Table[A, Codec]): InsertInto[A]
+    def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A]
 
-    def values[A[_[_]]](table: Table[A, Codec], value: A[Id], values: Seq[A[Id]] = Nil): InsertOperation[A] =
+    def values[A[_[_]]](table: Table[Codec, A], value: A[Id], values: Seq[A[Id]] = Nil): InsertOperation[A] =
       into(table).values(Query.valuesOf(table, value, values))
   end SqlInsertCompanion
 
@@ -153,7 +153,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type UpdateOperation[A[_[_]], B[_[_]]] <: SqlUpdateOperation[A, B]
   trait SqlUpdateOperation[A[_[_]], B[_[_]]](
-      table: Table[A, Codec],
+      table: Table[Codec, A],
       from: Option[Query[B]],
       setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -178,7 +178,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         yield sqlRenderer.renderUpdate(
           table.columns
             .map2Const(meta.values)(
-              [Z] => (col: Column[Z, Codec], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList
+              [Z] => (col: Column[Codec, Z], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList
             )
             .toListK
             .flatten,
@@ -190,7 +190,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type UpdateCompanion <: SqlUpdateCompanion
   trait SqlUpdateCompanion:
-    def table[A[_[_]]](table: Table[A, Codec]): UpdateTable[A, A]
+    def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A, A]
 
   type UpdateTable[A[_[_]], B[_[_]]] <: SqlUpdateTable[A, B]
   trait SqlUpdateTable[A[_[_]], B[_[_]]]:

@@ -8,10 +8,7 @@ import scala.reflect.ClassTag
 import dataprism.sql.{AnsiTypes, NullabilityTypeChoice, SelectedType}
 
 trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
-  private def tc[A](codec: JdbcCodec[Option[A]])(
-      using NullabilityTypeChoice.Nullable[A] =:= Option[A],
-      JdbcCodec[Option[A]] =:= JdbcCodec[NullabilityTypeChoice.Nullable[A]]
-  ): TypeOf[A] =
+  private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] =
     NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
   private def primitive[A <: AnyRef: ClassTag, B <: AnyVal](
@@ -46,12 +43,12 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
     tc(JdbcCodec.byClass[Timestamp]("TIMESTAMP WITH TIMEZONE", Types.TIMESTAMP_WITH_TIMEZONE))
 
   trait ArrayMapping[A]:
-    def makeArrayType(inner: SelectedType[A, JdbcCodec]): TypeOf[Seq[A]]
+    def makeArrayType(inner: SelectedType[JdbcCodec, A]): TypeOf[Seq[A]]
 
   def ArrayMapping: ArrayMappingCompanion
   trait ArrayMappingCompanion:
     given ArrayMapping[Byte] with
-      override def makeArrayType(inner: SelectedType[Byte, JdbcCodec]): TypeOf[Seq[Byte]] =
+      override def makeArrayType(inner: SelectedType[JdbcCodec, Byte]): TypeOf[Seq[Byte]] =
         tc(
           JdbcCodec.simple(
             "BLOB",
@@ -64,7 +61,7 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
     primitive[java.lang.Byte, Byte]("BYTE", Types.TINYINT, _.byteValue(), Byte.box).notNull
   )
 
-  def array[A](inner: SelectedType[A, JdbcCodec])(using mapping: ArrayMapping[A]): TypeOf[Seq[A]] =
+  def array[A](inner: SelectedType[JdbcCodec, A])(using mapping: ArrayMapping[A]): TypeOf[Seq[A]] =
     mapping.makeArrayType(inner)
 
 object JdbcAnsiTypes extends JdbcAnsiTypes:

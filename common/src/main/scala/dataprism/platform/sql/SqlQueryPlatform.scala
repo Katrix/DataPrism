@@ -15,7 +15,7 @@ trait SqlQueryPlatform
     with SqlQueryPlatformOperation { platform =>
 
   type Codec[_]
-  type Type[A] = SelectedType[A, Codec]
+  type Type[A] = SelectedType[Codec, A]
   def AnsiTypes: AnsiTypes[Codec]
 
   val sqlRenderer: AstRenderer[Codec]

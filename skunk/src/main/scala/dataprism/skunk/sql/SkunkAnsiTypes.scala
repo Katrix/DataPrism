@@ -11,7 +11,7 @@ import skunk.codec.all
 
 object SkunkAnsiTypes extends AnsiTypes[Codec] {
   extension [A](skunkCodec: Codec[A])
-    def wrap(using NotGiven[A <:< Option[_]], Codec[Option[A]] =:= Codec[NullabilityTypeChoice.Nullable[A]]): TypeOf[A] =
+    def wrap: TypeOf[A] =
       NullabilityTypeChoice.notNullByDefault(skunkCodec, _.opt)
 
   override def smallint: TypeOf[Short] = all.int2.wrap

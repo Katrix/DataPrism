@@ -36,7 +36,7 @@ trait QueryPlatform {
 
   type Many[A]
 
-  type Nullable[A] = A match {
+  type Nullable[A] <: Option[_] = A match {
     case Option[b] => Option[b]
     case _         => Option[A]
   }

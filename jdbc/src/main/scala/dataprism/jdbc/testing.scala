@@ -36,7 +36,7 @@ object HomeK {
   ): HomeK[F] =
     HomeK(uuid, string, instant, instant, double, double, double, float, float, uuid)
 
-  val table: Table[HomeK, JdbcCodec] = Table(
+  val table: Table[JdbcCodec, HomeK] = Table(
     "homes",
     HomeK(
       owner = Column("owner", PostgresJdbcTypes.uuid),
@@ -76,7 +76,7 @@ object ResidentK {
   ): ResidentK[F] =
     ResidentK(uuid, string, uuid, instant)
 
-  val table: Table[ResidentK, JdbcCodec] = Table(
+  val table: Table[JdbcCodec, ResidentK] = Table(
     "home_residents",
     ResidentK(
       Column("home_owner", PostgresJdbcTypes.uuid),
@@ -93,14 +93,14 @@ case class DepartmentK[F[_]](dpt: F[String])
 object DepartmentK {
   given KMacros.RepresentableTraverseKC[DepartmentK] = KMacros.deriveRepresentableTraverseKC[DepartmentK]
 
-  val table: Table[DepartmentK, JdbcCodec] = Table("departments", DepartmentK(Column("dpt", PostgresJdbcTypes.text)))
+  val table: Table[JdbcCodec, DepartmentK] = Table("departments", DepartmentK(Column("dpt", PostgresJdbcTypes.text)))
 }
 
 case class EmployeK[F[_]](dpt: F[String], emp: F[String])
 object EmployeK {
   given KMacros.RepresentableTraverseKC[EmployeK] = KMacros.deriveRepresentableTraverseKC[EmployeK]
 
-  val table: Table[EmployeK, JdbcCodec] =
+  val table: Table[JdbcCodec, EmployeK] =
     Table("employees", EmployeK(Column("dpt", PostgresJdbcTypes.text), Column("emp", PostgresJdbcTypes.text)))
 }
 
@@ -108,7 +108,7 @@ case class TaskK[F[_]](emp: F[String], tsk: F[String])
 object TaskK {
   given KMacros.RepresentableTraverseKC[TaskK] = KMacros.deriveRepresentableTraverseKC[TaskK]
 
-  val table: Table[TaskK, JdbcCodec] =
+  val table: Table[JdbcCodec, TaskK] =
     Table("tasks", TaskK(Column("emp", PostgresJdbcTypes.text), Column("tsk", PostgresJdbcTypes.text)))
 }
 
