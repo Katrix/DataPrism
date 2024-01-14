@@ -28,7 +28,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   override type CastType[A] = Type[A]
 
   extension [A](t: CastType[A])
-    override def castTypeName: String   = t.name
+    override def castTypeName: String  = t.name
     override def castTypeType: Type[A] = t
 
   type DbValue[A] = PostgresDbValue[A]
@@ -400,14 +400,18 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end UpdateReturningOperation
 
   trait DeleteCompanion extends SqlDeleteCompanion:
-    override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A, A] = DeleteFrom(from)
+    override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = DeleteFrom(from)
 
-  case class DeleteFrom[A[_[_]], B[_[_]]](from: Table[Codec, A], using: Option[Query[B]] = None)
-      extends SqlDeleteFrom[A, B](from, using):
-    def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1] = DeleteFrom(from, Some(query))
+  case class DeleteFrom[A[_[_]]](from: Table[Codec, A]) extends SqlDeleteFrom[A]:
+    def using[B[_[_]]](query: Query[B]): DeleteFromUsing[A, B] = DeleteFromUsing(from, query)
 
-    def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B] = DeleteOperation(from, using, f)
+    def where(f: A[DbValue] => DbValue[Boolean]): DeleteOperation[A, A] = DeleteOperation(from, None, (a, _) => f(a))
   end DeleteFrom
+
+  case class DeleteFromUsing[A[_[_]], B[_[_]]](from: Table[Codec, A], using: Query[B]) extends SqlDeleteFromUsing[A, B]:
+    def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B] =
+      DeleteOperation(from, Some(`using`), f)
+  end DeleteFromUsing
 
   trait InsertCompanion extends SqlInsertCompanion:
     override def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A] = InsertInto(table)
@@ -444,22 +448,44 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
   end InsertInto
 
   trait UpdateCompanion extends SqlUpdateCompanion:
-    override def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A, A] = UpdateTable(table)
+    override def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A] = UpdateTable(table)
 
-  case class UpdateTable[A[_[_]], B[_[_]]](table: Table[Codec, A], from: Option[Query[B]] = None)
-      extends SqlUpdateTable[A, B]:
+  case class UpdateTable[A[_[_]]](table: Table[Codec, A]) extends SqlUpdateTable[A]:
 
-    def from[B1[_[_]]](fromQ: Query[B1]): UpdateTable[A, B1] = UpdateTable(table, Some(fromQ))
+    def from[B[_[_]]](fromQ: Query[B]): UpdateTableFrom[A, B] = UpdateTableFrom(table, fromQ)
 
-    def where(where: (A[DbValue], B[DbValue]) => DbValue[Boolean]): UpdateTableWhere[A, B] =
-      UpdateTableWhere(table, from, where)
+    def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A] =
+      UpdateTableWhere(table, where)
   end UpdateTable
 
-  case class UpdateTableWhere[A[_[_]], B[_[_]]](
+  case class UpdateTableFrom[A[_[_]], B[_[_]]](table: Table[Codec, A], from: Query[B]) extends SqlUpdateTableFrom[A, B]:
+    override def where(where: (A[DbValue], B[DbValue]) => DbValue[Boolean]): UpdateTableFromWhere[A, B] =
+      UpdateTableFromWhere(table, from, where)
+
+  case class UpdateTableWhere[A[_[_]]](
       table: Table[Codec, A],
-      from: Option[Query[B]],
+      where: A[DbValue] => DbValue[Boolean]
+  ) extends SqlUpdateTableWhere[A]:
+
+    def values(setValues: A[DbValue] => A[DbValue]): UpdateOperation[A, A] =
+      import table.given
+      given FunctorKC[A] = table.FA
+
+      UpdateOperation(
+        table,
+        None,
+        (a, _) => setValues(a).mapK([Z] => (v: DbValue[Z]) => Some(v): Option[DbValue[Z]]),
+        (a, _) => where(a)
+      )
+
+    def someValues(setValues: A[DbValue] => A[Compose2[Option, DbValue]]): UpdateOperation[A, A] =
+      UpdateOperation(table, None, (a, _) => setValues(a), (a, _) => where(a))
+
+  case class UpdateTableFromWhere[A[_[_]], B[_[_]]](
+      table: Table[Codec, A],
+      from: Query[B],
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-  ) extends SqlUpdateTableWhere[A, B]:
+  ) extends SqlUpdateTableFromWhere[A, B]:
 
     def values(setValues: (A[DbValue], B[DbValue]) => A[DbValue]): UpdateOperation[A, B] =
       import table.given
@@ -467,13 +493,13 @@ trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
 
       UpdateOperation(
         table,
-        from,
+        Some(from),
         (a, b) => setValues(a, b).mapK([Z] => (v: DbValue[Z]) => Some(v): Option[DbValue[Z]]),
         where
       )
 
     def someValues(setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]]): UpdateOperation[A, B] =
-      UpdateOperation(table, from, setValues, where)
+      UpdateOperation(table, Some(from), setValues, where)
 
   object Operation extends OperationCompanion
   trait OperationCompanion extends SqlOperationCompanion:

@@ -53,5 +53,5 @@ trait MySqlJdbcTypes extends JdbcAnsiTypes:
     val unsignedInteger: MySqlJdbcTypeCastable[Long] = MySqlJdbcTypeCastable("UNSIGNED INTEGER", self.bigint)
 
 object MySqlJdbcTypes extends MySqlJdbcTypes:
-  override def ArrayMapping: ArrayMappingCompanion =
+  override val ArrayMapping: ArrayMappingCompanion =
     new ArrayMappingCompanion {}

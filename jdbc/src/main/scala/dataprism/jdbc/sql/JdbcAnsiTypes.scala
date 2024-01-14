@@ -45,7 +45,7 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
   trait ArrayMapping[A]:
     def makeArrayType(inner: SelectedType[JdbcCodec, A]): TypeOf[Seq[A]]
 
-  def ArrayMapping: ArrayMappingCompanion
+  val ArrayMapping: ArrayMappingCompanion
   trait ArrayMappingCompanion:
     given ArrayMapping[Byte] with
       override def makeArrayType(inner: SelectedType[JdbcCodec, Byte]): TypeOf[Seq[Byte]] =
@@ -57,7 +57,7 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
           )
         )
 
-  val blob: TypeOf[Seq[Byte]] = ArrayMapping.given_ArrayMapping_Byte.makeArrayType(
+  lazy val blob: TypeOf[Seq[Byte]] = ArrayMapping.given_ArrayMapping_Byte.makeArrayType(
     primitive[java.lang.Byte, Byte]("BYTE", Types.TINYINT, _.byteValue(), Byte.box).notNull
   )
 
@@ -65,4 +65,4 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
     mapping.makeArrayType(inner)
 
 object JdbcAnsiTypes extends JdbcAnsiTypes:
-  override def ArrayMapping: ArrayMappingCompanion = new ArrayMappingCompanion {}
+  override val ArrayMapping: ArrayMappingCompanion = new ArrayMappingCompanion {}

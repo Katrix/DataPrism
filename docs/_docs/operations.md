@@ -1,6 +1,0 @@
----
-title: Operations
----
-
-# {{page.title}}
-

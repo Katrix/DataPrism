@@ -1,6 +1,0 @@
----
-title: Queries
----
-
-# {{page.title}}
-

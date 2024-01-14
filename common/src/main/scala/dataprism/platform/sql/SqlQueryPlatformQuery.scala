@@ -876,7 +876,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     inline def of[A](value: A)(using MR: MapRes[DbValue, A]): Query[MR.K] =
       ofK(MR.toK(value))(using MR.applyKC, MR.traverseKC)
 
-    def values[A[_[_]]: ApplyKC: TraverseKC](types: A[Type], value: A[Id], values: Seq[A[Id]] = Nil): Query[A] =
+    def values[A[_[_]]: ApplyKC: TraverseKC](types: A[Type], value: A[Id], values: A[Id]*): Query[A] =
       val liftValues = [Z] => (v: Z, tpe: Type[Z]) => v.as(tpe)
 
       SqlQuery
@@ -886,33 +886,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         )
         .liftSqlQuery
 
-    def valuesOf[A[_[_]]](table: Table[Codec, A], value: A[Id], values: Seq[A[Id]] = Nil): Query[A] =
+    def valuesOf[A[_[_]]](table: Table[Codec, A], value: A[Id], values: A[Id]*): Query[A] =
       import table.given
       given FunctorKC[A] = table.FA
-      Query.values(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values)
+      Query.values(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
 
     def valueOpt[A[_[_]]](types: A[Type], value: A[Option])(
         using FA: ApplyKC[A],
         FT: TraverseKC[A]
     ): Query[[F[_]] =>> A[Compose2[Option, F]]] =
-      given optValuesInstance: ApplyKC[[F[_]] =>> A[Compose2[Option, F]]]
-        with TraverseKC[[F[_]] =>> A[Compose2[Option, F]]]
-        with {
-        extension [B[_], D](fa: A[Compose2[Option, B]])
-          def map2K[C[_], Z[_]](fb: A[Compose2[Option, C]])(f: [X] => (B[X], C[X]) => Z[X]): A[Compose2[Option, Z]] =
-            FA.map2K(fa)(fb)([X] => (v1o: Option[B[X]], v2o: Option[C[X]]) => v1o.zip(v2o).map((v1, v2) => f(v1, v2)))
-
-          def traverseK[G[_]: Applicative, C[_]](f: B :~>: Compose2[G, C]): G[A[Compose2[Option, C]]] =
-            FT.traverseK(fa)([Z] => (vo: Option[B[Z]]) => vo.traverse[G, C[Z]](v => f(v)))
-
-          def foldLeftK[C](b: C)(f: C => B :~>#: C): C =
-            FT.foldLeftK(fa)(b)(b1 => [Z] => (vo: Option[B[Z]]) => vo.fold(b1)(v => f(b1)(v)))
-
-          def foldRightK[C](b: C)(f: B :~>#: (C => C)): C =
-            FT.foldRightK(fa)(b)([Z] => (vo: Option[B[Z]]) => (b1: C) => vo.fold(b1)(v => f(v)(b1)))
-      }
-
-      values(types.map2K(value)([X] => (tpe: Type[X], opt: Option[X]) => opt.map(_ => tpe)), value, Nil)
+      values(types.map2K(value)([X] => (tpe: Type[X], opt: Option[X]) => opt.map(_ => tpe)), value)
 
     def valueOfOpt[A[_[_]]](table: Table[Codec, A], value: A[Option]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
       import table.given

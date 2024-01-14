@@ -46,8 +46,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
       import query.given
 
       given FunctorKC[Res] = summon[ApplyKC[Res]]
-
-      val astMeta = query.selectAstAndValues.runA(freshTaggedState).value
+      val astMeta          = query.selectAstAndValues.runA(freshTaggedState).value
       (
         sqlRenderer.renderSelect(astMeta.ast),
         astMeta.values.mapK([Z] => (value: DbValue[Z]) => value.tpe)
@@ -79,14 +78,19 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type DeleteCompanion <: SqlDeleteCompanion
   trait SqlDeleteCompanion:
-    def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A, A]
+    def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A]
   end SqlDeleteCompanion
 
-  type DeleteFrom[A[_[_]], B[_[_]]] <: SqlDeleteFrom[A, B]
-  trait SqlDeleteFrom[A[_[_]], B[_[_]]](from: Table[Codec, A], using: Option[Query[B]] = None):
-    def using[B1[_[_]]](query: Query[B1]): DeleteFrom[A, B1]
-    def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B]
+  type DeleteFrom[A[_[_]]] <: SqlDeleteFrom[A]
+  trait SqlDeleteFrom[A[_[_]]]:
+    def using[B[_[_]]](query: Query[B]): DeleteFromUsing[A, B]
+    def where(f: A[DbValue] => DbValue[Boolean]): DeleteOperation[A, A]
   end SqlDeleteFrom
+
+  type DeleteFromUsing[A[_[_]], B[_[_]]] <: SqlDeleteFromUsing[A, B]
+  trait SqlDeleteFromUsing[A[_[_]], B[_[_]]]:
+    def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B]
+  end SqlDeleteFromUsing
 
   type InsertOperation[A[_[_]]] <: SqlInsertOperation[A]
 
@@ -139,8 +143,8 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   trait SqlInsertCompanion:
     def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A]
 
-    def values[A[_[_]]](table: Table[Codec, A], value: A[Id], values: Seq[A[Id]] = Nil): InsertOperation[A] =
-      into(table).values(Query.valuesOf(table, value, values))
+    def values[A[_[_]]](table: Table[Codec, A], value: A[Id], values: A[Id]*): InsertOperation[A] =
+      into(table).values(Query.valuesOf(table, value, values*))
   end SqlInsertCompanion
 
   type InsertInto[A[_[_]]] <: SqlInsertInto[A]
@@ -190,16 +194,26 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type UpdateCompanion <: SqlUpdateCompanion
   trait SqlUpdateCompanion:
-    def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A, A]
+    def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A]
 
-  type UpdateTable[A[_[_]], B[_[_]]] <: SqlUpdateTable[A, B]
-  trait SqlUpdateTable[A[_[_]], B[_[_]]]:
-    def from[B1[_[_]]](fromQ: Query[B1]): UpdateTable[A, B1]
+  type UpdateTable[A[_[_]]] <: SqlUpdateTable[A]
+  trait SqlUpdateTable[A[_[_]]]:
+    def from[B[_[_]]](fromQ: Query[B]): UpdateTableFrom[A, B]
 
-    def where(where: (A[DbValue], B[DbValue]) => DbValue[Boolean]): UpdateTableWhere[A, B]
+    def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A]
 
-  type UpdateTableWhere[A[_[_]], B[_[_]]] <: SqlUpdateTableWhere[A, B]
-  trait SqlUpdateTableWhere[A[_[_]], B[_[_]]]:
+  type UpdateTableFrom[A[_[_]], B[_[_]]] <: SqlUpdateTableFrom[A, B]
+  trait SqlUpdateTableFrom[A[_[_]], B[_[_]]]:
+    def where(where: (A[DbValue], B[DbValue]) => DbValue[Boolean]): UpdateTableFromWhere[A, B]
+
+  type UpdateTableWhere[A[_[_]]] <: SqlUpdateTableWhere[A]
+  trait SqlUpdateTableWhere[A[_[_]]]:
+    def values(setValues: A[DbValue] => A[DbValue]): UpdateOperation[A, A]
+
+    def someValues(setValues: A[DbValue] => A[Compose2[Option, DbValue]]): UpdateOperation[A, A]
+
+  type UpdateTableFromWhere[A[_[_]], B[_[_]]] <: SqlUpdateTableFromWhere[A, B]
+  trait SqlUpdateTableFromWhere[A[_[_]], B[_[_]]]:
     def values(setValues: (A[DbValue], B[DbValue]) => A[DbValue]): UpdateOperation[A, B]
 
     def someValues(setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]]): UpdateOperation[A, B]

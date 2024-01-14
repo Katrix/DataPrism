@@ -18,8 +18,8 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
 
   val uuid: TypeOf[UUID] = tc(JdbcCodec.byClass[UUID]("UUID", 2950))
 
-  def ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings
-
+  val ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings
+  
   trait LowPriorityArrayMappings:
     // TODO: Null handling
     given [A](using @unused ev: NotGiven[A <:< Seq[_]]): ArrayMapping[A] with
@@ -47,5 +47,5 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
       tc(JdbcCodec.byClass[OffsetDateTime]("TIMESTAMP WITH TIMEZONE", Types.TIMESTAMP_WITH_TIMEZONE))
 
 object PostgresJdbcTypes extends PostgresJdbcTypes:
-  override def ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings =
+  override val ArrayMapping: ArrayMappingCompanion with LowPriorityArrayMappings =
     new ArrayMappingCompanion with LowPriorityArrayMappings {}

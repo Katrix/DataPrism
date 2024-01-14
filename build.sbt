@@ -1,5 +1,6 @@
 lazy val commonSettings = Seq(
-  scalaVersion := "3.3.1"
+  scalaVersion := "3.3.1",
+  resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 )
 
 inThisBuild(
@@ -30,8 +31,8 @@ lazy val common = project.settings(
   commonSettings,
   publishSettings,
   name                                   := "dataprism-common",
-  libraryDependencies += "net.katsstuff" %% "perspective"            % "0.2.0",
-  libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.2.0"
+  libraryDependencies += "net.katsstuff" %% "perspective"            % "0.2.0+17-d7d68444-SNAPSHOT",
+  libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.2.0+17-d7d68444-SNAPSHOT"
 )
 
 lazy val jdbc = project
@@ -75,7 +76,9 @@ lazy val docs = project
       "-revision",
       "main",
       "-Yapi-subdirectory",
-      "api"
+      "api",
+      "-Ygenerate-inkuire",
+      "-snippet-compiler:compile"
     )
   )
 

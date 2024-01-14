@@ -20,7 +20,7 @@ DataPrism is currently early in development, but feel free to try it out and
 report bugs and errors.
 
 Add DataPrism to your project by adding these statements to your `build.sbt` file.
-```scala
+```scala sc:nocompile
 // For JDBC
 libraryDependencies += "net.katsstuff" %% "dataprism-jdbc" % "{{projectVersion}}"
 
