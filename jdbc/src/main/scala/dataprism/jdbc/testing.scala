@@ -6,7 +6,7 @@ import java.util.UUID
 import scala.concurrent.Future
 
 import dataprism.KMacros
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform
+import dataprism.jdbc.platform.PostgresJdbcPlatform
 import dataprism.jdbc.sql.{JdbcCodec, PostgresJdbcTypes}
 import dataprism.platform.base.MapRes
 import dataprism.sql.*

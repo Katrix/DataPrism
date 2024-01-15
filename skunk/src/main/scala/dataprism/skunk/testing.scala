@@ -5,7 +5,7 @@ import java.util.UUID
 
 import cats.effect.IO
 import dataprism.KMacros
-import dataprism.skunk.platform.implementations.PostgresSkunkPlatform
+import dataprism.skunk.platform.PostgresSkunkPlatform
 import dataprism.skunk.sql.SkunkAnsiTypes.*
 import dataprism.skunk.sql.SkunkDb
 import dataprism.sql.*

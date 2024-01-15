@@ -1,4 +1,4 @@
-package dataprism.jdbc.platform.implementations
+package dataprism.jdbc.platform
 
 import scala.annotation.targetName
 

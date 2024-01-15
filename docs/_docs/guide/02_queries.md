@@ -44,7 +44,7 @@ A query can be constructed using `Query.from(table)`. From there we can do vario
 filter, grouping and more. Here are some simple examples. I will annotate the types for better understanding.
 
 ```scala 3 sc-compile-with:User.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
 val q: Query[UserK] = Query.from(UserK.table)
 
@@ -104,7 +104,7 @@ With that, we can take a look at joins, and the types they leave the query.
 
 ```scala 3 sc-compile-with:User.scala
 import perspective.Compose2
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
 val q: Query[UserK] = Query.from(UserK.table)
 
@@ -131,7 +131,7 @@ result of the first function is passed into the second. The second parameter of 
 query, but instead of types as `DbValue`, they are types as `Many`. Here are two examples.
 
 ```scala 3 sc-compile-with:User.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
 //Needed for arrayAgg currently
 import dataprism.jdbc.sql.PostgresJdbcTypes.ArrayMapping.given_ArrayMapping_A
@@ -158,7 +158,7 @@ Up until so far, we've mostly seen direct function application on the queries. T
 does also exist, and because of it, for comprehensions.
 
 ```scala 3 sc-compile-with:User.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
 //val q1: Query[[F[_]] =>> (UserK[F], UserK[F])] =
 //  Query.from(UserK.table).flatMap(u1 => Query.from(UserK.table).map(u2 => (u1, u2)))
@@ -178,7 +178,7 @@ with `perspective.ApplyKC` and `perspective.TraverseKC` instances can be used as
 Here's one example.
 
 ```scala 3 sc-compile-with:User.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
 //Needed for arrayAgg currently
 import dataprism.jdbc.sql.PostgresJdbcTypes.ArrayMapping.given_ArrayMapping_A

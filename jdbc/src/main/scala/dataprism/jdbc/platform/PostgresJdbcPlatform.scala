@@ -1,4 +1,4 @@
-package dataprism.jdbc.platform.implementations
+package dataprism.jdbc.platform
 
 import dataprism.jdbc.sql.{JdbcCodec, PostgresJdbcTypes}
 import dataprism.platform.implementations.PostgresQueryPlatform

@@ -1,4 +1,4 @@
-package dataprism.skunk.platform.implementations
+package dataprism.skunk.platform
 
 import scala.annotation.targetName
 

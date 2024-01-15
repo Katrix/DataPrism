@@ -45,7 +45,7 @@ given DataSourceDb = DataSourceDb(???)
 The simplest operation is `Select`, used like so.
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 import scala.concurrent.Future
 import dataprism.sql.QueryResult
 import perspective.Id
@@ -64,7 +64,7 @@ next option is `Insert.into(table).values(query)`. `Insert.values` is a convenie
 calls `Insert.into(table).values(Query.valuesOf(table, firstValues, remainingValues*))`
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
 Insert.values(UserK.table, UserK(5, Some("foo"), "bar", "foo@example.com")).run
 
@@ -79,7 +79,7 @@ definition, and `User[Option]`. You can also construct a query to pass to `value
 query and wrapping the desired columns in `Some`
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 import perspective.Compose2
 
 Insert.into(UserK.table).valuesWithoutSomeColumns(
@@ -131,7 +131,7 @@ forms
 Here are some examples:
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 import perspective.Compose2
 
 Update.table(UserK.table).where(_.username === "foo".as(text)).values { u =>
@@ -163,7 +163,7 @@ Lastly deletes. They are luckily a bit simpler. You can still add a `USING` clau
 affecting some columns. Here are some examples of how Delete works.
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
 Delete.from(UserK.table).where(_.username === "foo".as(text)).run
 Delete.from(UserK.table).using(Query.from(UserK.table)).where { (a, b) =>

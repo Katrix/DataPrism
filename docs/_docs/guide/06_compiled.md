@@ -48,7 +48,7 @@ Here are two examples of how operation works. Due to Scala inferring too precise
 have to currently call `forgetNNA` on the types.
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.implementations.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 import dataprism.sql.QueryResult
 import perspective.Id
 import scala.concurrent.Future

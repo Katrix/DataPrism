@@ -37,6 +37,7 @@ object NullabilityTypeChoice:
 
 sealed trait SelectedType[Codec[_], A]:
   type NNA
+  type T = A
   def codec: Codec[A]
   def choice: NullabilityTypeChoice[Codec, NNA]
 
