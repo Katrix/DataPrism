@@ -138,7 +138,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
         case SqlExpr.Null()  => SqlExpr.False()
         case SqlExpr.True()  => SqlExpr.True()
         case SqlExpr.False() => SqlExpr.True()
-        case se              => SqlExpr.IsNull(se)
+        case se              => SqlExpr.IsNotNull(se)
 
     case SqlExpr.InValues(expr, values) =>
       val se      = simplifyExpr(expr)
