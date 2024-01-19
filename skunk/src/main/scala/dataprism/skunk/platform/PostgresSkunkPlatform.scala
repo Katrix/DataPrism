@@ -59,8 +59,8 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
 
           override def encode(a: A[Id]): List[Option[String]] =
             val replacements =
-              a.map2Const(tpesWithIdentifiers)([Z] => (v: Z, t: (Object, Type[Z])) => (t._1, v: Any)).toListK.toMap
-            sqlStr.args.toList.flatMap(arg => arg.tpe.encode(arg.compile(replacements).value))
+              a.map2Const(tpesWithIdentifiers)([Z] => (v: Z, t: (Object, Type[Z])) => (t._1, Seq(v: Any))).toListK.toMap
+            sqlStr.args.toList.flatMap(arg => arg.tpe.encode(arg.compile(replacements).value(0)))
 
           override def types: List[data.Type] = sqlStr.args.toList.flatMap(_.tpe.types)
         },
@@ -101,8 +101,8 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
 
           override def encode(a: A[Id]): List[Option[String]] =
             val replacements =
-              a.map2Const(tpesWithIdentifiers)([Z] => (v: Z, t: (Object, Type[Z])) => (t._1, v: Any)).toListK.toMap
-            sqlStr.args.toList.flatMap(arg => arg.tpe.encode(arg.compile(replacements).value))
+              a.map2Const(tpesWithIdentifiers)([Z] => (v: Z, t: (Object, Type[Z])) => (t._1, Seq(v: Any))).toListK.toMap
+            sqlStr.args.toList.flatMap(arg => arg.tpe.encode(arg.compile(replacements).value(0)))
 
           override def types: List[data.Type] = sqlStr.args.toList.flatMap(_.tpe.types)
         }

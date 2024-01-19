@@ -10,7 +10,7 @@ case class SqlStr[+Type[_]](str: String, args: Seq[SqlArg[Type]]):
 
   def stripMargin: SqlStr[Type] = copy(str = str.stripMargin)
 
-  protected[dataprism] def compileWithValues(replacements: Map[Object, Any]): SqlStr[Type] =
+  protected[dataprism] def compileWithValues(replacements: Map[Object, Seq[Any]]): SqlStr[Type] =
     copy(args = args.map(_.compile(replacements)))
 
 object SqlStr:

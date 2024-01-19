@@ -15,8 +15,8 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
       case SqlExpr.UnaryOperation.BitwiseNot => sql"(~$rendered)"
 
   protected def renderBinaryOp(lhs: SqlExpr[Codec], rhs: SqlExpr[Codec], op: SqlExpr.BinaryOperation): SqlStr[Codec] =
-    val lhsr                                    = renderExpr(lhs)
-    val rhsr                                    = renderExpr(rhs)
+    val lhsr                                     = renderExpr(lhs)
+    val rhsr                                     = renderExpr(rhs)
     inline def normal(op: String): SqlStr[Codec] = sql"($lhsr ${SqlStr.const(op)} $rhsr)"
 
     op match
@@ -58,7 +58,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
       case SqlExpr.BinaryOperation.Custom(op) => normal(op)
 
   protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]]): SqlStr[Codec] =
-    val rendered                               = args.map(renderExpr).intercalate(sql", ")
+    val rendered                                = args.map(renderExpr).intercalate(sql", ")
     inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
 
     call match
@@ -268,9 +268,9 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
     args.filter(_.nonEmpty).intercalate(sql" ")
 
   def renderUpdate(
-                    columnNames: List[SqlStr[Codec]],
-                    valuesAst: SelectAst[Codec],
-                    returningExprs: List[SqlExpr[Codec]]
+      columnNames: List[SqlStr[Codec]],
+      valuesAst: SelectAst[Codec],
+      returningExprs: List[SqlExpr[Codec]]
   ): SqlStr[Codec] =
     val (table, alias, fromV, where, exprs) = valuesAst match {
       case SelectAst.SelectFrom(
@@ -317,17 +317,17 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
     )
 
   def renderInsert(
-                    table: SqlStr[Codec],
-                    columns: List[SqlStr[Codec]],
-                    values: SelectAst[Codec],
-                    conflictOn: List[SqlStr[Codec]],
-                    onConflict: List[(SqlStr[Codec], SqlExpr[Codec])],
-                    returning: List[SqlExpr[Codec]]
+      table: SqlStr[Codec],
+      columns: List[SqlStr[Codec]],
+      values: SelectAst[Codec],
+      conflictOn: List[SqlStr[Codec]],
+      onConflict: List[(SqlStr[Codec], SqlExpr[Codec])],
+      returning: List[SqlExpr[Codec]]
   ): SqlStr[Codec] =
     // Fix the AST so that an alias isn't included for VALUES, as we then end up with (VALUES) AS ... (...)
     val fixedValues = values match
       case data: SelectAst.Values[Codec] => data.copy(alias = None, columnAliases = None)
-      case _                            => values
+      case _                             => values
 
     spaceConcat(
       sql"INSERT INTO",

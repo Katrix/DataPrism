@@ -403,7 +403,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case GetNullable(value: DbValue[Option[A]], ev: NotGiven[A <:< Option[_]])
     case AsSome[B](value: DbValue[B], ev: NotGiven[B <:< Option[_]]) extends SqlDbValue[Option[B]]
 
-    case Placeholder(value: A, override val tpe: Type[A])
+    case Placeholder(valueSeq: Seq[A], override val tpe: Type[A])
     case CompilePlaceholder(identifier: Object, override val tpe: Type[A])
 
     case SubSelect(query: Query[IdFC[A]])
@@ -568,7 +568,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     @targetName("dbValueAsMany") protected inline def unsafeDbValAsMany: Many[A] = dbValue.asInstanceOf[Many[A]]
 
   extension [A](v: A)
-    @targetName("valueAs") def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(v, tpe).lift
+    @targetName("valueAs") def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(Seq(v), tpe).lift
     @targetName("valueAsNullable") def asNullable(
         tpe: Type[A]
     )(using NotGiven[A <:< Option[_]]): DbValue[Option[A]] =

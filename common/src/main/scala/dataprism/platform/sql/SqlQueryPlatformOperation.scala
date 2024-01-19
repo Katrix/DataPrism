@@ -1,8 +1,8 @@
 package dataprism.platform.sql
 
-import cats.Applicative
-import cats.data.NonEmptyList
+import cats.data.{NonEmptyList, NonEmptySeq}
 import cats.syntax.all.*
+import cats.{Applicative, Functor}
 import dataprism.platform.base.MapRes
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
@@ -31,13 +31,24 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   trait ResultOperation[Res[_[_]]](
       using val resApplyK: ApplyKC[Res],
       val resTraverseK: TraverseKC[Res]
-  ) extends Operation[QueryResult[Res[Id]]]:
+  ) extends Operation[Seq[Res[Id]]]:
     type Types = Res[Type]
+
+    private def runWithMinMax[F[_]](minRows: Int, maxRows: Int)(using db: Db[F, Codec]): F[Seq[Res[Id]]] =
+      val (sqlStr, types) = sqlAndTypes
+      db.runIntoRes(sqlStr, types.mapK([X] => (tpe: Type[X]) => tpe.codec), minRows, maxRows)
 
     override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Codec], types: Res[Type])(
         using db: Db[F, Codec]
-    ): F[QueryResult[Res[Id]]] =
+    ): F[Seq[Res[Id]]] =
       db.runIntoRes(sqlStr, types.mapK([X] => (tpe: Type[X]) => tpe.codec))
+
+    def runOne[F[_]: Functor](using db: Db[F, Codec]): F[Res[Id]] = runWithMinMax(1, 1).map(_.head)
+
+    def runMaybeOne[F[_]: Functor](using db: Db[F, Codec]): F[Option[Res[Id]]] = runWithMinMax(0, 1).map(_.headOption)
+
+    def runOneOrMore[F[_]: Functor](using db: Db[F, Codec]): F[NonEmptySeq[Res[Id]]] =
+      runWithMinMax(1, -1).map(s => NonEmptySeq.fromSeqUnsafe(s))
 
   type SelectOperation[Res[_[_]]] <: SqlSelectOperation[Res]
 
@@ -92,44 +103,21 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B]
   end SqlDeleteFromUsing
 
-  type InsertOperation[A[_[_]]] <: SqlInsertOperation[A]
+  type InsertOperation[A[_[_]], B[_[_]]] <: SqlInsertOperation[A, B]
 
-  type Optional[A[_[_]]] = [F[_]] =>> A[Compose2[Option, F]]
-
-  given optValuesInstance[A[_[_]]](
-      using FA: ApplyKC[A],
-      FT: TraverseKC[A]
-  ): ApplyKC[Optional[A]] with TraverseKC[Optional[A]] with {
-    extension [B[_], D](fa: A[Compose2[Option, B]])
-      def map2K[C[_], Z[_]](fb: A[Compose2[Option, C]])(f: [X] => (B[X], C[X]) => Z[X]): A[Compose2[Option, Z]] =
-        FA.map2K(fa)(fb)([X] => (v1o: Option[B[X]], v2o: Option[C[X]]) => v1o.zip(v2o).map((v1, v2) => f(v1, v2)))
-
-      def traverseK[G[_]: Applicative, C[_]](f: B :~>: Compose2[G, C]): G[A[Compose2[Option, C]]] =
-        FT.traverseK(fa)([Z] => (vo: Option[B[Z]]) => vo.traverse[G, C[Z]](v => f(v)))
-
-      def foldLeftK[C](b: C)(f: C => B :~>#: C): C =
-        FT.foldLeftK(fa)(b)(b1 => [Z] => (vo: Option[B[Z]]) => vo.fold(b1)(v => f(b1)(v)))
-
-      def foldRightK[C](b: C)(f: B :~>#: (C => C)): C =
-        FT.foldRightK(fa)(b)([Z] => (vo: Option[B[Z]]) => (b1: C) => vo.fold(b1)(v => f(v)(b1)))
-  }
-
-  trait SqlInsertOperation[A[_[_]]](
+  trait SqlInsertOperation[A[_[_]], B[_[_]]](
       table: Table[Codec, A],
-      values: Query[Optional[A]]
+      columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
+      values: Query[B]
   ) extends IntOperation:
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
       import table.given
+      import values.given
 
       val ret = values.selectAstAndValues.map { computedValues =>
         sqlRenderer.renderInsert(
           table.name,
-          table.columns
-            .map2Const(computedValues.values)(
-              [Z] => (column: Column[Codec, Z], opt: Option[DbValue[Z]]) => opt.map(_ => column.name)
-            )
-            .toListK
-            .flatMap(_.toList),
+          columns(table.columns).foldMapK([X] => (col: Column[Codec, X]) => List(col.name)),
           computedValues.ast,
           Nil,
           Nil,
@@ -142,50 +130,93 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   type InsertCompanion <: SqlInsertCompanion
   trait SqlInsertCompanion:
     def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A]
-
-    def values[A[_[_]]](table: Table[Codec, A], value: A[Id], values: A[Id]*): InsertOperation[A] =
-      into(table).values(Query.valuesOf(table, value, values*))
   end SqlInsertCompanion
 
   type InsertInto[A[_[_]]] <: SqlInsertInto[A]
   trait SqlInsertInto[A[_[_]]]:
+    protected def table: Table[Codec, A]
 
-    def values(query: Query[A]): InsertOperation[A]
+    def valuesInColumnsFromQueryK[B[_[_]]](columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]])(
+        query: Query[B]
+    ): InsertOperation[A, B]
 
-    def valuesWithoutSomeColumns(query: Query[[F[_]] =>> A[Compose2[Option, F]]]): InsertOperation[A]
+    inline def valuesInColumnsFromQuery[T](columns: A[[X] =>> Column[Codec, X]] => T)(
+        using mr: MapRes[[X] =>> Column[Codec, X], T]
+    )(query: Query[mr.K]): InsertOperation[A, mr.K] =
+      valuesInColumnsFromQueryK(a => mr.toK(columns(a)))(query)
+
+    def valuesFromQuery(query: Query[A]): InsertOperation[A, A]
+
+    def values(value: A[Id], values: A[Id]*): InsertOperation[A, A] =
+      valuesFromQuery(Query.valuesOf(table, value, values*))
+
+    def valuesBatch(value: A[Id], values: A[Id]*)(using DistributiveKC[A]): InsertOperation[A, A] =
+      valuesFromQuery(Query.valuesOfBatch(table, value, values*))
+
+    def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
+        columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
+    )(value: B[Id], values: B[Id]*): InsertOperation[A, B] =
+      valuesInColumnsFromQueryK(columns)(
+        Query.valuesK[B](columns(table.columns).mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
+      )
+
+    def valuesInColumnsKBatch[B[_[_]]: ApplyKC: TraverseKC: DistributiveKC](
+        columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
+    )(value: B[Id], values: B[Id]*): InsertOperation[A, B] =
+      valuesInColumnsFromQueryK(columns)(
+        Query.valuesKBatch[B](columns(table.columns).mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
+      )
+
+    def valuesInColumns[T](
+        columns: A[[X] =>> Column[Codec, X]] => T
+    )(using mr: MapRes[[X] =>> Column[Codec, X], T])(value: mr.K[Id], values: mr.K[Id]*): InsertOperation[A, mr.K] =
+      given FunctorKC[mr.K] = mr.applyKC
+      valuesInColumnsFromQueryK(a => mr.toK(columns(a)))(
+        Query.valuesK[mr.K](
+          mr.toK(columns(table.columns)).mapK([Z] => (col: Column[Codec, Z]) => col.tpe),
+          value,
+          values*
+        )(using mr.applyKC, mr.traverseKC)
+      )
+
+    def valuesInColumnsKBatch[T](
+        columns: A[[X] =>> Column[Codec, X]] => T
+    )(using mr: MapRes[[X] =>> Column[Codec, X], T])(value: mr.K[Id], values: mr.K[Id]*)(using D: DistributiveKC[mr.K]): InsertOperation[A, mr.K] =
+      given FunctorKC[mr.K] = mr.applyKC
+      valuesInColumnsFromQueryK(a => mr.toK(columns(a)))(
+        Query.valuesKBatch[mr.K](
+          mr.toK(columns(table.columns)).mapK([Z] => (col: Column[Codec, Z]) => col.tpe),
+          value,
+          values*
+        )(using mr.applyKC, mr.traverseKC, D)
+      )
   end SqlInsertInto
 
-  type UpdateOperation[A[_[_]], B[_[_]]] <: SqlUpdateOperation[A, B]
-  trait SqlUpdateOperation[A[_[_]], B[_[_]]](
+  type UpdateOperation[A[_[_]], B[_[_]], C[_[_]]] <: SqlUpdateOperation[A, B, C]
+  trait SqlUpdateOperation[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]]](
       table: Table[Codec, A],
-      from: Option[Query[B]],
-      setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
-      where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
+      columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
+      from: Option[Query[C]],
+      setValues: (A[DbValue], C[DbValue]) => B[DbValue],
+      where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
   ) extends IntOperation:
 
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
-
       import table.given
-      given (ApplyKC[Optional[A]] & TraverseKC[Optional[A]]) = optValuesInstance[A]
 
       val query = from match
         case Some(fromQ) =>
-          Query.from(table).flatMap(a => fromQ.where(b => where(a, b)).mapK[Optional[A]](b => setValues(a, b)))
+          Query.from(table).flatMap(a => fromQ.where(b => where(a, b)).mapK(b => setValues(a, b)))
         case None =>
           Query
             .from(table)
-            .where(a => where(a, a.asInstanceOf[B[DbValue]]))
-            .mapK[Optional[A]](a => setValues(a, a.asInstanceOf[B[DbValue]]))
+            .where(a => where(a, a.asInstanceOf[C[DbValue]]))
+            .mapK(a => setValues(a, a.asInstanceOf[C[DbValue]]))
 
       val ret =
         for meta <- query.selectAstAndValues
         yield sqlRenderer.renderUpdate(
-          table.columns
-            .map2Const(meta.values)(
-              [Z] => (col: Column[Codec, Z], v: Option[DbValue[Z]]) => v.map(_ => col.name).toList
-            )
-            .toListK
-            .flatten,
+          columns(table.columns).foldMapK([Z] => (col: Column[Codec, Z]) => List(col.name)),
           meta.ast,
           Nil
         )
@@ -208,15 +239,33 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   type UpdateTableWhere[A[_[_]]] <: SqlUpdateTableWhere[A]
   trait SqlUpdateTableWhere[A[_[_]]]:
-    def values(setValues: A[DbValue] => A[DbValue]): UpdateOperation[A, A]
+    def values(setValues: A[DbValue] => A[DbValue]): UpdateOperation[A, A, A]
 
-    def someValues(setValues: A[DbValue] => A[Compose2[Option, DbValue]]): UpdateOperation[A, A]
+    def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
+        columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
+    )(
+        setValues: A[DbValue] => B[DbValue]
+    ): UpdateOperation[A, B, A]
 
-  type UpdateTableFromWhere[A[_[_]], B[_[_]]] <: SqlUpdateTableFromWhere[A, B]
-  trait SqlUpdateTableFromWhere[A[_[_]], B[_[_]]]:
-    def values(setValues: (A[DbValue], B[DbValue]) => A[DbValue]): UpdateOperation[A, B]
+    inline def valuesInColumns[T](columns: A[[X] =>> Column[Codec, X]] => T)(
+        using mr: MapRes[[X] =>> Column[Codec, X], T]
+    )(setValues: A[DbValue] => mr.K[DbValue]): UpdateOperation[A, mr.K, A] =
+      valuesInColumnsK(a => mr.toK(columns(a)))(a => setValues(a))(using mr.applyKC, mr.traverseKC)
 
-    def someValues(setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]]): UpdateOperation[A, B]
+  type UpdateTableFromWhere[A[_[_]], C[_[_]]] <: SqlUpdateTableFromWhere[A, C]
+  trait SqlUpdateTableFromWhere[A[_[_]], C[_[_]]]:
+    def values(setValues: (A[DbValue], C[DbValue]) => A[DbValue]): UpdateOperation[A, A, C]
+
+    def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
+        columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
+    )(
+        setValues: (A[DbValue], C[DbValue]) => B[DbValue]
+    ): UpdateOperation[A, B, C]
+
+    inline def valuesInColumns[T](columns: A[[X] =>> Column[Codec, X]] => T)(
+        using mr: MapRes[[X] =>> Column[Codec, X], T]
+    )(setValues: (A[DbValue], C[DbValue]) => mr.K[DbValue]): UpdateOperation[A, mr.K, C] =
+      valuesInColumnsK(a => mr.toK(columns(a)))((a, b) => setValues(a, b))(using mr.applyKC, mr.traverseKC)
 
   val Operation: OperationCompanion
   type OperationCompanion <: SqlOperationCompanion
@@ -237,7 +286,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
   trait SqlCompile:
     protected def simple[A[_[_]]: ApplyKC: TraverseKC, B](types: A[Type])(f: A[DbValue] => B)(
-        doReplacement: (B, Map[Object, Any]) => B
+        doReplacement: (B, Map[Object, Seq[Any]]) => B
     ): A[Id] => B =
       given FunctorKC[A] = summon[ApplyKC[A]]
 
@@ -252,7 +301,10 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
       (values: A[Id]) => {
         val replacements =
-          values.map2Const(tpesWithIdentifiers)([Z] => (v: Z, t: (Object, Type[Z])) => (t._1, v: Any)).toListK.toMap
+          values
+            .map2Const(tpesWithIdentifiers)([Z] => (v: Z, t: (Object, Type[Z])) => (t._1, Seq(v: Any)))
+            .toListK
+            .toMap
         doReplacement(b, replacements)
       }
 

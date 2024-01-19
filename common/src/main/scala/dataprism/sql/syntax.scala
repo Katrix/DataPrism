@@ -2,7 +2,8 @@ package dataprism.sql
 
 import scala.collection.mutable
 
-extension [A, Type[_]](a: A)(using SqlInterpolation[Type]) def asArg(tpe: Type[A]): SqlArg[Type] = SqlArg.SqlArgObj(a, tpe)
+extension [A, Codec[_]](a: A)(using SqlInterpolation[Codec]) def asArg(tpe: Codec[A]): SqlArg[Codec] = SqlArg.SqlArgObj(Seq(a), tpe)
+extension [A, Codec[_]](a: Seq[A])(using SqlInterpolation[Codec]) def asBatchArg(tpe: Codec[A]): SqlArg[Codec] = SqlArg.SqlArgObj(a, tpe)
 
 //noinspection ScalaFileName
 trait SqlInterpolation[Type[_]]

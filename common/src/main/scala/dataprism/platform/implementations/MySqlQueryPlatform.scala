@@ -111,15 +111,19 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
   ) extends SqlDeleteOperation[A, B](from, usingV, where)
 
-  case class InsertOperation[A[_[_]]](table: Table[Codec, A], values: Query[Optional[A]])
-      extends SqlInsertOperation[A](table, values)
-
-  case class UpdateOperation[A[_[_]], B[_[_]]](
+  case class InsertOperation[A[_[_]], B[_[_]]](
       table: Table[Codec, A],
-      from: Option[Query[B]],
-      setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]],
-      where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-  ) extends SqlUpdateOperation[A, B](table, from, setValues, where)
+      columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
+      values: Query[B]
+  ) extends SqlInsertOperation[A, B](table, columns, values)
+
+  case class UpdateOperation[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]]](
+      table: Table[Codec, A],
+      columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
+      from: Option[Query[C]],
+      setValues: (A[DbValue], C[DbValue]) => B[DbValue],
+      where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
+  ) extends SqlUpdateOperation[A, B, C](table, columns, from, setValues, where)
 
   trait DeleteCompanion extends SqlDeleteCompanion:
     override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = DeleteFrom(from)
@@ -140,20 +144,13 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
 
   case class InsertInto[A[_[_]]](table: Table[Codec, A]) extends SqlInsertInto[A]:
 
-    def values(query: Query[A]): InsertOperation[A] =
-      import table.given
-      given FunctorKC[A] = table.FA
-      given (ApplyKC[Optional[A]] & TraverseKC[Optional[A]]) =
-        optValuesInstance[A]
+    def valuesFromQuery(query: Query[A]): InsertOperation[A, A] =
+      InsertOperation(table, identity, query)
 
-      InsertOperation(
-        table,
-        query.mapK[[F[_]] =>> A[Compose2[Option, F]]](a => a.mapK([Z] => (dbVal: DbValue[Z]) => Some(dbVal)))
-      )
-
-    def valuesWithoutSomeColumns(query: Query[[F[_]] =>> A[Compose2[Option, F]]]): InsertOperation[A] =
-      given FunctorKC[A] = table.FA
-      InsertOperation(table, query)
+    def valuesInColumnsFromQueryK[B[_[_]]](columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]])(
+        query: Query[B]
+    ): InsertOperation[A, B] =
+      InsertOperation(table, columns, query)
   end InsertInto
 
   trait UpdateCompanion extends SqlUpdateCompanion:
@@ -176,39 +173,45 @@ trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
       where: A[DbValue] => DbValue[Boolean]
   ) extends SqlUpdateTableWhere[A]:
 
-    def values(setValues: A[DbValue] => A[DbValue]): UpdateOperation[A, A] =
+    def values(setValues: A[DbValue] => A[DbValue]): UpdateOperation[A, A, A] =
       import table.given
-      given FunctorKC[A] = table.FA
 
       UpdateOperation(
         table,
+        identity,
         None,
-        (a, _) => setValues(a).mapK([Z] => (v: DbValue[Z]) => Some(v): Option[DbValue[Z]]),
+        (a, _) => setValues(a),
         (a, _) => where(a)
       )
 
-    def someValues(setValues: A[DbValue] => A[Compose2[Option, DbValue]]): UpdateOperation[A, A] =
-      UpdateOperation(table, None, (a, _) => setValues(a), (a, _) => where(a))
+    def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
+        columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
+    )(
+        setValues: A[DbValue] => B[DbValue]
+    ): UpdateOperation[A, B, A] = UpdateOperation(table, columns, None, (a, _) => setValues(a), (a, _) => where(a))
 
-  case class UpdateTableFromWhere[A[_[_]], B[_[_]]](
+  case class UpdateTableFromWhere[A[_[_]], C[_[_]]](
       table: Table[Codec, A],
-      from: Query[B],
-      where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-  ) extends SqlUpdateTableFromWhere[A, B]:
+      from: Query[C],
+      where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
+  ) extends SqlUpdateTableFromWhere[A, C]:
 
-    def values(setValues: (A[DbValue], B[DbValue]) => A[DbValue]): UpdateOperation[A, B] =
+    def values(setValues: (A[DbValue], C[DbValue]) => A[DbValue]): UpdateOperation[A, A, C] =
       import table.given
-      given FunctorKC[A] = table.FA
 
       UpdateOperation(
         table,
+        identity,
         Some(from),
-        (a, b) => setValues(a, b).mapK([Z] => (v: DbValue[Z]) => Some(v): Option[DbValue[Z]]),
+        (a, b) => setValues(a, b),
         where
       )
 
-    def someValues(setValues: (A[DbValue], B[DbValue]) => A[Compose2[Option, DbValue]]): UpdateOperation[A, B] =
-      UpdateOperation(table, Some(from), setValues, where)
+    def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
+        columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
+    )(
+        setValues: (A[DbValue], C[DbValue]) => B[DbValue]
+    ): UpdateOperation[A, B, C] = UpdateOperation(table, columns, Some(from), setValues, where)
 
   object Operation extends OperationCompanion
 

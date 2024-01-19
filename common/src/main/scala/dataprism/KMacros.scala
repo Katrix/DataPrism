@@ -6,6 +6,7 @@ import scala.deriving.Mirror
 
 import cats.Applicative
 import cats.syntax.all.*
+import cats.{Applicative, Functor}
 import perspective.*
 import perspective.Finite.NotZero
 
@@ -178,6 +179,19 @@ object KMacros {
     )
     vs.sequence[G, B[Any]].map(s => m.fromProduct(Tuple.fromArray(s.toArray)).asInstanceOf[F[B]])
 
+  private inline def cosequenceKImpl[F[_[_]] <: Product, G[_]: Functor, A[_]](gfa: G[F[A]])(
+      using m: MirrorProductK[F]
+  ): F[Compose2[G, A]] =
+    val size = constValue[Tuple.Size[m.MirroredElemLabels]]
+    m.fromProduct(
+      Tuple.fromArray(
+        functionImpl[F, Compose2[G, A], DistributiveKC](size)(
+          [X] =>
+            (idx: Int, instance: DistributiveKC[IdFC[X]]) => instance.cosequenceK(gfa.map(fa => fa.productElement(idx).asInstanceOf[A[X]]))
+        ).toArray
+      )
+    ).asInstanceOf[F[Compose2[G, A]]]
+
   private inline def tabulateKImpl[F[_[_]] <: Product, A[_], Size <: Int](f: (Finite[Size], Any) :#~>: A)(
       using m: MirrorProductK[F],
       notZero: NotZero[Size] =:= true
@@ -243,6 +257,13 @@ object KMacros {
       def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[F[B]] =
         traverseKImpl(fa, f)
   }
+
+  inline def deriveDistributiveKC[F[_[_]] <: Product](using m: MirrorProductK[F]): DistributiveKC[F] =
+    new DistributiveKC[F] {
+      extension [G[_]: Functor, A[_], C](gfa: G[F[A]])
+        override def cosequenceK: F[Compose2[G, A]]                            = cosequenceKImpl(gfa)
+      extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
+    }
 
   // TODO: Improve representation type
   inline def deriveRepresentableKC[F[_[_]] <: Product](

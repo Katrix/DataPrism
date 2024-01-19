@@ -82,7 +82,10 @@ object ResidentK {
       Column("home_owner", PostgresJdbcTypes.uuid),
       Column("home_name", PostgresJdbcTypes.text),
       Column("resident", PostgresJdbcTypes.uuid),
-      Column("created_at", PostgresJdbcTypes.javaTime.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC)))
+      Column(
+        "created_at",
+        PostgresJdbcTypes.javaTime.timestampWithTimezone.imap(_.toInstant)(_.atOffset(ZoneOffset.UTC))
+      )
     )
   )
 
@@ -139,15 +142,15 @@ object Testing {
       printSqlStr(sql)
       Future.successful(0)
 
-    override def runIntoSimple[Res](sql: SqlStr[JdbcCodec], dbTypes: JdbcCodec[Res]): Future[QueryResult[Res]] =
+    override def runIntoSimple[Res](sql: SqlStr[JdbcCodec], dbTypes: JdbcCodec[Res]): Future[Seq[Res]] =
       printSqlStr(sql)
-      Future.successful(QueryResult(Nil))
+      Future.successful(Nil)
 
-    override def runIntoRes[Res[_[_]]](sql: SqlStr[JdbcCodec], dbTypes: Res[JdbcCodec])(
+    override def runIntoRes[Res[_[_]]](sql: SqlStr[JdbcCodec], dbTypes: Res[JdbcCodec], minRows: Int, maxRows: Int)(
         using FT: TraverseKC[Res]
-    ): Future[QueryResult[Res[Id]]] =
+    ): Future[Seq[Res[Id]]] =
       printSqlStr(sql)
-      Future.successful(QueryResult(Nil))
+      Future.successful(Nil)
   }
 
   case class Location(getX: Double, getY: Double, getZ: Double)
@@ -288,14 +291,14 @@ object Testing {
 
     Insert
       .into(ResidentK.table)
-      .valuesWithoutSomeColumns(
-        Query.valueOfOpt(
-          ResidentK.table,
-          ResidentK(
-            Some(UUID.randomUUID()),
-            Some("foo"),
-            Some(UUID.randomUUID()),
-            None
+      .valuesInColumnsFromQuery(c => (c.owner, c.homeName, c.resident))(
+        Query.values(
+          (PostgresJdbcTypes.uuid.forgetNNA, PostgresJdbcTypes.text.forgetNNA, PostgresJdbcTypes.uuid.forgetNNA)
+        )(
+          (
+            UUID.randomUUID(),
+            "foo",
+            UUID.randomUUID()
           )
         )
       )

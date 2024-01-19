@@ -145,7 +145,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
         val columnNumState: State[Int, A[Const[String]]] =
           values.traverseK(
-            [X] => (dbVal: DbValue[X]) => State[Int, Const[String][X]]((acc: Int) => (acc + 1, dbVal.columnName(s"x$acc")))
+            [X] =>
+              (dbVal: DbValue[X]) => State[Int, Const[String][X]]((acc: Int) => (acc + 1, dbVal.columnName(s"x$acc")))
           )
 
         val (newColumnNum, columnAliases) = columnNumState.run(columnNum).value
@@ -543,11 +544,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
           t <- tagValues(groupedValues)
           (aliases, exprWithAliases) = t
         yield
-          def astAnd(lhs: Option[SqlExpr[Codec]], rhs: Option[SqlExpr[Codec]]): Option[SqlExpr[Codec]] = (lhs, rhs) match
-            case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
-            case (Some(lhs), None)      => Some(lhs)
-            case (None, Some(rhs))      => Some(rhs)
-            case (None, None)           => None
+          def astAnd(lhs: Option[SqlExpr[Codec]], rhs: Option[SqlExpr[Codec]]): Option[SqlExpr[Codec]] =
+            (lhs, rhs) match
+              case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
+              case (Some(lhs), None)      => Some(lhs)
+              case (None, Some(rhs))      => Some(rhs)
+              case (None, None)           => None
           end astAnd
 
           selectAst match
@@ -876,7 +878,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     inline def of[A](value: A)(using MR: MapRes[DbValue, A]): Query[MR.K] =
       ofK(MR.toK(value))(using MR.applyKC, MR.traverseKC)
 
-    def values[A[_[_]]: ApplyKC: TraverseKC](types: A[Type], value: A[Id], values: A[Id]*): Query[A] =
+    def valuesK[A[_[_]]: ApplyKC: TraverseKC](types: A[Type], value: A[Id], values: A[Id]*): Query[A] =
       val liftValues = [Z] => (v: Z, tpe: Type[Z]) => v.as(tpe)
 
       SqlQuery
@@ -886,21 +888,31 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         )
         .liftSqlQuery
 
+    def values[T](types: T)(using mr: MapRes[Type, T])(value: mr.K[Id], values: mr.K[Id]*): Query[mr.K] =
+      valuesK(mr.toK(types), value, values*)(using mr.applyKC, mr.traverseKC)
+
+    def valuesKBatch[A[_[_]]: ApplyKC: TraverseKC: DistributiveKC](
+        types: A[Type],
+        value: A[Id],
+        values: A[Id]*
+    ): Query[A] =
+      SqlQuery
+        .SqlQueryValues(
+          (value :: values.toList).cosequenceK
+            .map2K(types)([X] => (vs: List[X], tpe: Type[X]) => SqlDbValue.Placeholder(vs, tpe).liftDbValue),
+          Nil
+        )
+        .liftSqlQuery
+
     def valuesOf[A[_[_]]](table: Table[Codec, A], value: A[Id], values: A[Id]*): Query[A] =
       import table.given
       given FunctorKC[A] = table.FA
-      Query.values(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
+      Query.valuesK(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
 
-    def valueOpt[A[_[_]]](types: A[Type], value: A[Option])(
-        using FA: ApplyKC[A],
-        FT: TraverseKC[A]
-    ): Query[[F[_]] =>> A[Compose2[Option, F]]] =
-      values(types.map2K(value)([X] => (tpe: Type[X], opt: Option[X]) => opt.map(_ => tpe)), value)
-
-    def valueOfOpt[A[_[_]]](table: Table[Codec, A], value: A[Option]): Query[[F[_]] =>> A[Compose2[Option, F]]] =
+    def valuesOfBatch[A[_[_]]: DistributiveKC](table: Table[Codec, A], value: A[Id], values: A[Id]*): Query[A] =
       import table.given
       given FunctorKC[A] = table.FA
-      valueOpt(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value)
+      Query.valuesKBatch(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values *)
 
   extension [A](query: Query[[F[_]] =>> F[A]])
     // TODO: Make use of an implicit conversion here?
