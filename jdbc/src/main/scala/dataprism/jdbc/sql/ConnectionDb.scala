@@ -2,7 +2,7 @@ package dataprism.jdbc.sql
 
 import java.sql.{Connection, PreparedStatement, SQLException}
 
-import scala.util.Using
+import scala.util.{Try, Using}
 
 import cats.Functor
 import cats.data.{State, ValidatedNel}
@@ -13,14 +13,35 @@ import perspective.derivation.{ProductK, ProductKPar}
 
 trait ConnectionDb[F[_]: Functor] extends Db[F, JdbcCodec]:
 
-  extension [A: Using.Releasable](a: A)
-    def acquired(using man: Using.Manager): A =
-      man.acquire(a)
-      a
+  protected def wrapTry[A](tryV: => Try[A]): F[A]
+  
+  protected def getConnection(using ResourceManager): Connection
 
   protected def makePrepared[A](
       sql: SqlStr[JdbcCodec]
-  )(f: Using.Manager ?=> (PreparedStatement, Connection) => A): F[A]
+  )(f: ResourceManager ?=> (PreparedStatement, Connection) => A): F[A] = wrapTry {
+    Using.Manager { implicit man =>
+      given ResourceManager = ResourceManager.proxyForUsingManager
+
+      val con = getConnection
+      val ps  = con.prepareStatement(sql.str).acquire
+
+      val batchSizes = sql.args.map(_.batchSize).distinct
+      if batchSizes.length != 1 then throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
+      val batchSize = batchSizes.head
+
+      var batch = 0
+      while batch < batchSize do {
+        for ((obj, i) <- sql.args.zipWithIndex) {
+          obj.tpe.set(ps, i + 1, obj.value(batch), con)
+        }
+        batch += 1
+        if batch < batchSize then ps.addBatch()
+      }
+
+      f(ps, con)
+    }
+  }
 
   override def run(sql: SqlStr[JdbcCodec]): F[Int] = makePrepared(sql)((ps, _) => ps.executeUpdate())
 
@@ -38,7 +59,7 @@ trait ConnectionDb[F[_]: Functor] extends Db[F, JdbcCodec]:
       maxRows: Int = -1
   )(using FT: TraverseKC[Res]): F[Seq[Res[Id]]] =
     makePrepared(sql) { (ps: PreparedStatement, con: Connection) =>
-      val rs = ps.executeQuery().acquired
+      val rs = ps.executeQuery().acquire
 
       val indicesState: State[Int, Res[Tuple2K[JdbcCodec, Const[Int]]]] =
         dbTypes.traverseK([A] => (tpe: JdbcCodec[A]) => State((acc: Int) => (acc + 1, (tpe, acc))))

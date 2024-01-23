@@ -7,11 +7,12 @@ import scala.reflect.ClassTag
 import scala.util.Using
 
 import cats.Invariant
+import dataprism.sql.ResourceManager
 
 class JdbcCodec[A] private (
     val name: String,
-    val get: Using.Manager ?=> (ResultSet, Int, Connection) => Either[String, A],
-    val set: Using.Manager ?=> (PreparedStatement, Int, A, Connection) => Unit
+    val get: ResourceManager ?=> (ResultSet, Int, Connection) => Either[String, A],
+    val set: ResourceManager ?=> (PreparedStatement, Int, A, Connection) => Unit
 ):
 
   def imap[B](f: A => B)(g: B => A): JdbcCodec[B] =
@@ -49,7 +50,7 @@ object JdbcCodec {
 
   def withConnection[A](
       name: String,
-      get: Using.Manager ?=> (ResultSet, Int, Connection) => Either[String, Option[A]],
-      set: Using.Manager ?=> (PreparedStatement, Int, Option[A], Connection) => Unit
+      get: ResourceManager ?=> (ResultSet, Int, Connection) => Either[String, Option[A]],
+      set: ResourceManager ?=> (PreparedStatement, Int, Option[A], Connection) => Unit
   ): JdbcCodec[Option[A]] = JdbcCodec(name, get, set)
 }

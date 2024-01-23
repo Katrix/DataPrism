@@ -1,35 +1,75 @@
 package dataprism.jdbc.sql
 
-import dataprism.sql.*
-
-import java.sql.{Connection, PreparedStatement, SQLException}
+import java.sql.Connection
 import javax.sql.DataSource
+
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Using
+import scala.util.*
 
-class DataSourceDb(ds: DataSource)(using ExecutionContext) extends ConnectionDb[Future]:
+import dataprism.sql.*
+import perspective.Id
 
-  protected def makePrepared[A](
-      sql: SqlStr[JdbcCodec]
-  )(f: Using.Manager ?=> (PreparedStatement, Connection) => A): Future[A] =
-    Future {
-      Using.Manager { implicit man =>
-        val con = ds.getConnection.acquired
-        val ps  = con.prepareStatement(sql.str).acquired
+trait DataSourceDb[F[_]](ds: DataSource) extends ConnectionDb[F] with TransactionalDb[F, JdbcCodec]:
 
-        val batchSizes = sql.args.map(_.batchSize).distinct
-        if batchSizes.length != 1 then throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
-        val batchSize = batchSizes.head
+  protected def wrapTry[A](tryV: => Try[A]): F[A]
 
-        var batch = 0
-        while batch < batchSize do {
-          for ((obj, i) <- sql.args.zipWithIndex) {
-            obj.tpe.set(ps, i + 1, obj.value(batch), con)
-          }
-          batch += 1
-          if batch < batchSize then ps.addBatch()
-        }
+  override protected def getConnection(using ResourceManager): Connection = ds.getConnection.acquire
 
-        f(ps, con)
+object DataSourceDb:
+  def ofFuture(ds: DataSource)(using ExecutionContext): DataSourceDb[Future] = new DataSourceDb[Future](ds):
+    override protected def wrapTry[A](tryV: => Try[A]): Future[A] = Future(tryV).flatMap(Future.fromTry)
+
+    override def transaction[A](f: TransactionDb[Future, JdbcCodec] ?=> Future[A])(
+        using NotGiven[TransactionDb[Future, JdbcCodec]]
+    ): Future[A] =
+      given man: ResourceManager.Storing = ResourceManager.Storing.make
+      val (con, future) = man.addExecution {
+        val con = ds.getConnection.acquire
+        con.setAutoCommit(false)
+        val transactionDb = new ConnectionTransactionDb(con, [B] => (tryF: () => Try[B]) => wrapTry(tryF()))
+        (con, f(using transactionDb))
       }
-    }.flatMap(Future.fromTry)
+
+      future.transform {
+        case Failure(exception) =>
+          man.addExecutionTry(con.rollback()).flatMap(_ => man.finishWithException(exception))
+
+        case Success(v) =>
+          man.addExecutionTry(con.commit()).flatMap(_ => man.finish()).map(_ => v)
+      }
+
+  def ofTrySync(ds: DataSource)(using ExecutionContext): DataSourceDb[Try] = new DataSourceDb[Try](ds):
+    override protected def wrapTry[A](tryV: => Try[A]): Try[A] = tryV
+
+    override def transaction[A](f: TransactionDb[Try, JdbcCodec] ?=> Try[A])(
+        using NotGiven[TransactionDb[Try, JdbcCodec]]
+    ): Try[A] =
+      given man: ResourceManager.Storing = ResourceManager.Storing.make
+      val (con, tryV) = man.addExecution {
+        val con = ds.getConnection.acquire
+        con.setAutoCommit(false)
+        val transactionDb = new ConnectionTransactionDb(con, [B] => (tryF: () => Try[B]) => wrapTry(tryF()))
+        (con, f(using transactionDb))
+      }
+      tryV match
+        case Failure(exception) => man.addExecutionTry(con.rollback()).flatMap(_ => man.finishWithException(exception))
+        case Success(v)         => man.addExecutionTry(con.commit()).flatMap(_ => man.finish()).map(_ => v)
+
+  def ofIdSync(ds: DataSource)(using ExecutionContext): DataSourceDb[Id] = new DataSourceDb[Id](ds):
+    override protected def wrapTry[A](tryV: => Try[A]): Id[A] = tryV.get
+
+    override def transaction[A](f: TransactionDb[Id, JdbcCodec] ?=> Id[A])(
+        using NotGiven[TransactionDb[Id, JdbcCodec]]
+    ): Id[A] =
+      given man: ResourceManager.Storing = ResourceManager.Storing.make
+      val con                            = man.addExecution(ds.getConnection.acquire)
+      con.setAutoCommit(false)
+
+      val tryV = man.addExecutionTry {
+        val transactionDb = new ConnectionTransactionDb(con, [B] => (tryF: () => Try[B]) => wrapTry(tryF()))
+        f(using transactionDb)
+      }
+      tryV match
+        case Failure(exception) =>
+          man.addExecutionTry(con.rollback()).flatMap(_ => man.finishWithException(exception)).get
+        case Success(v) => man.addExecutionTry(con.commit()).flatMap(_ => man.finish()).map(_ => v).get

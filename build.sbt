@@ -43,6 +43,21 @@ lazy val jdbc = project
   )
   .dependsOn(common)
 
+lazy val cats = project.settings(
+  commonSettings,
+  publishSettings,
+  name                                   := "dataprism-cats",
+  libraryDependencies += "org.typelevel" %% "cats-effect-kernel" % "3.5.3"
+).dependsOn(common)
+
+lazy val jdbcCats = project
+  .settings(
+    commonSettings,
+    publishSettings,
+    name := "dataprism-jdbc-cats"
+  )
+  .dependsOn(jdbc, cats)
+
 lazy val skunk = project
   .settings(
     commonSettings,
@@ -50,7 +65,7 @@ lazy val skunk = project
     name                                  := "dataprism-skunk",
     libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2"
   )
-  .dependsOn(common)
+  .dependsOn(common, cats)
 
 lazy val docs = project
   .enablePlugins(ScalaUnidocPlugin)
@@ -60,6 +75,8 @@ lazy val docs = project
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
       common,
       jdbc,
+      cats,
+      jdbcCats,
       skunk
     ),
     ScalaUnidoc / unidoc / scalacOptions ++= Seq(
@@ -82,4 +99,5 @@ lazy val docs = project
     )
   )
 
-lazy val dataprismRoot = project.in(file(".")).aggregate(common, jdbc, skunk).settings(noPublishSettings)
+lazy val dataprismRoot =
+  project.in(file(".")).aggregate(common, jdbc, cats, jdbcCats, skunk).settings(noPublishSettings)
