@@ -43,12 +43,23 @@ lazy val jdbc = project
   )
   .dependsOn(common)
 
-lazy val cats = project.settings(
-  commonSettings,
-  publishSettings,
-  name                                   := "dataprism-cats",
-  libraryDependencies += "org.typelevel" %% "cats-effect-kernel" % "3.5.3"
-).dependsOn(common)
+lazy val cats = project
+  .settings(
+    commonSettings,
+    publishSettings,
+    name                                   := "dataprism-cats",
+    libraryDependencies += "org.typelevel" %% "cats-effect-kernel" % "3.5.3"
+  )
+  .dependsOn(common)
+
+lazy val fs2 = project
+  .settings(
+    commonSettings,
+    publishSettings,
+    name                            := "dataprism-fs2",
+    libraryDependencies += "co.fs2" %% "fs2-core" % "3.9.4"
+  )
+  .dependsOn(cats)
 
 lazy val jdbcCats = project
   .settings(
@@ -58,6 +69,14 @@ lazy val jdbcCats = project
   )
   .dependsOn(jdbc, cats)
 
+lazy val jdbcFs2 = project
+  .settings(
+    commonSettings,
+    publishSettings,
+    name := "dataprism-jdbc-fs2"
+  )
+  .dependsOn(fs2, jdbcCats)
+
 lazy val skunk = project
   .settings(
     commonSettings,
@@ -65,18 +84,21 @@ lazy val skunk = project
     name                                  := "dataprism-skunk",
     libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2"
   )
-  .dependsOn(common, cats)
+  .dependsOn(common, cats, fs2)
 
 lazy val docs = project
   .enablePlugins(ScalaUnidocPlugin)
   .settings(
     commonSettings,
-    autoAPIMappings := true,
+    libraryDependencies += "org.typelevel" %% "cats-effect-std" % "3.5.3",
+    autoAPIMappings                        := true,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
       common,
       jdbc,
       cats,
       jdbcCats,
+      fs2,
+      jdbcFs2,
       skunk
     ),
     ScalaUnidoc / unidoc / scalacOptions ++= Seq(
@@ -100,4 +122,4 @@ lazy val docs = project
   )
 
 lazy val dataprismRoot =
-  project.in(file(".")).aggregate(common, jdbc, cats, jdbcCats, skunk).settings(noPublishSettings)
+  project.in(file(".")).aggregate(common, jdbc, cats, jdbcCats, fs2, jdbcFs2, skunk).settings(noPublishSettings)

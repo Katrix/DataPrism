@@ -1,10 +1,9 @@
 package dataprism.platform.sql
 
-import cats.data.{NonEmptyList, NonEmptySeq}
+import cats.Functor
+import cats.data.NonEmptySeq
 import cats.syntax.all.*
-import cats.{Applicative, Functor}
 import dataprism.platform.base.MapRes
-import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
@@ -111,7 +110,6 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
       values: Query[B]
   ) extends IntOperation:
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
-      import table.given
       import values.given
 
       val ret = values.selectAstAndValues.map { computedValues =>
@@ -181,7 +179,9 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
     def valuesInColumnsKBatch[T](
         columns: A[[X] =>> Column[Codec, X]] => T
-    )(using mr: MapRes[[X] =>> Column[Codec, X], T])(value: mr.K[Id], values: mr.K[Id]*)(using D: DistributiveKC[mr.K]): InsertOperation[A, mr.K] =
+    )(using mr: MapRes[[X] =>> Column[Codec, X], T])(value: mr.K[Id], values: mr.K[Id]*)(
+        using D: DistributiveKC[mr.K]
+    ): InsertOperation[A, mr.K] =
       given FunctorKC[mr.K] = mr.applyKC
       valuesInColumnsFromQueryK(a => mr.toK(columns(a)))(
         Query.valuesKBatch[mr.K](

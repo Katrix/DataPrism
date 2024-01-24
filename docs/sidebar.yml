@@ -18,7 +18,7 @@ subsection:
   - page: guide/06_compiled.md
     directory: Guide
 
-  - page: guide/07_exotic_data_return_types.md
+  - page: guide/07_exotic_data.md
     directory: Guide
 
   - page: guide/08_transactions.md
@@ -27,5 +27,8 @@ subsection:
   - page: guide/09_cats_effects.md
     directory: Guide
 
-  - page: guide/10_skunk.md
+  - page: guide/10_fs2_effects.md
+    directory: Guide
+
+  - page: guide/11_skunk.md
     directory: Guide

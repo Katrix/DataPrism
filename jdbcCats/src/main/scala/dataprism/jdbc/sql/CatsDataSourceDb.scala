@@ -10,7 +10,7 @@ import cats.effect.kernel.{Resource, Sync}
 import cats.syntax.all.*
 import dataprism.sql.{CatsTransactionDb, CatsTransactionalDb, ResourceManager, TransactionDb}
 
-class CatsDatasourceDb[F[_]: Sync](ds: DataSource) extends CatsTransactionalDb[F, JdbcCodec], ConnectionDb[F]:
+class CatsDataSourceDb[F[_]: Sync](ds: DataSource) extends CatsTransactionalDb[F, JdbcCodec], ConnectionDb[F]:
 
   override protected def getConnection(using ResourceManager): Connection = ds.getConnection.acquire
 

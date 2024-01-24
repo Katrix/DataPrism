@@ -14,7 +14,7 @@ import skunk.util.Origin
 
 abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Codec]:
 
-  private def makeCommand(sql: SqlStr[Codec]): (Command[Seq[Any]], Seq[Seq[Any]]) =
+  protected def makeCommand(sql: SqlStr[Codec]): (Command[Seq[Any]], Seq[Seq[Any]]) =
     val sqlStr     = sql
     val batchSizes = sql.args.map(_.batchSize).distinct
     if batchSizes.length != 1 then throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
@@ -36,7 +36,7 @@ abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Co
       Seq.tabulate(batchSize)(batch => sql.args.map(_.value(batch)))
     )
 
-  private def makeQuery[Res[_[_]]](
+  protected def makeQuery[Res[_[_]]](
       sql: SqlStr[Codec],
       dbTypes: Res[Codec]
   )(using FT: TraverseKC[Res]): (Query[Seq[Any], Res[Id]], Seq[Seq[Any]]) =
