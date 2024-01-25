@@ -7,7 +7,7 @@ title: Compiled queries and commands
 DataPrism can, if desired compile an operation so that it only has to create the SQL for it once, instead of again and
 again. This generally takes the form of a function accepting types of the arguments to compile, and another function
 allowing use of those values as `DbValue`. The two global compile operations are `raw` and `operation`. `raw` works with
-raw `SqlStr`s, while `operation` works with operations like SELECT and DELETE. For this we'll only look at operation. If
+raw `SqlStr`s, while `operation` works with operations like SELECT and DELETE. The docs here will only look at operations If
 you need raw, you'll know, and hopefully be able to figure out how to use it.
 
 ```scala 3 sc-name:Setup.scala
@@ -44,8 +44,8 @@ given DataSourceDb = DataSourceDb(???)
 
 ## operation
 
-Here are two examples of how operation works. Due to Scala inferring too precise of a type for the `Type` arguments, we
-have to currently call `forgetNNA` on the types.
+Here are two examples of how operation works. Due to Scala inferring too precise of a type for the `Type` arguments, 
+the code calls `forgetNNA` on the types.
 
 ```scala 3 sc-compile-with:Setup.scala
 import dataprism.jdbc.platform.PostgresJdbcPlatform.*

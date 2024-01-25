@@ -4,7 +4,7 @@ title: MapRes and Exotic data
 
 # {{page.title}}
 
-So far we've seen HKD and tuples used in queries and results, but there are far more types you can
+So far only HKD and tuples have been used in queries and results, but there are far more types you can
 use here. In theory, any type that has instances of `ApplyKC` and `TraverseKC` can be used in
 queries.
 

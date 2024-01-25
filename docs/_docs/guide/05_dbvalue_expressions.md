@@ -4,7 +4,7 @@ title: DbValue and Expressions
 
 # {{page.title}}
 
-It's about time that we talk about `DbValue`s and expressions.
+It's time to talk about `DbValue`s and expressions.
 
 ## Nullability
 
