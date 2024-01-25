@@ -28,7 +28,7 @@ class CatsDataSourceDb[F[_]: Sync](ds: DataSource) extends CatsTransactionalDb[F
       .flatMap: man =>
         Resource.makeCase(F.blocking(man.acquire(ds.getConnection)).flatTap(con => F.delay(con.setAutoCommit(false)))):
           case (con, ExitCase.Succeeded)  => F.blocking(con.commit())
-          case (con, ExitCase.Errored(e)) => F.blocking(con.rollback()) *> F.raiseError(e)
+          case (con, ExitCase.Errored(e)) => F.productR(F.blocking(con.rollback()))(F.raiseError(e))
           case (con, ExitCase.Canceled)   => F.blocking(con.rollback())
       .map: con =>
         new ConnectionTransactionDb(con, [B] => (tryF: () => Try[B]) => wrapTry(tryF()))

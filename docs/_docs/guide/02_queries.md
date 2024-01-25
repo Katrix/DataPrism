@@ -164,8 +164,9 @@ applicative style. `Query` also defines `flatMap`, and because of that for compr
 ```scala 3 sc-compile-with:User.scala
 import dataprism.jdbc.platform.PostgresJdbcPlatform.*
 
-val q1: Query[[F[_]] =>> (UserK[F], UserK[F])] =
-  Query.from(UserK.table).flatMap(u1 => Query.from(UserK.table).map(u2 => (u1, u2)))
+//TODO: Does not compile for some reason. Fix MapRes
+//val q1: Query[[F[_]] =>> (UserK[F], UserK[F])] =
+//  Query.from(UserK.table).flatMap(u1 => Query.from(UserK.table).map(u2 => (u1, u2)))
 
 val q2: Query[UserK] = for
   u <- Query.from(UserK.table)

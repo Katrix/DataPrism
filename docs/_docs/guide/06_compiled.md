@@ -15,6 +15,7 @@ import dataprism.KMacros
 import dataprism.sql.{Table, Column}
 import dataprism.jdbc.sql.{JdbcCodec, DataSourceDb}
 import dataprism.jdbc.sql.PostgresJdbcTypes.*
+import scala.concurrent.Future
 
 case class UserK[F[_]](
   id: F[Int],
@@ -39,7 +40,7 @@ object UserK:
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-given DataSourceDb = DataSourceDb(???)
+given DataSourceDb[Future] = DataSourceDb.ofFuture(???)
 ```
 
 ## operation
@@ -49,16 +50,15 @@ the code calls `forgetNNA` on the types.
 
 ```scala 3 sc-compile-with:Setup.scala
 import dataprism.jdbc.platform.PostgresJdbcPlatform.*
-import dataprism.sql.QueryResult
 import perspective.Id
 import scala.concurrent.Future
 
-val f1: String => Future[QueryResult[UserK[Id]]] =
+val f1: String => Future[Seq[UserK[Id]]] =
   Compile.operation(text.forgetNNA) { (textValue: DbValue[String]) =>
     Select(Query.from(UserK.table).filter(_.username === textValue))
   }
 
-val f2: ((String, String)) => Future[QueryResult[UserK[Id]]] =
+val f2: ((String, String)) => Future[Seq[UserK[Id]]] =
   Compile.operation((text.forgetNNA, text.forgetNNA)) {
     (textValue1: DbValue[String], textValue2: DbValue[String]) =>
       Select(
