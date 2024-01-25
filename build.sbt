@@ -31,8 +31,10 @@ lazy val common = project.settings(
   commonSettings,
   publishSettings,
   name                                   := "dataprism-common",
-  libraryDependencies += "net.katsstuff" %% "perspective"            % "0.2.0+17-d7d68444-SNAPSHOT",
-  libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.2.0+17-d7d68444-SNAPSHOT"
+  libraryDependencies += "net.katsstuff" %% "perspective"             % "0.2.0+17-d7d68444-SNAPSHOT",
+  libraryDependencies += "net.katsstuff" %% "perspective-derivation"  % "0.2.0+17-d7d68444-SNAPSHOT",
+  libraryDependencies += "org.scalameta" %% "munit"                   % "0.7.29" % Test,
+  libraryDependencies += "org.typelevel" %% "scalacheck-effect-munit" % "1.0.4"  % Test
 )
 
 lazy val jdbc = project
