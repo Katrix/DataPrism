@@ -128,6 +128,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       type N[B] = B
       type NNA  = A
 
+      override def wrapOption[B](n: B): Option[B]                 = Some(n)
+      override def nullableToOption[B](n: Nullable[B]): Option[B] = n.asInstanceOf[Option[B]]
+
       override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[B]                           = dbVal
       override def wrapType[B](tpe: Type[B]): Type[B]                                    = tpe.typedChoice.notNull
       override def wrapBinOp[LHS, RHS, R](binOp: BinOp[LHS, RHS, R]): BinOp[LHS, RHS, R] = binOp
@@ -136,6 +139,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     given nullable[A, NN](using A <:< Option[NN]): Nullability.Aux[A, NN, Option] = new Nullability[A]:
       type N[B] = Option[B]
       type NNA  = NN
+
+      override def wrapOption[B](n: Option[B]): Option[B]                 = n
+      override def nullableToOption[B](n: Nullable[Option[B]]): Option[B] = n
 
       override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[Option[B]] = dbVal.asSome
       override def wrapType[B](tpe: Type[B]): Type[Option[B]]          = tpe.typedChoice.nullable
@@ -638,6 +644,15 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     @targetName("dbValOptgetUnsafe") def unsafeGet: DbValue[A] =
       SqlDbValue.GetNullable(optVal, ev).lift
 
+    @targetName("dbValOptMap") def map[B](f: DbValue[A] => DbValue[B]): DbValue[Option[B]] =
+      Case.when(optVal.isDefined)(f(optVal.unsafeGet).asSome).otherwise(DbValue.nullV(f(optVal.unsafeGet).tpe))
+
+    @targetName("dbValOptFilter") def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[Option[A]] =
+      Case.when(optVal.isDefined && f(optVal.unsafeGet))(optVal).otherwise(DbValue.nullV(optVal.unsafeGet.tpe))
+
+    @targetName("dbValOptFlatMap") def flatMap[B](f: DbValue[A] => DbValue[Option[B]]): DbValue[Option[B]] =
+      Case.when(optVal.isDefined)(f(optVal.unsafeGet)).otherwise(DbValue.nullV(f(optVal.unsafeGet).unsafeGet.tpe))
+
     @targetName("dbValOptIsEmpty") def isEmpty: DbValue[Boolean]     = SqlDbValue.IsNull(optVal).lift
     @targetName("dbValOptIsDefined") def isDefined: DbValue[Boolean] = SqlDbValue.IsNotNull(optVal).lift
 
@@ -658,6 +673,17 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
           other.tpe
         )
         .lift
+
+  extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Option], T])
+    def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[Option[B]] =
+      given ApplyKC[mr.K]    = mr.applyKC
+      given FoldableKC[mr.K] = mr.traverseKC
+      val res                = f(mr.toK(t).mapK([Z] => (v: DbValue[Option[Z]]) => v.unsafeGet))
+      Case
+        .when(mr.toK(t).foldLeftK(DbValue.trueV)(acc => [Z] => (v: DbValue[Option[Z]]) => acc && v.isDefined))(
+          res.asSome
+        )
+        .otherwise(DbValue.nullV(res.tpe))
 
   val Case: CaseCompanion
   type CaseCompanion <: SqlCaseCompanion

@@ -16,6 +16,9 @@ trait QueryPlatform {
   trait NullabilityBase[A]:
     type NNA
     type N[_]
+    
+    def wrapOption[B](n: N[B]): Option[B]
+    def nullableToOption[B](n: Nullable[N[B]]): Option[B]
 
   trait DbValueBase[A]:
     def liftDbValue: DbValue[A]
