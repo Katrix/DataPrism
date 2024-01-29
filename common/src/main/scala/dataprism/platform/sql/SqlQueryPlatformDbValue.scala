@@ -394,8 +394,6 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
   }
 
   enum SqlDbValue[A] extends SqlDbValueBase[A] {
-    case DbColumn(column: Column[Codec, A])
-
     case QueryColumn(queryName: String, fromName: String, override val tpe: Type[A])
 
     case JoinNullable[B](value: DbValue[B]) extends SqlDbValue[Nullable[B]]
@@ -433,7 +431,6 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case False      extends SqlDbValue[Boolean]
 
     override def ast: TagState[SqlExpr[Codec]] = this match
-      case SqlDbValue.DbColumn(_)                         => throw new IllegalArgumentException("Value not tagged")
       case SqlDbValue.QueryColumn(queryName, fromName, _) => State.pure(SqlExpr.QueryRef(fromName, queryName))
 
       case SqlDbValue.UnaryOp(value, op)  => value.ast.map(v => SqlExpr.UnaryOp(v, op.ast))
@@ -489,7 +486,6 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     override def asSqlDbVal: Option[SqlDbValue[A]] = Some(this)
 
     override def tpe: Type[A] = this match
-      case SqlDbValue.DbColumn(col)          => col.tpe
       case SqlDbValue.QueryColumn(_, _, tpe) => tpe
       case SqlDbValue.UnaryOp(v, op)         => op.tpe(v)
       case SqlDbValue.BinOp(lhs, rhs, op)    => op.tpe(lhs, rhs)
@@ -525,7 +521,6 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     end tpe
 
     override def columnName(prefix: String): String = this match
-      case SqlDbValue.DbColumn(col) => s"${prefix}_${col.name}"
       case SqlDbValue.QueryColumn(queryName, fromName, _) =>
         if queryName.startsWith("x") then s"${prefix}_${queryName.drop(1).dropWhile(c => c.isDigit || c == '_')}"
         else s"${prefix}_$queryName"
