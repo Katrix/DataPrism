@@ -146,14 +146,14 @@ object SelectAst {
 
   sealed trait From[Codec[_]]
   object From {
-    case class FromTable[Codec[_]](table: String, alias: Option[String])                        extends From[Codec]
-    case class FromQuery[Codec[_]](selectAst: SelectAst[Codec], alias: String)                  extends From[Codec]
-    case class FromMulti[Codec[_]](fst: From[Codec], snd: From[Codec])                          extends From[Codec]
-    case class CrossJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec])                          extends From[Codec]
-    case class InnerJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])      extends From[Codec]
-    case class LeftOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
-    case class RightOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec]) extends From[Codec]
-    case class FullOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
+    case class FromTable[Codec[_]](table: String, alias: Option[String])                         extends From[Codec]
+    case class FromQuery[Codec[_]](selectAst: SelectAst[Codec], alias: String, lateral: Boolean) extends From[Codec]
+    case class FromMulti[Codec[_]](fst: From[Codec], snd: From[Codec])                           extends From[Codec]
+    case class CrossJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec])                           extends From[Codec]
+    case class InnerJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])       extends From[Codec]
+    case class LeftOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])   extends From[Codec]
+    case class RightOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
+    case class FullOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])   extends From[Codec]
   }
 
   case class GroupBy[Codec[_]](exprs: Seq[SqlExpr[Codec]])

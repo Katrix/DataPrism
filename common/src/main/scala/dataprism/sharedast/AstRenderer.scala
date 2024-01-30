@@ -427,7 +427,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
     )
 
   protected def renderFrom(from: SelectAst.From[Codec]): SqlStr[Codec] = from match
-    case SelectAst.From.FromQuery(query, alias) => sql"(${renderSelect(query)}) ${SqlStr.const(alias)}"
+    case SelectAst.From.FromQuery(query, alias, lateral) => sql"${if lateral then sql"LATERAL " else sql""}(${renderSelect(query)}) ${SqlStr.const(alias)}"
     case SelectAst.From.FromTable(table, alias) =>
       spaceConcat(SqlStr.const(table), alias.fold(sql"")(a => sql"${SqlStr.const(a)}"))
     case SelectAst.From.FromMulti(fst, snd) => sql"${renderFrom(fst)}, ${renderFrom(snd)}"

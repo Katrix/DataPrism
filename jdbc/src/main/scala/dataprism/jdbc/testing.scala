@@ -316,5 +316,15 @@ object Testing {
         // .groupMap(_.homeName)((name, r) => (name, r.resident.arrayAgg))
     )
 
+    printQuery(
+      Query.of(("foo".as(PostgresJdbcTypes.text)))
+    )
+
+    printQuery(
+      Query
+        .from(ResidentK.table)
+        .flatMap(v => Query.of((v.owner, v.homeName)))
+    )
+
     ()
 }

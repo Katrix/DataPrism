@@ -62,7 +62,7 @@ trait QueryPlatform {
 
     def mapK[B[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => B[DbValue]): Query[B]
 
-    def flatMap[B[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => Query[B]): Query[B]
+    def flatMap[B[_[_]]](f: A[DbValue] => Query[B]): Query[B]
 
     def join[B[_[_]]](that: Query[B])(on: (A[DbValue], B[DbValue]) => DbValue[Boolean]): Query[InnerJoin[A, B]]
 

@@ -89,7 +89,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     override def mapK[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
       nested.mapK(f)
 
-    override def flatMap[B[_[_]]](f: A[DbValue] => Query[B])(using ApplyKC[B], TraverseKC[B]): Query[B] =
+    override def flatMap[B[_[_]]](f: A[DbValue] => Query[B]): Query[B] =
       SqlQuery.SqlQueryFlatMap(this.liftSqlQuery, f).liftSqlQuery
 
     override def join[B[_[_]]](that: Query[B])(
@@ -756,10 +756,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         }
     }
 
-    case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => Query[B])(
-        using val applyK: ApplyKC[B],
-        val traverseK: TraverseKC[B]
-    ) extends SqlQuery[B] {
+    case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => Query[B]) extends SqlQuery[B] {
+      override def applyK: ApplyKC[B] = f(query.selectAstAndValues.runA(freshTaggedState).value.values).applyK
+
+      override def traverseK: TraverseKC[B] = f(query.selectAstAndValues.runA(freshTaggedState).value.values).traverseK
+
       override def selectAstAndValues: TagState[QueryAstMetadata[B]] =
         query.selectAstAndValues.flatMap { case QueryAstMetadata(selectAstA, _, valuesA) =>
           val stNewValuesAndAstA: TagState[(Option[SelectAst.From[Codec]], Option[SqlExpr[Codec]], A[DbValue])] =
@@ -782,8 +783,14 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             f(newValuesA).selectAstAndValues.map { case QueryAstMetadata(selectAstB, aliasesB, valuesB) =>
               val newSelectAstB = selectAstB match
                 case from: SelectAst.SelectFrom[Codec] =>
+                  val fromFromWithLateral = from.from.map:
+                    case SelectAst.From.FromQuery(selectAst, alias, lateral) =>
+                      SelectAst.From.FromQuery(selectAst, alias, true)
+                    case other => other
+                  end fromFromWithLateral
+
                   from.copy(
-                    from = combineOption(fromAOpt, from.from)(SelectAst.From.FromMulti.apply),
+                    from = combineOption(fromAOpt, fromFromWithLateral)(SelectAst.From.CrossJoin.apply), //Cross join seem to be more compatible in some cases
                     where = combineOption(whereExtra, from.where)((a, b) =>
                       SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd)
                     )
@@ -912,7 +919,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def valuesOfBatch[A[_[_]]: DistributiveKC](table: Table[Codec, A], value: A[Id], values: A[Id]*): Query[A] =
       import table.given
       given FunctorKC[A] = table.FA
-      Query.valuesKBatch(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values *)
+      Query.valuesKBatch(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
 
   extension [A](query: Query[[F[_]] =>> F[A]])
     // TODO: Make use of an implicit conversion here?
