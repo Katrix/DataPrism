@@ -1,17 +1,16 @@
 package dataprism.platform.implementations
 
-import scala.annotation.targetName
 import cats.Applicative
 import cats.data.NonEmptyList
 import cats.syntax.all.*
 import dataprism.platform.base.MapRes
-import dataprism.platform.sql.{SqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
+import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
 import dataprism.sharedast.{PostgresAstRenderer, SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
+trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
 
   override type InFilterCapability = Unit
   override type InMapCapability = Unit
@@ -38,13 +37,6 @@ trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatform
   val sqlRenderer: PostgresAstRenderer[Codec] = new PostgresAstRenderer[Codec](AnsiTypes)
   type ArrayTypeArgs[A]
   protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
-
-  override type UnaryOp[V, R] = SqlUnaryOp[V, R]
-
-  extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R] = op
-
-  override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
-  extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
 
   override type CastType[A] = Type[A]
 
@@ -84,82 +76,16 @@ trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatform
 
     override def liftDbValue: DbValue[A] = this
 
-    override def asc: Ord = Ord.Asc(this)
+    override def asc: Ord = Ord.Asc(this.unsafeAsAnyDbVal)
 
-    override def desc: Ord = Ord.Desc(this)
+    override def desc: Ord = Ord.Desc(this.unsafeAsAnyDbVal)
 
     override def unsafeAsAnyDbVal: AnyDbValue = this.asInstanceOf[AnyDbValue]
   end PostgresDbValue
 
-  type DbValueCompanion = SqlDbValueCompanion
-  val DbValue: DbValueCompanion = new SqlDbValueCompanion {}
-
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
     new Lift[SqlDbValue[A], DbValue[A]]:
       extension (a: SqlDbValue[A]) def lift: DbValue[A] = PostgresDbValue.SqlDbValue(a)
-
-  override type AnyDbValue = DbValue[Any]
-
-  sealed trait OrdSeq extends SqlOrdSeqBase
-
-  enum Ord extends OrdSeq:
-    case Asc(value: DbValue[_])
-    case Desc(value: DbValue[_])
-
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = this match
-      case Ord.Asc(value)  => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
-      case Ord.Desc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Desc, None)))
-
-    override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
-  end Ord
-
-  case class MultiOrdSeq(init: OrdSeq, tail: Ord) extends OrdSeq:
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
-
-    override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
-  end MultiOrdSeq
-
-  extension [A](many: Many[A])
-    def arrayAgg(using extraArrayTypeArgs: ArrayTypeArgs[A]): DbValue[Seq[A]] =
-      SqlDbValue
-        .Function[Seq[A]](
-          SqlExpr.FunctionName.Custom("array_agg"),
-          Seq(many.unsafeAsDbValue.unsafeAsAnyDbVal),
-          arrayType(many.unsafeAsDbValue.tpe)
-        )
-        .lift
-
-  type ValueSource[A[_[_]]] = SqlValueSource[A]
-  type ValueSourceCompanion = SqlValueSource.type
-  val ValueSource: ValueSourceCompanion = SqlValueSource
-
-  extension [A[_[_]]](sqlValueSource: SqlValueSource[A]) def liftSqlValueSource: ValueSource[A] = sqlValueSource
-
-  extension (c: ValueSourceCompanion)
-    @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A] =
-      query match
-        case baseQuery: SqlQuery.SqlQueryFromStage[A] => baseQuery.valueSource
-        case _                                        => SqlValueSource.FromQuery(query)
-
-  type Query[A[_[_]]]        = SqlQuery[A]
-  type QueryGrouped[A[_[_]]] = SqlQueryGrouped[A]
-
-  val Query: QueryCompanion = new SqlQueryCompanion {}
-  override type QueryCompanion = SqlQueryCompanion
-
-  extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A] = sqlQuery
-
-  extension [A[_[_]]](sqlQueryGrouped: SqlQueryGrouped[A]) def liftSqlQueryGrouped: QueryGrouped[A] = sqlQueryGrouped
-
-  override type CaseCompanion = DefaultSqlCaseCompanion
-  override val Case: DefaultSqlCaseCompanion = new DefaultSqlCaseCompanion {}
-
-  case class TaggedState(queryNum: Int, columnNum: Int) extends SqlTaggedState:
-    override def withNewQueryNum(newQueryNum: Int): TaggedState = copy(queryNum = newQueryNum)
-
-    override def withNewColumnNum(newColumnNum: Int): TaggedState = copy(columnNum = newColumnNum)
-  end TaggedState
-  protected def freshTaggedState: TaggedState = TaggedState(0, 0)
 
   case class SelectOperation[Res[_[_]]](query: Query[Res])
       extends SqlSelectOperation[Res](query)
@@ -220,7 +146,6 @@ trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatform
       onConflict: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
   ) extends SqlInsertOperation[A, B](table, columns, values):
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
-      import table.given
       import values.given
 
       val ret = for
@@ -436,7 +361,6 @@ trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatform
     def valuesInColumnsFromQueryK[B[_[_]]](columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]])(
         query: Query[B]
     ): InsertOperation[A, B] =
-      import table.given
       import query.given_ApplyKC_A
       InsertOperation(
         table,

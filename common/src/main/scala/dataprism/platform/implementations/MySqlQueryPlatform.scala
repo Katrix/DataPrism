@@ -1,43 +1,35 @@
 package dataprism.platform.implementations
 
-import scala.annotation.targetName
-import dataprism.platform.sql.{SqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
-import dataprism.sharedast.{MySqlAstRenderer, SelectAst, SqlExpr}
+import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
+import dataprism.sharedast.{MySqlAstRenderer, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait MySqlQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
+trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
 
-  override type InFilterCapability = Unit
-  override type InMapCapability = Unit
+  override type InFilterCapability        = Unit
+  override type InMapCapability           = Unit
   override type InJoinConditionCapability = Unit
-  override type InGroupByCapability = Unit
-  override type InHavingCapability = Unit
-  override type InOrderByCapability = Unit
+  override type InGroupByCapability       = Unit
+  override type InHavingCapability        = Unit
+  override type InOrderByCapability       = Unit
 
-  override protected val InFilterCapability: Unit = ()
-  override protected val InMapCapability: Unit = ()
+  override protected val InFilterCapability: Unit        = ()
+  override protected val InMapCapability: Unit           = ()
   override protected val InJoinConditionCapability: Unit = ()
-  override protected val InGroupByCapability: Unit = ()
-  override protected val InHavingCapability: Unit = ()
-  override protected val InOrderByCapability: Unit = ()
+  override protected val InGroupByCapability: Unit       = ()
+  override protected val InHavingCapability: Unit        = ()
+  override protected val InOrderByCapability: Unit       = ()
 
   given DeleteUsingCapability with {}
-  given UpdateFromCapability with {}
-  
+  given UpdateFromCapability with  {}
+
   type Api <: MySqlApi
   trait MySqlApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
     export platform.{given DeleteUsingCapability, given UpdateFromCapability}
   }
 
   val sqlRenderer: MySqlAstRenderer[Codec] = new MySqlAstRenderer[Codec](AnsiTypes)
-
-  override type UnaryOp[V, R] = SqlUnaryOp[V, R]
-
-  extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R] = op
-
-  override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
-  extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
 
   type DbValue[A] = MySqlDbValue[A]
   enum MySqlDbValue[A] extends SqlDbValueBase[A]:
@@ -57,70 +49,13 @@ trait MySqlQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFla
 
     override def unsafeAsAnyDbVal: DbValue[Any] = this.asInstanceOf[DbValue[Any]]
     override def liftDbValue: DbValue[A]        = this
-    override def asc: Ord                       = Ord.Asc(this)
-    override def desc: Ord                      = Ord.Desc(this)
+    override def asc: Ord                       = Ord.Asc(this.unsafeAsAnyDbVal)
+    override def desc: Ord                      = Ord.Desc(this.unsafeAsAnyDbVal)
   end MySqlDbValue
-
-  type DbValueCompanion = SqlDbValueCompanion
-  val DbValue: DbValueCompanion = new SqlDbValueCompanion {}
 
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
     new Lift[SqlDbValue[A], DbValue[A]]:
       extension (a: SqlDbValue[A]) def lift: DbValue[A] = MySqlDbValue.SqlDbValue(a)
-
-  override type AnyDbValue = DbValue[Any]
-
-  sealed trait OrdSeq extends SqlOrdSeqBase
-
-  enum Ord extends OrdSeq:
-    case Asc(value: DbValue[_])
-    case Desc(value: DbValue[_])
-
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = this match
-      case Ord.Asc(value)  => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
-      case Ord.Desc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Desc, None)))
-
-    override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
-  end Ord
-
-  case class MultiOrdSeq(init: OrdSeq, tail: Ord) extends OrdSeq:
-    override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = init.ast.flatMap(i => tail.ast.map(t => i ++ t))
-
-    override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
-  end MultiOrdSeq
-
-  type ValueSource[A[_[_]]] = SqlValueSource[A]
-  type ValueSourceCompanion = SqlValueSource.type
-  val ValueSource: ValueSourceCompanion = SqlValueSource
-
-  extension [A[_[_]]](sqlValueSource: SqlValueSource[A]) def liftSqlValueSource: ValueSource[A] = sqlValueSource
-
-  extension (c: ValueSourceCompanion)
-    @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A] =
-      query match
-        case baseQuery: SqlQuery.SqlQueryFromStage[A] => baseQuery.valueSource
-        case _                                        => SqlValueSource.FromQuery(query)
-
-  type Query[A[_[_]]]        = SqlQuery[A]
-  type QueryGrouped[A[_[_]]] = SqlQueryGrouped[A]
-
-  val Query: QueryCompanion = new SqlQueryCompanion {}
-  override type QueryCompanion = SqlQueryCompanion
-
-  extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A] = sqlQuery
-
-  extension [A[_[_]]](sqlQueryGrouped: SqlQueryGrouped[A]) def liftSqlQueryGrouped: QueryGrouped[A] = sqlQueryGrouped
-
-  override type CaseCompanion = DefaultSqlCaseCompanion
-  override val Case: DefaultSqlCaseCompanion = new DefaultSqlCaseCompanion {}
-
-  case class TaggedState(queryNum: Int, columnNum: Int) extends SqlTaggedState:
-    override def withNewQueryNum(newQueryNum: Int): TaggedState = copy(queryNum = newQueryNum)
-
-    override def withNewColumnNum(newColumnNum: Int): TaggedState = copy(columnNum = newColumnNum)
-  end TaggedState
-
-  protected def freshTaggedState: TaggedState = TaggedState(0, 0)
 
   case class SelectOperation[Res[_[_]]](query: Query[Res])
       extends SqlSelectOperation[Res](query)
@@ -150,7 +85,8 @@ trait MySqlQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFla
     override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = DeleteFrom(from)
 
   case class DeleteFrom[A[_[_]]](from: Table[Codec, A]) extends SqlDeleteFrom[A]:
-    def using[B[_[_]]](query: Query[B])(using DeleteUsingCapability): DeleteFromUsing[A, B] = DeleteFromUsing(from, query)
+    def using[B[_[_]]](query: Query[B])(using DeleteUsingCapability): DeleteFromUsing[A, B] =
+      DeleteFromUsing(from, query)
 
     def where(f: A[DbValue] => DbValue[Boolean]): DeleteOperation[A, A] = DeleteOperation(from, None, (a, _) => f(a))
   end DeleteFrom
@@ -179,7 +115,8 @@ trait MySqlQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFla
 
   case class UpdateTable[A[_[_]]](table: Table[Codec, A]) extends SqlUpdateTable[A]:
 
-    def from[B[_[_]]](fromQ: Query[B])(using UpdateFromCapability): UpdateTableFrom[A, B] = UpdateTableFrom(table, fromQ)
+    def from[B[_[_]]](fromQ: Query[B])(using UpdateFromCapability): UpdateTableFrom[A, B] =
+      UpdateTableFrom(table, fromQ)
 
     def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A] =
       UpdateTableWhere(table, where)
