@@ -276,7 +276,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
       case SelectAst.SelectFrom(
             None,
             exprs,
-            Some(SelectAst.From.FromMulti(SelectAst.From.FromTable(table, alias), usingV)),
+            Some(SelectAst.From.CrossJoin(SelectAst.From.FromTable(table, alias), usingV)),
             where,
             None,
             None,
@@ -349,7 +349,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec]) {
       case SelectAst.SelectFrom(
             None,
             exprs,
-            Some(SelectAst.From.FromMulti(SelectAst.From.FromTable(table, alias), usingV)),
+            Some(SelectAst.From.CrossJoin(SelectAst.From.FromTable(table, alias), usingV)),
             where,
             None,
             None,

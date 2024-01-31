@@ -1,18 +1,17 @@
 package dataprism.platform.implementations
 
 import scala.annotation.targetName
-
 import cats.Applicative
 import cats.data.NonEmptyList
 import cats.syntax.all.*
 import dataprism.platform.base.MapRes
-import dataprism.platform.sql.SqlQueryPlatform
+import dataprism.platform.sql.{SqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
 import dataprism.sharedast.{PostgresAstRenderer, SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-trait PostgresQueryPlatform extends SqlQueryPlatform { platform =>
+trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
 
   val sqlRenderer: PostgresAstRenderer[Codec] = new PostgresAstRenderer[Codec](AnsiTypes)
   type ArrayTypeArgs[A]

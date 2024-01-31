@@ -156,10 +156,14 @@ val q2: Query[[F[_]] =>> (F[Option[String]], F[String], F[Seq[String]])] =
 Note how you don't have to directly return a column from the grouping function. For example, in `q3`
 a tuple is used. Anything that works for `map` also works here.
 
-## flatMap
+## flatMap/LATERAL
 
 So far the docs have looked at direct function application on the queries, resulting in an
-applicative style. `Query` also defines `flatMap`, and because of that for comprehensions.
+applicative style. For databases that support `LATERAL`, `Query` also defines `flatMap`, and 
+because of that for comprehensions. The reason why `LATERAL` is required is because `flatMap` is a 
+very powerful function, and producing invalid SQL without `LATERAL` can be quite easy. If you still
+want flatMap for a database which does not support `LATERAL`, create your own platform, and mix in
+`UnsafeSqlQueryPlatformFlatmap` into it.
 
 ```scala 3 sc-compile-with:User.scala
 import dataprism.jdbc.platform.PostgresJdbcPlatform.*

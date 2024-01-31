@@ -190,7 +190,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
             (
               st.withNewQueryNum(queryNum + 1),
-              ValueSourceAstMetaData(SelectAst.From.FromQuery(meta.ast, queryName), newValues)
+              ValueSourceAstMetaData(SelectAst.From.FromQuery(meta.ast, queryName, lateral = false), newValues)
             )
           }
         }

@@ -22,6 +22,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     def selectAst: SelectAst[Codec] = selectAstAndValues.runA(freshTaggedState).value.ast
 
+    def nested: Query[A]
+
     def distinct: Query[A]
 
     def join[B[_[_]]](that: Table[Codec, B])(
@@ -38,6 +40,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def fullJoin[B[_[_]]](that: Table[Codec, B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]] = this.fullJoin(Query.from(that))(on)
+
+    def flatMap[B[_[_]]](f: A[DbValue] => FlatmappableQuery[B]): FlatmappableQuery[B]
 
     inline def limit(n: Int): Query[A] = take(n)
 
@@ -76,9 +80,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   type QueryGrouped[A[_[_]]] <: QueryGroupedBase[A]
 
+  type FlatmappableQuery[A[_[_]]] <: Query[A]
+
   sealed trait SqlQuery[A[_[_]]] extends SqlQueryBase[A] {
 
-    def nested: Query[A] =
+    override def nested: Query[A] =
       SqlQuery.SqlQueryFromStage(SqlValueSource.FromQuery(this.liftSqlQuery).liftSqlValueSource).liftSqlQuery
 
     override def where(f: A[DbValue] => DbValue[Boolean]): Query[A] =
@@ -89,8 +95,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     override def mapK[B[_[_]]](f: A[DbValue] => B[DbValue])(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
       nested.mapK(f)
 
-    override def flatMap[B[_[_]]](f: A[DbValue] => Query[B]): Query[B] =
-      SqlQuery.SqlQueryFlatMap(this.liftSqlQuery, f).liftSqlQuery
+    override def flatMap[B[_[_]]](f: A[DbValue] => FlatmappableQuery[B]): FlatmappableQuery[B] =
+      SqlQuery.SqlQueryFlatMap[A, B](this.liftSqlQuery, f).liftSqlQueryFlatMap
 
     override def join[B[_[_]]](that: Query[B])(
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -531,42 +537,42 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(true), that))).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[Ma]] =
-        for
-          meta <- query.selectAstAndValues
-          QueryAstMetadata(selectAst, _, values) = meta
-          groupedBy                              = group(values)
-          groupByAst <- groupedBy.traverseK[TagState, Const[SqlExpr[Codec]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
-          groupByAstList = groupByAst.toListK
+        def astAnd(lhs: Option[SqlExpr[Codec]], rhs: Option[SqlExpr[Codec]]): Option[SqlExpr[Codec]] =
+          (lhs, rhs) match
+            case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
+            case (Some(lhs), None)      => Some(lhs)
+            case (None, Some(rhs))      => Some(rhs)
+            case (None, None)           => None
+        end astAnd
 
-          havingAst <- having.traverse(f => f(values).ast)
+        query.selectAstAndValues.flatMap {
+          case QueryAstMetadata(selectAst: SelectAst.SelectFrom[Codec], _, values) =>
+            val groupedBy = group(values)
+            for
+              groupByAst <- groupedBy.traverseK[TagState, Const[SqlExpr[Codec]]](
+                [Z] => (dbVal: DbValue[Z]) => dbVal.ast
+              )
+              groupByAstList = groupByAst.toListK
 
-          groupedValues = map(groupedBy, valuesAsMany(values))
-          t <- tagValues(groupedValues)
-          (aliases, exprWithAliases) = t
-        yield
-          def astAnd(lhs: Option[SqlExpr[Codec]], rhs: Option[SqlExpr[Codec]]): Option[SqlExpr[Codec]] =
-            (lhs, rhs) match
-              case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
-              case (Some(lhs), None)      => Some(lhs)
-              case (None, Some(rhs))      => Some(rhs)
-              case (None, None)           => None
-          end astAnd
+              havingAst <- having.traverse(f => f(values).ast)
 
-          selectAst match
-            case from: SelectAst.SelectFrom[Codec] =>
+              groupedValues = map(groupedBy, valuesAsMany(values))
+              t <- tagValues(groupedValues)
+            yield
+              val (aliases, exprWithAliases) = t
               QueryAstMetadata(
-                from.copy(
+                selectAst.copy(
                   selectExprs = exprWithAliases,
                   groupBy = Option.when(groupByAstList.nonEmpty)(SelectAst.GroupBy(groupByAstList)),
-                  having = astAnd(from.having, havingAst)
+                  having = astAnd(selectAst.having, havingAst)
                 ),
                 aliases,
                 groupedValues
               )
 
-            case _ =>
-              // TODO: Allow
-              throw new Exception("Found non SelectFrom ast in groupByHaving stage. Not allowed")
+          case _ =>
+            SqlQueryGroupedHavingStage(query.nested, group, map, having).selectAstAndValues
+        }
     }
 
     case class SqlQueryDistinctStage[A[_[_]]](
@@ -611,7 +617,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                 SelectAst.SelectFrom(
                   Some(SelectAst.Distinct(Nil)),
                   exprs,
-                  Some(SelectAst.From.FromQuery(meta.ast, queryName)),
+                  Some(SelectAst.From.FromQuery(meta.ast, queryName, lateral = false)),
                   None,
                   None,
                   None,
@@ -756,7 +762,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         }
     }
 
-    case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => Query[B]) extends SqlQuery[B] {
+    case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => FlatmappableQuery[B])
+        extends SqlQuery[B] {
       override def applyK: ApplyKC[B] = f(query.selectAstAndValues.runA(freshTaggedState).value.values).applyK
 
       override def traverseK: TraverseKC[B] = f(query.selectAstAndValues.runA(freshTaggedState).value.values).traverseK
@@ -771,7 +778,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             then
               val selectFrom = selectAstA.asInstanceOf[SelectAst.SelectFrom[Codec]]
               State.pure((selectFrom.from, selectFrom.where, valuesA))
-            else SqlValueSource.FromQuery(query).fromPartAndValues.map(t => (Some(t._1), None, t._2))
+            else SqlValueSource.FromQuery(query).fromPartAndValues.map(t => (Some(t.ast), None, t.values))
 
           def combineOption[C](optA: Option[C], optB: Option[C])(combine: (C, C) => C): Option[C] = (optA, optB) match
             case (Some(a), Some(b)) => Some(combine(a, b))
@@ -780,8 +787,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
             case (None, None)       => None
 
           stNewValuesAndAstA.flatMap { case (fromAOpt, whereExtra, newValuesA) =>
-            f(newValuesA).selectAstAndValues.map { case QueryAstMetadata(selectAstB, aliasesB, valuesB) =>
-              val newSelectAstB = selectAstB match
+            f(newValuesA).selectAstAndValues.flatMap { case QueryAstMetadata(selectAstB, aliasesB, valuesB) =>
+              selectAstB match
                 case from: SelectAst.SelectFrom[Codec] =>
                   val fromFromWithLateral = from.from.map:
                     case SelectAst.From.FromQuery(selectAst, alias, lateral) =>
@@ -789,16 +796,19 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                     case other => other
                   end fromFromWithLateral
 
-                  from.copy(
-                    from = combineOption(fromAOpt, fromFromWithLateral)(SelectAst.From.CrossJoin.apply), //Cross join seem to be more compatible in some cases
+                  val newSelectAstB = from.copy(
+                    from = combineOption(fromAOpt, fromFromWithLateral)(
+                      SelectAst.From.CrossJoin.apply
+                    ), // Cross join seem to be more compatible in some cases
                     where = combineOption(whereExtra, from.where)((a, b) =>
                       SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd)
                     )
                   )
 
-                case _ => throw new Exception("Encountered flatmap on non SelectFrom data. Not possible")
+                  State.pure(QueryAstMetadata(newSelectAstB, aliasesB, valuesB))
 
-              QueryAstMetadata(newSelectAstB, aliasesB, valuesB)
+                case _ =>
+                  SqlQueryFlatMap(query, a => f(a).nested.unsafeLiftQueryToFlatmappable).selectAstAndValues
             }
           }
         }
@@ -869,6 +879,14 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
   extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A]
 
   extension [A[_[_]]](sqlQuery: SqlQueryGrouped[A]) def liftSqlQueryGrouped: QueryGrouped[A]
+
+  extension [A[_[_]], B[_[_]]](sqlQuery: SqlQuery.SqlQueryFlatMap[A, B])
+    def liftSqlQueryFlatMap: FlatmappableQuery[B] =
+      sys.error("Flatmap called on non flatMap platform")
+
+  extension [A[_[_]]](query: Query[A])
+    def unsafeLiftQueryToFlatmappable: FlatmappableQuery[A] =
+      sys.error("Flatmap called on non flatMap platform")
 
   extension (q: QueryCompanion)
     @targetName("queryCompanionFrom")

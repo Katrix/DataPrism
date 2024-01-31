@@ -73,15 +73,28 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
 
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
-      val q = usingV match
-        case Some(usingQ) => Query.from(from).flatMap(a => usingQ.where(b => where(a, b)))
-        case None         => Query.from(from).where(a => where(a, a.asInstanceOf[B[DbValue]])).asInstanceOf[Query[B]]
+      // Code duplicated for not needing casts
+      val ast = usingV match
+        case Some(usingQ) =>
+          Query
+            .from(from)
+            .crossJoin(usingQ)
+            .filter((a, b) => where(a, b))
+            .selectAstAndValues
+            .runA(freshTaggedState)
+            .value
+            .ast
+        case None =>
+          Query
+            .from(from)
+            .where(a => where(a, a.asInstanceOf[B[DbValue]]))
+            .selectAstAndValues
+            .runA(freshTaggedState)
+            .value
+            .ast
 
       (
-        sqlRenderer.renderDelete(
-          q.selectAstAndValues.runA(freshTaggedState).value.ast,
-          returning = false
-        ),
+        sqlRenderer.renderDelete(ast, returning = false),
         AnsiTypes.integer.notNull
       )
   end SqlDeleteOperation
@@ -206,7 +219,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
       val query = from match
         case Some(fromQ) =>
-          Query.from(table).flatMap(a => fromQ.where(b => where(a, b)).mapK(b => setValues(a, b)))
+          Query.from(table).crossJoin(fromQ).filter((a, b) => where(a, b)).mapK((a, b) => setValues(a, b))
         case None =>
           Query
             .from(table)

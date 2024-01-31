@@ -1,13 +1,12 @@
 package dataprism.platform.implementations
 
 import scala.annotation.targetName
-
-import dataprism.platform.sql.SqlQueryPlatform
+import dataprism.platform.sql.{SqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
 import dataprism.sharedast.{MySqlAstRenderer, SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait MySqlQueryPlatform extends SqlQueryPlatform { platform =>
+trait MySqlQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
 
   val sqlRenderer: MySqlAstRenderer[Codec] = new MySqlAstRenderer[Codec](AnsiTypes)
 
