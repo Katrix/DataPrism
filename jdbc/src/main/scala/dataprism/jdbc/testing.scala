@@ -9,7 +9,6 @@ import dataprism.jdbc.sql.{JdbcCodec, JdbcColumns, PostgresJdbcTypes, jdbcType}
 import dataprism.platform.base.MapRes
 import dataprism.sql.*
 import perspective.*
-import perspective.derivation.{ProductK, ProductKPar}
 
 case class HomeK[F[_]](
     owner: F[UUID],
@@ -130,7 +129,7 @@ object FooK {
 
 object Testing {
 
-  import PostgresJdbcPlatform.*
+  import PostgresJdbcPlatform.Api.*
 
   def printSqlStr(str: SqlStr[JdbcCodec]): Unit =
     if str.str.isEmpty then println("ERROR: Empty string") else println(str.str)

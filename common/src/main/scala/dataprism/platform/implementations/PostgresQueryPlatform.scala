@@ -13,6 +13,28 @@ import perspective.*
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
 trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
 
+  override type InFilterCapability = Unit
+  override type InMapCapability = Unit
+  override type InJoinConditionCapability = Unit
+  override type InGroupByCapability = Unit
+  override type InHavingCapability = Unit
+  override type InOrderByCapability = Unit
+
+  override protected val InFilterCapability: Unit = ()
+  override protected val InMapCapability: Unit = ()
+  override protected val InJoinConditionCapability: Unit = ()
+  override protected val InGroupByCapability: Unit = ()
+  override protected val InHavingCapability: Unit = ()
+  override protected val InOrderByCapability: Unit = ()
+
+  given DeleteUsingCapability with {}
+  given UpdateFromCapability with {}
+
+  type Api <: PostgresApi
+  trait PostgresApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
+    export platform.{given DeleteUsingCapability, given UpdateFromCapability}
+  }
+
   val sqlRenderer: PostgresAstRenderer[Codec] = new PostgresAstRenderer[Codec](AnsiTypes)
   type ArrayTypeArgs[A]
   protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
@@ -122,8 +144,8 @@ trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatform
   type Query[A[_[_]]]        = SqlQuery[A]
   type QueryGrouped[A[_[_]]] = SqlQueryGrouped[A]
 
-  val Query: QueryCompanion = SqlQuery
-  override type QueryCompanion = SqlQuery.type
+  val Query: QueryCompanion = new SqlQueryCompanion {}
+  override type QueryCompanion = SqlQueryCompanion
 
   extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A] = sqlQuery
 
@@ -384,7 +406,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatform
     override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = DeleteFrom(from)
 
   case class DeleteFrom[A[_[_]]](from: Table[Codec, A]) extends SqlDeleteFrom[A]:
-    def using[B[_[_]]](query: Query[B]): DeleteFromUsing[A, B] = DeleteFromUsing(from, query)
+    def using[B[_[_]]](query: Query[B])(using DeleteUsingCapability): DeleteFromUsing[A, B] = DeleteFromUsing(from, query)
 
     def where(f: A[DbValue] => DbValue[Boolean]): DeleteOperation[A, A] = DeleteOperation(from, None, (a, _) => f(a))
   end DeleteFrom
@@ -432,7 +454,7 @@ trait PostgresQueryPlatform extends SqlQueryPlatform with UnsafeSqlQueryPlatform
 
   case class UpdateTable[A[_[_]]](table: Table[Codec, A]) extends SqlUpdateTable[A]:
 
-    def from[B[_[_]]](fromQ: Query[B]): UpdateTableFrom[A, B] = UpdateTableFrom(table, fromQ)
+    def from[B[_[_]]](fromQ: Query[B])(using UpdateFromCapability): UpdateTableFrom[A, B] = UpdateTableFrom(table, fromQ)
 
     def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A] =
       UpdateTableWhere(table, where)

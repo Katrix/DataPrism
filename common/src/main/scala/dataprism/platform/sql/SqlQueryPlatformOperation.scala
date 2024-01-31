@@ -104,9 +104,11 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A]
   end SqlDeleteCompanion
 
+  trait DeleteUsingCapability
+
   type DeleteFrom[A[_[_]]] <: SqlDeleteFrom[A]
   trait SqlDeleteFrom[A[_[_]]]:
-    def using[B[_[_]]](query: Query[B]): DeleteFromUsing[A, B]
+    def using[B[_[_]]](query: Query[B])(using DeleteUsingCapability): DeleteFromUsing[A, B]
     def where(f: A[DbValue] => DbValue[Boolean]): DeleteOperation[A, A]
   end SqlDeleteFrom
 
@@ -240,9 +242,11 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
   trait SqlUpdateCompanion:
     def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A]
 
+  trait UpdateFromCapability
+
   type UpdateTable[A[_[_]]] <: SqlUpdateTable[A]
   trait SqlUpdateTable[A[_[_]]]:
-    def from[B[_[_]]](fromQ: Query[B]): UpdateTableFrom[A, B]
+    def from[B[_[_]]](fromQ: Query[B])(using UpdateFromCapability): UpdateTableFrom[A, B]
 
     def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A]
 
@@ -344,4 +348,33 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         using db: Db[F, Codec]
     ): res.K[Id] => F[B] =
       operationK(res.toK(types))(f)(using res.applyKC, res.traverseKC, db)
+
+  type Api <: SqlOperationApi
+  trait SqlOperationApi {
+    export platform.{IntOperation, ResultOperation}
+
+    inline def Select[Res[_[_]]](query: Query[Res]): platform.SelectOperation[Res] = platform.Operation.Select(query)
+    inline def Delete: platform.DeleteCompanion                                    = platform.Operation.Delete
+    inline def Insert: platform.InsertCompanion                                    = platform.Operation.Insert
+    inline def Update: platform.UpdateCompanion                                    = platform.Operation.Update
+    inline def Operation: platform.OperationCompanion                              = platform.Operation
+
+    type Compile = platform.Compile
+    inline def Compile: platform.Compile = platform.Compile
+
+    type SelectOperation[A[_[_]]] = platform.SelectOperation[A]
+
+    type DeleteFrom[A[_[_]]]               = platform.DeleteFrom[A]
+    type DeleteFromUsing[A[_[_]], B[_[_]]] = platform.DeleteFromUsing[A, B]
+    type DeleteOperation[A[_[_]], B[_[_]]] = platform.DeleteOperation[A, B]
+
+    type InsertInto[A[_[_]]]               = platform.InsertInto[A]
+    type InsertOperation[A[_[_]], B[_[_]]] = platform.InsertOperation[A, B]
+
+    type UpdateTable[A[_[_]]]                       = platform.UpdateTable[A]
+    type UpdateTableFrom[A[_[_]], B[_[_]]]          = platform.UpdateTableFrom[A, B]
+    type UpdateTableWhere[A[_[_]]]                  = platform.UpdateTableWhere[A]
+    type UpdateTableFromWhere[A[_[_]], C[_[_]]]     = platform.UpdateTableFromWhere[A, C]
+    type UpdateOperation[A[_[_]], B[_[_]], C[_[_]]] = platform.UpdateOperation[A, B, C]
+  }
 }

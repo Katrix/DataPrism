@@ -84,7 +84,7 @@ object ResidentK {
 }
 
 object Testing {
-  import PostgresSkunkPlatform.*
+  import PostgresSkunkPlatform.Api.*
 
   val session: Session[IO] = ???
   given db: SkunkDb[IO]    = SkunkDb(session)
