@@ -13,7 +13,8 @@ import org.scalacheck.effect.PropF
 import perspective.Id
 
 trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite[F, Codec0]:
-  import platform.*
+  import platform.Api.*
+  import platform.{AnsiTypes, name}
 
   given [A](using Frac: Fractional[A]): Fractional[Option[A]] with {
     override def div(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Frac.div(a, b))
@@ -50,19 +51,17 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
     typeTest("Equality", tpe):
       given DbType = dbFixture()
       PropF.forAllF: (a: N[A], b: N[A]) =>
-        Operation
-          .Select(
-            Query.of(
-              (
-                a.as(tpe) === b.as(tpe),
-                a.as(tpe).nullIf(b.as(tpe)),
-                Case(a.as(tpe)).when(b.as(tpe))(DbValue.trueV).otherwise(DbValue.falseV),
-                a.as(tpe).in(b.as(tpe)),
-                a.as(tpe).notIn(b.as(tpe))
-              )
+        Select(
+          Query.of(
+            (
+              a.as(tpe) === b.as(tpe),
+              a.as(tpe).nullIf(b.as(tpe)),
+              Case(a.as(tpe)).when(b.as(tpe))(DbValue.trueV).otherwise(DbValue.falseV),
+              a.as(tpe).in(b.as(tpe)),
+              a.as(tpe).notIn(b.as(tpe))
             )
           )
-          .runOne[F]
+        ).runOne[F]
           .map: (r1, r2, r3, r4, r5) =>
             assertEquals(r1, a.map2(b)(_ == _))
             assertEquals(N.nullableToOption(r2), if a == b then None else N.wrapOption(a))
@@ -77,24 +76,22 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
         val vs    = vh2 :: vt
         val vsSet = vs.map(N.wrapOption).toSet
         val vtSet = vt.map(N.wrapOption).toSet
-        Operation
-          .Select(
-            Query.of(
-              (
-                vh1.as(tpe).in(Query.values(tpe)(vh2, vt*)),
-                vh1.as(tpe).inAs(vt, tpe),
-                vh1.as(tpe).notIn(Query.values(tpe)(vh2, vt*)),
-                vh1.as(tpe).notInAs(vt, tpe),
-                vt.foldLeft(
-                  (Case(vh1.as(tpe)).when(vh2.as(tpe))(0.as(AnsiTypes.integer)), 1)
-                ) { case ((cse, i), v) =>
-                  (cse.when(v.as(tpe))(i.as(AnsiTypes.integer)), i + 1)
-                }._1
-                  .otherwise(-1.as(AnsiTypes.integer))
-              )
+        Select(
+          Query.of(
+            (
+              vh1.as(tpe).in(Query.values(tpe)(vh2, vt*)),
+              vh1.as(tpe).inAs(vt, tpe),
+              vh1.as(tpe).notIn(Query.values(tpe)(vh2, vt*)),
+              vh1.as(tpe).notInAs(vt, tpe),
+              vt.foldLeft(
+                (Case(vh1.as(tpe)).when(vh2.as(tpe))(0.as(AnsiTypes.integer)), 1)
+              ) { case ((cse, i), v) =>
+                (cse.when(v.as(tpe))(i.as(AnsiTypes.integer)), i + 1)
+              }._1
+                .otherwise(-1.as(AnsiTypes.integer))
             )
           )
-          .runOne[F]
+        ).runOne[F]
           .map: (r1, r2, r3, r4, r5) =>
             def inSet(set: Set[Option[A]]): Option[Boolean] =
               N.wrapOption(vh1)
@@ -121,8 +118,8 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
     PropF.forAllF: (vh: A, vt: List[A]) =>
       val vsSorted = (vh :: vt).sorted
       for
-        r1 <- Operation.Select(Query.values(tpe)(vh, vt*).orderBy(_.asc)).run
-        r2 <- Operation.Select(Query.values(tpe)(vh, vt*).orderBy(_.desc)).run
+        r1 <- Select(Query.values(tpe)(vh, vt*).orderBy(_.asc)).run
+        r2 <- Select(Query.values(tpe)(vh, vt*).orderBy(_.desc)).run
       yield
         assertEquals(r1, vsSorted)
         assertEquals(r2, vsSorted.reverse)
@@ -140,22 +137,20 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
         val av = a.as(tpe)
         val bv = b.as(tpe)
 
-        Operation
-          .Select(
-            Query.of(
-              av + bv,
-              bv + av,
-              av - bv,
-              bv - av,
-              av * bv,
-              bv * av,
-              av / bv,
-              bv / av,
-              -av,
-              -bv
-            )
+        Select(
+          Query.of(
+            av + bv,
+            bv + av,
+            av - bv,
+            bv - av,
+            av * bv,
+            bv * av,
+            av / bv,
+            bv / av,
+            -av,
+            -bv
           )
-          .runOne
+        ).runOne
           .map: (abAdd, baAdd, abSub, baSub, abMul, baMul, abDiv, baDiv, aNeg, bNeg) =>
             assertEquals(abAdd, a + b)
             assertEquals(baAdd, b + a)
@@ -172,9 +167,7 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
       given DbType = dbFixture()
       PropF.forAllF: (vh: N[A], vt: List[N[A]]) =>
         val vs = vh :: vt
-        Operation
-          .Select(Query.values(tpe)(vh, vt*).mapSingleGrouped(v => (v.sum, v.avg)))
-          .runOne
+        Select(Query.values(tpe)(vh, vt*).mapSingleGrouped(v => (v.sum, v.avg))).runOne
           .map: (sum, avg) =>
             assertEquals(N.nullableToOption(sum), N.wrapOption(vs.sum))
             assertEquals(
@@ -188,7 +181,7 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
   )(using Location, NotGiven[A <:< Option[_]]): Unit =
     testNumeric[A, Id](tpe)
 
-  def testNumericNull[A: Arbitrary: Fractional](
+  def testNumericNullable[A: Arbitrary: Fractional](
       tpe: Type[A]
   )(using Location, NotGiven[A <:< Option[_]], SqlNumeric[Option[A]]): Unit =
     testNumeric[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable)
@@ -209,8 +202,7 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
         val av = a.as(tpe)
         val bv = b.as(tpe)
 
-        Operation
-          .Select(Query.of(av < bv, bv < av, av <= bv, bv <= av, av >= bv, bv >= av, av > bv, bv > av))
+        Select(Query.of(av < bv, bv < av, av <= bv, bv <= av, av >= bv, bv >= av, av > bv, bv > av))
           .runOne[F]
           .map: (abLt, baLt, abLe, baLe, abGe, baGe, abGt, baGt) =>
             assertEquals(abLt, a.map2(b)(_ < _))
@@ -229,12 +221,8 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
         val vsv = vs.toList.map(_.as(tpe))
 
         for
-          maxMin <- Operation
-            .Select(Query.values(tpe)(vh, vt*).mapSingleGrouped(v => (v.max, v.min)))
-            .runOne[F]
-          greatestLeast <- Operation
-            .Select(Query.of((vsv.head.greatest(vsv.tail*), vsv.head.least(vsv.tail*))))
-            .runOne[F]
+          maxMin        <- Select(Query.values(tpe)(vh, vt*).mapSingleGrouped(v => (v.max, v.min))).runOne[F]
+          greatestLeast <- Select(Query.of((vsv.head.greatest(vsv.tail*), vsv.head.least(vsv.tail*)))).runOne[F]
         yield
           val (max, min)        = maxMin
           val (greatest, least) = greatestLeast
@@ -265,26 +253,24 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
       val bv  = b.as(boolean)
       val anv = an.as(boolean.nullable)
       val bnv = bn.as(boolean.nullable)
-      Operation
-        .Select(
-          Query.of(
-            (
-              av || bv,
-              bv || av,
-              av && bv,
-              bv && av,
-              !av,
-              !bv,
-              anv || bnv,
-              bnv || anv,
-              anv && bnv,
-              bnv && anv,
-              !anv,
-              !bnv
-            )
+      Select(
+        Query.of(
+          (
+            av || bv,
+            bv || av,
+            av && bv,
+            bv && av,
+            !av,
+            !bv,
+            anv || bnv,
+            bnv || anv,
+            anv && bnv,
+            bnv && anv,
+            !anv,
+            !bnv
           )
         )
-        .runOne[F]
+      ).runOne[F]
         .map: (abOr, baOr, abAnd, baAnd, aNot, bNot, abnOr, banOr, abnAnd, banAnd, anNot, bnNot) =>
           assertEquals(abOr, a || b)
           assertEquals(baOr, b || a)
@@ -300,22 +286,57 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite
           assertEquals(anNot, an.map(!_))
           assertEquals(bnNot, bn.map(!_))
 
+  def testNullOps[A](t: Type[Option[A]])(using Arbitrary[Option[A]]): Unit = typeTest("NullOps", t):
+    given DbType = dbFixture()
+    PropF.forAllF: (o1: Option[A], o2: Option[A], o3: Option[A]) =>
+      val v1 = o1.as(t)
+      val v2 = o2.as(t)
+      val v3 = o3.as(t)
+
+      Select(
+        Query.of(
+          v1,
+          v1.map(a => a),
+          v1.flatMap(_ => o2.as(t)),
+          v1.filter(_ => DbValue.trueV),
+          v1.filter(_ => DbValue.falseV),
+          (v1, v2, v3).mapNullableN((n1, _, _) => n1),
+          (v1, v2, v3).mapNullableN((_, n2, _) => n2),
+          (v1, v2, v3).mapNullableN((_, _, n3) => n3)
+        )
+      ).runOne[F]
+        .map: (r1, r2, r3, r4, r5, r6, r7, r8) =>
+          assertEquals(r1, o1)
+          assertEquals(r2, o1)
+          assertEquals(r3, o2)
+          assertEquals(r4, o1)
+          assertEquals(r5, None)
+          assertEquals(r6, o1)
+          assertEquals(r7, o2)
+          assertEquals(r8, o3)
+
   test("CaseBoolean"):
     given DbType = dbFixture()
     val boolean  = AnsiTypes.boolean
     val int      = AnsiTypes.integer
     PropF.forAllF: (b1: Boolean, b2: Boolean, b3: Boolean, i1: Int, i2: Int, i3: Int, i4: Int) =>
-      Operation
-        .Select(
-          Query.of(
-            Case
-              .when(b1.as(boolean))(i1.as(int))
-              .when(b2.as(boolean))(i2.as(int))
-              .when(b3.as(boolean))(i3.as(int))
-              .otherwise(i4.as(int))
-          )
+      Select(
+        Query.of(
+          Case
+            .when(b1.as(boolean))(i1.as(int))
+            .when(b2.as(boolean))(i2.as(int))
+            .when(b3.as(boolean))(i3.as(int))
+            .otherwise(i4.as(int))
         )
-        .runOne
+      ).runOne[F]
         .map: r =>
           assertEquals(r, if b1 then i1 else if b2 then i2 else if b3 then i3 else i4)
-          
+
+  testEqualityNotNull(AnsiTypes.integer)
+  testEqualityNullable(AnsiTypes.integer)
+  testOrderByAscDesc(AnsiTypes.integer)
+  testNumericNotNull(AnsiTypes.doublePrecision)
+  testNumericNullable(AnsiTypes.doublePrecision)
+  testOrderedNotNull(AnsiTypes.integer)
+  testOrderedNullable(AnsiTypes.integer)
+  testNullOps(AnsiTypes.integer.nullable)

@@ -731,11 +731,15 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   trait SqlDbValueApi {
     export platform.{ConditionCase, NullabilityOf, SqlNumeric, SqlOrdered, ValueCase0, ValueCase1}
+    
+    inline def Nullability: platform.Nullability.type = platform.Nullability
 
     type AnyDbValue         = platform.AnyDbValue
     type BinOp[LHS, RHS, R] = platform.BinOp[LHS, RHS, R]
     type UnaryOp[V, R]      = platform.UnaryOp[V, R]
     type CastType[A]        = platform.CastType[A]
+    type Codec[A]           = platform.Codec[A]
+    type Type[A]            = platform.Type[A]
 
     inline def DbValue: platform.DbValueCompanion = platform.DbValue
     inline def Many: platform.Many.type           = platform.Many

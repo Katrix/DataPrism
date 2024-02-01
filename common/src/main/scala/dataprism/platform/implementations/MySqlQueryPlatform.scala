@@ -1,5 +1,8 @@
 package dataprism.platform.implementations
 
+import java.sql.SQLException
+
+import cats.data.NonEmptyList
 import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
 import dataprism.sharedast.{MySqlAstRenderer, SqlExpr}
 import dataprism.sql.*
@@ -65,13 +68,30 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQ
       from: Table[Codec, A],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-  ) extends SqlDeleteOperation[A, B](from, usingV, where)
+  ) extends SqlDeleteOperation[A, B](from, usingV, where):
+    override def returningK[C[_[_]]: ApplyKC: TraverseKC](f: (A[MySqlDbValue], B[MySqlDbValue]) => C[MySqlDbValue])(
+        using DeleteReturningCapability
+    ): DeleteReturningOperation[A, B, C] =
+      throw new SQLException("Unsupported operation")
 
   case class InsertOperation[A[_[_]], B[_[_]]](
       table: Table[Codec, A],
       columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
       values: Query[B]
-  ) extends SqlInsertOperation[A, B](table, columns, values)
+  ) extends SqlInsertOperation[A, B](table, columns, values, _ => Nil, {
+    import values.given
+    values.selectAstAndValues.runA(freshTaggedState).value.values.mapK([Z] => (_: DbValue[Z]) => (_: DbValue[Z], _: DbValue[Z]) => None)
+  }):
+    override def onConflict(
+        on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]],
+        a: B[[Z] =>> (MySqlDbValue[Z], MySqlDbValue[Z]) => Option[MySqlDbValue[Z]]]
+    )(using InsertOnConflictCapability): InsertOperation[A, B] =
+      throw new SQLException("Unsupported operation")
+
+    override def returning[C[_[_]]: ApplyKC: TraverseKC](f: A[MySqlDbValue] => C[MySqlDbValue])(
+        using InsertReturningCapability
+    ): InsertReturningOperation[A, B, C] =
+      throw new SQLException("Unsupported operation")
 
   case class UpdateOperation[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]]](
       table: Table[Codec, A],
@@ -79,7 +99,12 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQ
       from: Option[Query[C]],
       setValues: (A[DbValue], C[DbValue]) => B[DbValue],
       where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
-  ) extends SqlUpdateOperation[A, B, C](table, columns, from, setValues, where)
+  ) extends SqlUpdateOperation[A, B, C](table, columns, from, setValues, where):
+    override def returning[D[_[_]] : ApplyKC : TraverseKC](f: (A[MySqlDbValue], C[MySqlDbValue]) => D[MySqlDbValue])(using UpdateReturningCapability): UpdateReturningOperation[A, B, C, D] =
+      throw new SQLException("Unsupported operation")
+      
+  trait SelectCompanion extends SqlSelectCompanion:
+    override def apply[Res[_[_]]](query: SqlQuery[Res]): SelectOperation[Res] = SelectOperation(query)
 
   trait DeleteCompanion extends SqlDeleteCompanion:
     override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = DeleteFrom(from)
@@ -174,7 +199,7 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQ
   object Operation extends OperationCompanion
 
   trait OperationCompanion extends SqlOperationCompanion:
-    override def Select[Res[_[_]]](query: SqlQuery[Res]): SelectOperation[Res] = SelectOperation(query)
+    object Select extends SelectCompanion
 
     object Delete extends DeleteCompanion
 

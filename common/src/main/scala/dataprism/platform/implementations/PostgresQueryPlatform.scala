@@ -1,11 +1,9 @@
 package dataprism.platform.implementations
 
-import cats.Applicative
 import cats.data.NonEmptyList
 import cats.syntax.all.*
-import dataprism.platform.base.MapRes
 import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
-import dataprism.sharedast.{PostgresAstRenderer, SelectAst, SqlExpr}
+import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
@@ -28,6 +26,10 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
 
   given DeleteUsingCapability with {}
   given UpdateFromCapability with {}
+  given DeleteReturningCapability with {}
+  given InsertReturningCapability with {}
+  given UpdateReturningCapability with {}
+  given InsertOnConflictCapability with {}
 
   type Api <: PostgresApi
   trait PostgresApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
@@ -98,45 +100,14 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
   ) extends SqlDeleteOperation[A, B](from, usingV, where):
     def returningK[C[_[_]]: ApplyKC: TraverseKC](
         f: (A[DbValue], B[DbValue]) => C[DbValue]
-    ): DeleteReturningOperation[A, B, C] = DeleteReturningOperation(from, usingV, where, f)
-
-    inline def returning[C](f: (A[DbValue], B[DbValue]) => C)(
-        using MR: MapRes[DbValue, C]
-    ): DeleteReturningOperation[A, B, MR.K] =
-      returningK((a, b) => MR.toK(f(a, b)))(using MR.applyKC, MR.traverseKC)
+    )(using DeleteReturningCapability): DeleteReturningOperation[A, B, C] = DeleteReturningOperation(from, usingV, where, f)
 
   case class DeleteReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
       from: Table[Codec, A],
       usingV: Option[Query[B]] = None,
       where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
       returning: (A[DbValue], B[DbValue]) => C[DbValue]
-  ) extends ResultOperation[C]:
-
-    given ApplyKC[B] = usingV.fold(from.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
-
-    given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
-
-    override def sqlAndTypes: (SqlStr[Codec], C[Type]) =
-      given FunctorKC[C] = summon[ApplyKC[C]]
-
-      val q = usingV match
-        case Some(usingQ) => Query.from(from).flatMap(a => usingQ.where(b => where(a, b)).mapK(b => returning(a, b)))
-        case None =>
-          Query
-            .from(from)
-            .where(a => where(a, a.asInstanceOf[B[DbValue]]))
-            .mapK(a => returning(a, a.asInstanceOf[B[DbValue]]))
-
-      val astMeta = q.selectAstAndValues.runA(freshTaggedState).value
-
-      (
-        sqlRenderer.renderDelete(
-          astMeta.ast,
-          returning = true
-        ),
-        astMeta.values.mapK([Z] => (value: DbValue[Z]) => value.tpe)
-      )
-  end DeleteReturningOperation
+  ) extends SqlDeleteReturningOperation[A, B, C](from, usingV, where, returning)
 
   case class InsertOperation[A[_[_]], B[_[_]]](
       table: Table[Codec, A],
@@ -144,49 +115,15 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
       values: Query[B],
       conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, _]],
       onConflict: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
-  ) extends SqlInsertOperation[A, B](table, columns, values):
-    override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
-      import values.given
-
-      val ret = for
-        computedValues <- values.selectAstAndValues
-        computedOnConflict <- onConflict
-          .map2Const(columns(table.columns)) {
-            [Z] =>
-              (f: (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]], column: Column[Codec, Z]) =>
-                f(
-                  PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
-                  PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe))
-                ).traverse(r => r.ast.map(column.name -> _))
-          }
-          .traverseK[TagState, Const[Option[(SqlStr[Codec], SqlExpr[Codec])]]](FunctionK.identity)
-      yield sqlRenderer.renderInsert(
-        table.name,
-        columns(table.columns).foldMapK([X] => (col: Column[Codec, X]) => List(col.name)),
-        computedValues.ast,
-        conflictOn(table.columns).map(_.name),
-        computedOnConflict.toListK.flatMap(_.toList),
-        Nil
-      )
-
-      (ret.runA(freshTaggedState).value, AnsiTypes.integer.notNull)
+  ) extends SqlInsertOperation[A, B](table, columns, values, conflictOn, onConflict):
 
     def onConflict(
         on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]],
         a: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
-    ): InsertOperation[A, B] =
+    )(using InsertOnConflictCapability): InsertOperation[A, B] =
       copy(conflictOn = on.andThen(_.toList), onConflict = a)
 
-    def onConflictUpdate(on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]]): InsertOperation[A, B] =
-      import values.given_ApplyKC_A
-      onConflict(
-        on,
-        columns(table.columns).mapK(
-          [Z] => (_: Column[Codec, Z]) => (_: DbValue[Z], newV: DbValue[Z]) => Some(newV): Option[DbValue[Z]]
-        )
-      )
-
-    def returning[C[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => C[DbValue]): InsertReturningOperation[A, B, C] =
+    def returning[C[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => C[DbValue])(using InsertReturningCapability): InsertReturningOperation[A, B, C] =
       InsertReturningOperation(table, columns, values, conflictOn, onConflict, f)
 
   case class InsertReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
@@ -196,49 +133,7 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
       conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, _]],
       onConflict: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]],
       returning: A[DbValue] => C[DbValue]
-  ) extends ResultOperation[C]:
-
-    override type Types = C[Type]
-
-    override def sqlAndTypes: (SqlStr[Codec], C[Type]) =
-      import table.given
-      import values.given
-
-      val ret = for
-        computedValues <- values.selectAstAndValues
-        computedOnConflict <- onConflict
-          .map2Const(columns(table.columns)) {
-            [Z] =>
-              (f: (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]], column: Column[Codec, Z]) =>
-                f(
-                  PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe)),
-                  PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(column.nameStr, "EXCLUDED", column.tpe))
-                ).traverse(r => r.ast.map(column.name -> _))
-          }
-          .traverseK[TagState, Const[Option[(SqlStr[Codec], SqlExpr[Codec])]]](FunctionK.identity)
-        returningValues = returning(
-          table.columns.mapK(
-            [Z] =>
-              (col: Column[Codec, Z]) =>
-                PostgresDbValue.SqlDbValue(SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe))
-          )
-        )
-        computedReturning <-
-          returningValues.traverseK[TagState, Const[SqlExpr[Codec]]]([Z] => (dbVal: DbValue[Z]) => dbVal.ast)
-      yield (
-        sqlRenderer.renderInsert(
-          table.name,
-          columns(table.columns).foldMapK([X] => (col: Column[Codec, X]) => List(col.name)),
-          computedValues.ast,
-          conflictOn(table.columns).map(_.name),
-          computedOnConflict.toListK.flatMap(_.toList),
-          computedReturning.toListK
-        ),
-        returningValues.mapK([Z] => (dbVal: DbValue[Z]) => dbVal.tpe)
-      )
-
-      ret.runA(freshTaggedState).value
-  end InsertReturningOperation
+  ) extends SqlInsertReturningOperation(table, columns, values, conflictOn, onConflict, returning)
 
   case class UpdateOperation[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]]](
       table: Table[Codec, A],
@@ -249,7 +144,7 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
   ) extends SqlUpdateOperation[A, B, C](table, columns, from, setValues, where):
     def returning[D[_[_]]: ApplyKC: TraverseKC](
         f: (A[DbValue], C[DbValue]) => D[DbValue]
-    ): UpdateReturningOperation[A, B, C, D] =
+    )(using UpdateReturningCapability): UpdateReturningOperation[A, B, C, D] =
       UpdateReturningOperation(table, columns, from, setValues, where, f)
 
   case class UpdateReturningOperation[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]], D[_[_]]: ApplyKC: TraverseKC](
@@ -259,73 +154,10 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
       setValues: (A[DbValue], C[DbValue]) => B[DbValue],
       where: (A[DbValue], C[DbValue]) => DbValue[Boolean],
       returning: (A[DbValue], C[DbValue]) => D[DbValue]
-  ) extends ResultOperation[D]:
+  ) extends SqlUpdateReturningOperation(table, columns, from, setValues, where, returning)
 
-    override def sqlAndTypes: (SqlStr[Codec], D[Type]) = {
-      import table.given
-      given ApplyKC[C] = from.fold(table.FA.asInstanceOf[ApplyKC[C]])(_.applyK)
-
-      given TraverseKC[C] = from.fold(table.FT.asInstanceOf[TraverseKC[C]])(_.traverseK)
-
-      given ApplyKC[InnerJoin[A, C]] with {
-        extension [X[_], E](fa: (A[X], C[X]))
-          def mapK[Y[_]](f: X :~>: Y): (A[Y], C[Y]) =
-            (fa._1.mapK(f), fa._2.mapK(f))
-
-          def map2K[Y[_], Z[_]](fb: (A[Y], C[Y]))(f: [W] => (X[W], Y[W]) => Z[W]): (A[Z], C[Z]) =
-            (fa._1.map2K(fb._1)(f), fa._2.map2K(fb._2)(f))
-      }
-      given TraverseKC[InnerJoin[A, C]] with {
-        extension [X[_], E](fa: InnerJoin[A, C][X])
-          def foldLeftK[Y](b: Y)(f: Y => X :~>#: Y): Y =
-            val b1 = fa._1.foldLeftK(b)(f)
-            fa._2.foldLeftK(b1)(f)
-
-          def foldRightK[Y](b: Y)(f: X :~>#: (Y => Y)): Y =
-            val b1 = fa._2.foldRightK(b)(f)
-            fa._1.foldRightK(b1)(f)
-
-          def traverseK[G[_]: Applicative, Y[_]](f: X :~>: Compose2[G, Y]): G[InnerJoin[A, C][Y]] =
-            Applicative[G].product(
-              fa._1.traverseK(f),
-              fa._2.traverseK(f)
-            )
-      }
-
-      val bothQuery = from match
-        case Some(fromQ) => Query.from(table).flatMap(a => fromQ.mapK[InnerJoin[A, C]](b => (a, b)))
-        case None        => Query.from(table).mapK[InnerJoin[A, C]](a => (a, a.asInstanceOf[C[DbValue]]))
-
-      val ret = for
-        bothMeta <- bothQuery.selectAstAndValues
-        whereAst <- where.tupled(bothMeta.values).ast
-        toSet = setValues.tupled(bothMeta.values)
-        toSetAst <- toSet.traverseK[TagState, Const[SqlExpr[Codec]]](
-          [Z] => (v: DbValue[Z]) => v.ast
-        )
-        returningValues = returning.tupled(bothMeta.values)
-        returningAst <- returningValues.traverseK[TagState, Const[SqlExpr[Codec]]](
-          [Z] => (v: DbValue[Z]) => v.ast
-        )
-      yield (
-        sqlRenderer.renderUpdate(
-          columns(table.columns).foldMapK([Z] => (col: Column[Codec, Z]) => List(col.name)),
-          bothMeta.ast match
-            case data: SelectAst.SelectFrom[Codec] =>
-              data.copy(
-                selectExprs = toSetAst.toListK.map(ast => SelectAst.ExprWithAlias(ast, None)),
-                where = Some(whereAst)
-              )
-            case _ => throw new IllegalStateException("Expected SelectFrom ast")
-          ,
-          returningAst.toListK
-        ),
-        returningValues.mapK([Z] => (dbVal: DbValue[Z]) => dbVal.tpe)
-      )
-
-      ret.runA(freshTaggedState).value
-    }
-  end UpdateReturningOperation
+  trait SelectCompanion extends SqlSelectCompanion:
+    override def apply[Res[_[_]]](query: SqlQuery[Res]): SelectOperation[Res] = SelectOperation(query)
 
   trait DeleteCompanion extends SqlDeleteCompanion:
     override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = DeleteFrom(from)
@@ -437,7 +269,7 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
 
   object Operation extends OperationCompanion
   trait OperationCompanion extends SqlOperationCompanion:
-    override def Select[Res[_[_]]](query: SqlQuery[Res]): SelectOperation[Res] = SelectOperation(query)
+    object Select extends SelectCompanion
 
     object Delete extends DeleteCompanion
 
