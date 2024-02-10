@@ -7,7 +7,8 @@ import dataprism.sql.*
 import munit.FunSuite
 import perspective.Id
 
-trait PlatformValueSourceSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite[F, Codec0] {
+trait PlatformValueSourceSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
+    extends PlatformFunSuite[F, Codec0, Platform] {
   import platform.AnsiTypes
   import platform.Api.*
 

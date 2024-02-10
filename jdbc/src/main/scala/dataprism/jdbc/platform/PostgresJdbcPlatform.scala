@@ -22,7 +22,7 @@ trait PostgresJdbcPlatform extends PostgresQueryPlatform {
   ): Type[Seq[A]] = 
     PostgresJdbcTypes.array(elemType).notNull
 
-  override def AnsiTypes: AnsiTypes[JdbcCodec] = PostgresJdbcTypes
+  override val AnsiTypes: AnsiTypes[JdbcCodec] = PostgresJdbcTypes
 
   type Compile = SqlCompile
   object Compile extends SqlCompile

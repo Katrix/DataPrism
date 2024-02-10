@@ -35,7 +35,7 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
       _.opt
     ).notNull
 
-  override def AnsiTypes: AnsiTypes[Codec] = SkunkAnsiTypes
+  override val AnsiTypes: AnsiTypes[Codec] = SkunkAnsiTypes
 
   type Compile = SkunkCompile
   object Compile extends SkunkCompile

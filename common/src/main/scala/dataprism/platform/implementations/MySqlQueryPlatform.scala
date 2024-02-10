@@ -3,12 +3,12 @@ package dataprism.platform.implementations
 import java.sql.SQLException
 
 import cats.data.NonEmptyList
-import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
+import dataprism.platform.sql.DefaultCompleteSqlQueryPlatform
 import dataprism.sharedast.{MySqlAstRenderer, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
+trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -26,13 +26,14 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQ
 
   given DeleteUsingCapability with {}
   given UpdateFromCapability with  {}
+  given LateralJoinCapability with {}
 
   type Api <: MySqlApi
   trait MySqlApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
-    export platform.{given DeleteUsingCapability, given UpdateFromCapability}
+    export platform.{given DeleteUsingCapability, given UpdateFromCapability, given LateralJoinCapability}
   }
 
-  val sqlRenderer: MySqlAstRenderer[Codec] = new MySqlAstRenderer[Codec](AnsiTypes)
+  lazy val sqlRenderer: MySqlAstRenderer[Codec] = new MySqlAstRenderer[Codec](AnsiTypes)
 
   type DbValue[A] = MySqlDbValue[A]
   enum MySqlDbValue[A] extends SqlDbValueBase[A]:
@@ -100,7 +101,7 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQ
       setValues: (A[DbValue], C[DbValue]) => B[DbValue],
       where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
   ) extends SqlUpdateOperation[A, B, C](table, columns, from, setValues, where):
-    override def returning[D[_[_]] : ApplyKC : TraverseKC](f: (A[MySqlDbValue], C[MySqlDbValue]) => D[MySqlDbValue])(using UpdateReturningCapability): UpdateReturningOperation[A, B, C, D] =
+    override def returningK[D[_[_]] : ApplyKC : TraverseKC](f: (A[MySqlDbValue], C[MySqlDbValue]) => D[MySqlDbValue])(using UpdateReturningCapability): UpdateReturningOperation[A, B, C, D] =
       throw new SQLException("Unsupported operation")
       
   trait SelectCompanion extends SqlSelectCompanion:

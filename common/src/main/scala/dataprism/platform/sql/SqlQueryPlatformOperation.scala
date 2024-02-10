@@ -381,9 +381,12 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
       (ret.runA(freshTaggedState).value, AnsiTypes.integer.notNull)
     end sqlAndTypes
 
-    def returning[D[_[_]]: ApplyKC: TraverseKC](
+    def returningK[D[_[_]]: ApplyKC: TraverseKC](
         f: (A[DbValue], C[DbValue]) => D[DbValue]
     )(using UpdateReturningCapability): UpdateReturningOperation[A, B, C, D]
+
+    def returning[T](f: (A[DbValue], C[DbValue]) => T)(using mr: MapRes[DbValue, T], cap: UpdateReturningCapability): UpdateReturningOperation[A, B, C, mr.K] =
+      returningK((a, b) => mr.toK(f(a, b)))(using mr.applyKC, mr.traverseKC, cap)
   end SqlUpdateOperation
 
   type UpdateReturningOperation[A[_[_]], B[_[_]], C[_[_]], D[_[_]]] <: SqlUpdateReturningOperation[A, B, C, D]

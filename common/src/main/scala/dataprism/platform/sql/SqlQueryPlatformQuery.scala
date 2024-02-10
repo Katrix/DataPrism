@@ -16,6 +16,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   case class QueryAstMetadata[A[_[_]]](ast: SelectAst[Codec], aliases: A[Const[String]], values: A[DbValue])
 
+  trait LateralJoinCapability
+
   trait SqlQueryBase[A[_[_]]] extends QueryBase[A] {
 
     private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]]
@@ -41,7 +43,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ): Query[FullJoin[A, B]] = this.fullJoin(Query.from(that))(on)
 
-    def flatMap[B[_[_]]](f: A[DbValue] => FlatmappableQuery[B]): FlatmappableQuery[B]
+    def flatMap[B[_[_]]](f: A[DbValue] => Query[B])(using LateralJoinCapability): Query[B]
 
     inline def limit(n: Int): Query[A] = take(n)
 
@@ -80,8 +82,6 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   type QueryGrouped[A[_[_]]] <: QueryGroupedBase[A]
 
-  type FlatmappableQuery[A[_[_]]] <: Query[A]
-
   sealed trait SqlQuery[A[_[_]]] extends SqlQueryBase[A] {
 
     override def nested: Query[A] =
@@ -97,8 +97,8 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     )(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
       nested.mapK(f)
 
-    override def flatMap[B[_[_]]](f: A[DbValue] => FlatmappableQuery[B]): FlatmappableQuery[B] =
-      SqlQuery.SqlQueryFlatMap[A, B](this.liftSqlQuery, f).liftSqlQueryFlatMap
+    override def flatMap[B[_[_]]](f: A[DbValue] => Query[B])(using LateralJoinCapability): Query[B] =
+      SqlQuery.SqlQueryFlatMap[A, B](this.liftSqlQuery, f).liftSqlQuery
 
     override def join[B[_[_]]](that: Query[B])(
         on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]
@@ -734,16 +734,17 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
         for
           meta             <- query.selectAstAndValues
           orderByValuesAst <- orderBy(meta.values).ast
-        yield meta.ast match
-          case from: SelectAst.SelectFrom[Codec] =>
-            val oldOrder = from.orderBy
-            val newOrder = oldOrder.fold(SelectAst.OrderBy(orderByValuesAst)) { old =>
-              old.copy(exprs = old.exprs ++ orderByValuesAst)
-            }
+          res <- meta.ast match
+            case from: SelectAst.SelectFrom[Codec] =>
+              val oldOrder = from.orderBy
+              val newOrder = oldOrder.fold(SelectAst.OrderBy(orderByValuesAst)) { old =>
+                old.copy(exprs = old.exprs ++ orderByValuesAst)
+              }
 
-            meta.copy(ast = from.copy(orderBy = Some(newOrder)))
+              State.pure(meta.copy(ast = from.copy(orderBy = Some(newOrder))))
 
-          case _ => ???
+            case _ => SqlQueryOrderedStage(query.nested, orderBy).selectAstAndValues
+        yield res
     }
 
     case class SqlQueryLimitOffsetStage[A[_[_]]](
@@ -758,7 +759,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def drop(i: Int): Query[A] = copy(offset = i).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
-        query.selectAstAndValues.map { meta =>
+        query.selectAstAndValues.flatMap { meta =>
           meta.ast match
             case from: SelectAst.SelectFrom[Codec] =>
               val oldLimitOffset = from.limitOffset
@@ -773,13 +774,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                 case None => None
               }
 
-              meta.copy(ast = from.copy(limitOffset = newLimitOffset))
-            case _ => ???
+              State.pure(meta.copy(ast = from.copy(limitOffset = newLimitOffset)))
+            case _ => SqlQueryLimitOffsetStage(query.nested, limit, offset).selectAstAndValues
         }
     }
 
-    case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => FlatmappableQuery[B])
-        extends SqlQuery[B] {
+    case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => Query[B]) extends SqlQuery[B] {
       override def applyK: ApplyKC[B] = f(query.selectAstAndValues.runA(freshTaggedState).value.values).applyK
 
       override def traverseK: TraverseKC[B] = f(query.selectAstAndValues.runA(freshTaggedState).value.values).traverseK
@@ -824,7 +824,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
                   State.pure(QueryAstMetadata(newSelectAstB, aliasesB, valuesB))
 
                 case _ =>
-                  SqlQueryFlatMap(query, a => f(a).nested.unsafeLiftQueryToFlatmappable).selectAstAndValues
+                  SqlQueryFlatMap(query, a => f(a).nested).selectAstAndValues
             }
           }
         }
@@ -898,14 +898,6 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   extension [A[_[_]]](sqlQuery: SqlQueryGrouped[A]) def liftSqlQueryGrouped: QueryGrouped[A]
 
-  extension [A[_[_]], B[_[_]]](sqlQuery: SqlQuery.SqlQueryFlatMap[A, B])
-    def liftSqlQueryFlatMap: FlatmappableQuery[B] =
-      sys.error("Flatmap called on non flatMap platform")
-
-  extension [A[_[_]]](query: Query[A])
-    def unsafeLiftQueryToFlatmappable: FlatmappableQuery[A] =
-      sys.error("Flatmap called on non flatMap platform")
-
   type QueryCompanion <: SqlQueryCompanion
   trait SqlQueryCompanion:
     def from[A[_[_]]](table: Table[Codec, A]): Query[A] =
@@ -965,6 +957,5 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
   type Api <: SqlQueryApi
   trait SqlQueryApi {
     export platform.{asDbValue, asMany}
-    type FlatmappableQuery[A[_[_]]] = platform.FlatmappableQuery[A]
   }
 }

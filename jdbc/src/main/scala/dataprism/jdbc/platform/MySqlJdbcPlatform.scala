@@ -21,7 +21,7 @@ trait MySqlJdbcPlatform extends MySqlQueryPlatform {
     @targetName("typeName")
     override def name: String = tpe.codec.name
 
-  override def AnsiTypes: AnsiTypes[JdbcCodec] = MySqlJdbcTypes
+  override val AnsiTypes: AnsiTypes[JdbcCodec] = MySqlJdbcTypes
 
   type Compile = SqlCompile
   object Compile extends SqlCompile

@@ -16,9 +16,9 @@ trait SqlQueryPlatform
 
   type Codec[_]
   type Type[A] = SelectedType[Codec, A]
-  def AnsiTypes: AnsiTypes[Codec]
+  val AnsiTypes: AnsiTypes[Codec]
 
-  val sqlRenderer: AstRenderer[Codec]
+  lazy val sqlRenderer: AstRenderer[Codec]
 
   trait SqlTaggedState {
     def queryNum: Int

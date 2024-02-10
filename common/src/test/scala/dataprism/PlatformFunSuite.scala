@@ -4,7 +4,7 @@ import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.Db
 import munit.{FunSuite, ScalaCheckSuite}
 
-trait PlatformFunSuite[F[_], Codec0[_]](val platform: SqlQueryPlatform { type Codec[A] = Codec0[A] })
+trait PlatformFunSuite[F[_], Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }](val platform: Platform)
     extends FunSuite,
       ScalaCheckSuite:
 

@@ -1,6 +1,9 @@
 package dataprism.sharedast
 
+import java.util.UUID
+
 import dataprism.sql.*
+import cats.syntax.all.*
 
 sealed trait SqlExpr[Codec[_]]
 //noinspection ScalaUnusedSymbol

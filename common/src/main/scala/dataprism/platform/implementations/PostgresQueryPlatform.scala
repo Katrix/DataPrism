@@ -2,41 +2,50 @@ package dataprism.platform.implementations
 
 import cats.data.NonEmptyList
 import cats.syntax.all.*
-import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, UnsafeSqlQueryPlatformFlatmap}
+import dataprism.platform.sql.DefaultCompleteSqlQueryPlatform
 import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeSqlQueryPlatformFlatmap { platform =>
+trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
 
-  override type InFilterCapability = Unit
-  override type InMapCapability = Unit
+  override type InFilterCapability        = Unit
+  override type InMapCapability           = Unit
   override type InJoinConditionCapability = Unit
-  override type InGroupByCapability = Unit
-  override type InHavingCapability = Unit
-  override type InOrderByCapability = Unit
+  override type InGroupByCapability       = Unit
+  override type InHavingCapability        = Unit
+  override type InOrderByCapability       = Unit
 
-  override protected val InFilterCapability: Unit = ()
-  override protected val InMapCapability: Unit = ()
+  override protected val InFilterCapability: Unit        = ()
+  override protected val InMapCapability: Unit           = ()
   override protected val InJoinConditionCapability: Unit = ()
-  override protected val InGroupByCapability: Unit = ()
-  override protected val InHavingCapability: Unit = ()
-  override protected val InOrderByCapability: Unit = ()
+  override protected val InGroupByCapability: Unit       = ()
+  override protected val InHavingCapability: Unit        = ()
+  override protected val InOrderByCapability: Unit       = ()
 
-  given DeleteUsingCapability with {}
-  given UpdateFromCapability with {}
-  given DeleteReturningCapability with {}
-  given InsertReturningCapability with {}
-  given UpdateReturningCapability with {}
+  given DeleteUsingCapability with      {}
+  given UpdateFromCapability with       {}
+  given DeleteReturningCapability with  {}
+  given InsertReturningCapability with  {}
+  given UpdateReturningCapability with  {}
   given InsertOnConflictCapability with {}
+  given LateralJoinCapability with      {}
 
   type Api <: PostgresApi
   trait PostgresApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
-    export platform.{given DeleteUsingCapability, given UpdateFromCapability}
+    export platform.{
+      given DeleteReturningCapability,
+      given DeleteUsingCapability,
+      given InsertOnConflictCapability,
+      given InsertReturningCapability,
+      given LateralJoinCapability,
+      given UpdateFromCapability,
+      given UpdateReturningCapability
+    }
   }
 
-  val sqlRenderer: PostgresAstRenderer[Codec] = new PostgresAstRenderer[Codec](AnsiTypes)
+  lazy val sqlRenderer: PostgresAstRenderer[Codec] = new PostgresAstRenderer[Codec](AnsiTypes)
   type ArrayTypeArgs[A]
   protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
 
@@ -100,7 +109,8 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
   ) extends SqlDeleteOperation[A, B](from, usingV, where):
     def returningK[C[_[_]]: ApplyKC: TraverseKC](
         f: (A[DbValue], B[DbValue]) => C[DbValue]
-    )(using DeleteReturningCapability): DeleteReturningOperation[A, B, C] = DeleteReturningOperation(from, usingV, where, f)
+    )(using DeleteReturningCapability): DeleteReturningOperation[A, B, C] =
+      DeleteReturningOperation(from, usingV, where, f)
 
   case class DeleteReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
       from: Table[Codec, A],
@@ -123,7 +133,9 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
     )(using InsertOnConflictCapability): InsertOperation[A, B] =
       copy(conflictOn = on.andThen(_.toList), onConflict = a)
 
-    def returning[C[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => C[DbValue])(using InsertReturningCapability): InsertReturningOperation[A, B, C] =
+    def returning[C[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => C[DbValue])(
+        using InsertReturningCapability
+    ): InsertReturningOperation[A, B, C] =
       InsertReturningOperation(table, columns, values, conflictOn, onConflict, f)
 
   case class InsertReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
@@ -142,7 +154,7 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
       setValues: (A[DbValue], C[DbValue]) => B[DbValue],
       where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
   ) extends SqlUpdateOperation[A, B, C](table, columns, from, setValues, where):
-    def returning[D[_[_]]: ApplyKC: TraverseKC](
+    def returningK[D[_[_]]: ApplyKC: TraverseKC](
         f: (A[DbValue], C[DbValue]) => D[DbValue]
     )(using UpdateReturningCapability): UpdateReturningOperation[A, B, C, D] =
       UpdateReturningOperation(table, columns, from, setValues, where, f)
@@ -163,7 +175,8 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
     override def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = DeleteFrom(from)
 
   case class DeleteFrom[A[_[_]]](from: Table[Codec, A]) extends SqlDeleteFrom[A]:
-    def using[B[_[_]]](query: Query[B])(using DeleteUsingCapability): DeleteFromUsing[A, B] = DeleteFromUsing(from, query)
+    def using[B[_[_]]](query: Query[B])(using DeleteUsingCapability): DeleteFromUsing[A, B] =
+      DeleteFromUsing(from, query)
 
     def where(f: A[DbValue] => DbValue[Boolean]): DeleteOperation[A, A] = DeleteOperation(from, None, (a, _) => f(a))
   end DeleteFrom
@@ -210,7 +223,8 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform with UnsafeS
 
   case class UpdateTable[A[_[_]]](table: Table[Codec, A]) extends SqlUpdateTable[A]:
 
-    def from[B[_[_]]](fromQ: Query[B])(using UpdateFromCapability): UpdateTableFrom[A, B] = UpdateTableFrom(table, fromQ)
+    def from[B[_[_]]](fromQ: Query[B])(using UpdateFromCapability): UpdateTableFrom[A, B] =
+      UpdateTableFrom(table, fromQ)
 
     def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A] =
       UpdateTableWhere(table, where)

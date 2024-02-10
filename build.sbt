@@ -1,6 +1,7 @@
 lazy val commonSettings = Seq(
   scalaVersion := "3.3.1",
-  resolvers ++= Resolver.sonatypeOssRepos("snapshots")
+  resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
+  scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked")
 )
 
 inThisBuild(
@@ -41,9 +42,19 @@ lazy val jdbc = project
   .settings(
     commonSettings,
     publishSettings,
-    name := "dataprism-jdbc"
+    name := "dataprism-jdbc",
+    libraryDependencies ++= Seq(
+      "org.typelevel"     %% "cats-effect"       % "3.5.3"  % Test,
+      "org.postgresql"     % "postgresql"        % "42.7.1" % Test,
+      "com.mysql"          % "mysql-connector-j" % "8.3.0"  % Test,
+      "org.testcontainers" % "testcontainers"    % "1.19.5" % Test,
+      "org.testcontainers" % "mysql"             % "1.19.5" % Test,
+      "org.testcontainers" % "postgresql"        % "1.19.5" % Test,
+      "org.slf4j"          % "slf4j-simple"      % "2.0.12" % Test
+    ),
+    Test / fork := true
   )
-  .dependsOn(common)
+  .dependsOn(common % "compile->compile;test->test")
 
 lazy val cats = project
   .settings(

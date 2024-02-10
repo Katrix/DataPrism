@@ -12,7 +12,8 @@ import org.scalacheck.Arbitrary
 import org.scalacheck.effect.PropF
 import perspective.Id
 
-trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_]] extends PlatformFunSuite[F, Codec0]:
+trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
+    extends PlatformFunSuite[F, Codec0, Platform]:
   import platform.Api.*
   import platform.{AnsiTypes, name}
 

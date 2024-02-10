@@ -9,4 +9,6 @@ case class Table[Codec[_], A[_[_]]](
 )(using val FA: ApplyKC[A], val FT: TraverseKC[A]) {
 
   def name: SqlStr[Codec] = SqlStr.const(tableName)
+
+  def types: A[[X] =>> SelectedType[Codec, X]] = FA.mapK(columns)([X] => (col: Column[Codec, X]) => col.tpe)
 }
