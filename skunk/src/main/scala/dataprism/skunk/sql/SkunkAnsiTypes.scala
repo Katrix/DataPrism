@@ -2,7 +2,6 @@ package dataprism.skunk.sql
 
 import java.sql.{Date, Time, Timestamp}
 import java.time.ZoneOffset
-
 import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}
 import skunk.Codec
 import skunk.codec.all
@@ -23,6 +22,12 @@ object SkunkAnsiTypes extends AnsiTypes[Codec] {
   override val real: TypeOf[Float] = all.float4.wrap
 
   override val doublePrecision: TypeOf[Double] = all.float8.wrap
+
+  override val decimal: TypeOf[BigDecimal] = all.numeric.wrap
+
+  override def decimalN(m: Int): TypeOf[BigDecimal] = all.numeric(m).wrap
+
+  override def decimalN(m: Int, n: Int): TypeOf[BigDecimal] = all.numeric(m, n).wrap
 
   override def varchar(n: Int): TypeOf[String] = all.varchar(n).wrap
 

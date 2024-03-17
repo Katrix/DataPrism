@@ -1,20 +1,13 @@
 package dataprism.jdbc.sql
 
-import java.sql.{Connection, PreparedStatement, ResultSet, Types}
+import dataprism.sql.NullabilityTypeChoice
+
+import java.sql.Types
 import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
 
-import scala.annotation.unused
-import scala.util.NotGiven
-
-import dataprism.sql.{NullabilityTypeChoice, SelectedType}
-
-trait PostgresJdbcTypes extends JdbcAnsiTypes:
+trait H2JdbcTypes extends JdbcAnsiTypes:
   private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
-
-  val text: TypeOf[String] = tc(JdbcCodec.withWasNullCheck[String]("TEXT", Types.VARCHAR, _.getString(_), _.setString(_, _)))
-
-  override def defaultStringType: TypeOf[String] = text
 
   val uuid: TypeOf[UUID] = tc(JdbcCodec.byClass[UUID]("UUID", 2950))
 
@@ -29,4 +22,5 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
     val timestampWithTimezone: TypeOf[OffsetDateTime] =
       tc(JdbcCodec.byClass[OffsetDateTime]("TIMESTAMP WITH TIMEZONE", Types.TIMESTAMP_WITH_TIMEZONE))
 
-object PostgresJdbcTypes extends PostgresJdbcTypes
+
+object H2JdbcTypes extends JdbcAnsiTypes

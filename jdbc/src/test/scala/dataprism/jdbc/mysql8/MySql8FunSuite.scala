@@ -1,4 +1,4 @@
-package dataprism.jdbc.mysql
+package dataprism.jdbc.mysql8
 
 import cats.effect.IO
 import com.mysql.cj.jdbc.MysqlDataSource
@@ -9,7 +9,7 @@ import dataprism.jdbc.sql.JdbcCodec
 import dataprism.sql.Db
 import org.testcontainers.containers.MySQLContainer
 
-class MySqlFunSuite extends PlatformFunSuite[IO, JdbcCodec, MySqlJdbcPlatform](MySqlJdbcPlatform) {
+class MySql8FunSuite extends PlatformFunSuite[IO, JdbcCodec, MySqlJdbcPlatform](MySqlJdbcPlatform) {
 
   override val dbFixture: Fixture[Db[IO, JdbcCodec]] = new Fixture[Db[IO, JdbcCodec]]("db") {
     private var container: MySQLContainer[_] = _

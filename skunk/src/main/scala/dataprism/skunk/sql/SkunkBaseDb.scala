@@ -71,76 +71,79 @@ abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Co
       Seq.tabulate(batchSize)(batch => sql.args.map(_.value(batch)))
     )
 
-  override def run(sql: SqlStr[Codec]): F[Int] = {
+  protected def completionToInt(completion: Completion): Int = completion match
+    case Completion.Begin                   => 0
+    case Completion.Commit                  => 0
+    case Completion.CreateIndex             => 0
+    case Completion.Delete(count)           => count
+    case Completion.DropIndex               => 0
+    case Completion.Listen                  => 0
+    case Completion.LockTable               => 0
+    case Completion.Notify                  => 0
+    case Completion.Reset                   => 0
+    case Completion.Rollback                => 0
+    case Completion.Savepoint               => 0
+    case Completion.Select(count)           => count
+    case Completion.Set                     => 0
+    case Completion.Truncate                => 0
+    case Completion.Unlisten                => 0
+    case Completion.Update(count)           => count
+    case Completion.Insert(count)           => count
+    case Completion.CreateTable             => 0
+    case Completion.DropTable               => 0
+    case Completion.AlterTable              => 0
+    case Completion.CreateSchema            => 0
+    case Completion.DropSchema              => 0
+    case Completion.CreateType              => 0
+    case Completion.DropType                => 0
+    case Completion.AlterType               => 0
+    case Completion.CreateFunction          => 0
+    case Completion.DropFunction            => 0
+    case Completion.Copy(count)             => count
+    case Completion.Show                    => 0
+    case Completion.Do                      => 0
+    case Completion.CreateView              => 0
+    case Completion.DropView                => 0
+    case Completion.CreateProcedure         => 0
+    case Completion.DropProcedure           => 0
+    case Completion.Call                    => 0
+    case Completion.CreateDomain            => 0
+    case Completion.DropDomain              => 0
+    case Completion.CreateSequence          => 0
+    case Completion.AlterSequence           => 0
+    case Completion.DropSequence            => 0
+    case Completion.CreateDatabase          => 0
+    case Completion.DropDatabase            => 0
+    case Completion.CreateRole              => 0
+    case Completion.DropRole                => 0
+    case Completion.CreateMaterializedView  => 0
+    case Completion.RefreshMaterializedView => 0
+    case Completion.DropMaterializedView    => 0
+    case Completion.CreateExtension         => 0
+    case Completion.DropExtension           => 0
+    case Completion.CreateTrigger           => 0
+    case Completion.AlterTrigger            => 0
+    case Completion.DropTrigger             => 0
+    case Completion.SetConstraints          => 0
+    case Completion.Explain                 => 0
+    case Completion.Grant                   => 0
+    case Completion.Revoke                  => 0
+    case Completion.AlterIndex              => 0
+    case Completion.Unknown(_)              => 0
+
+  override def run(sql: SqlStr[Codec]): F[Int] =
+    runBatch(sql).map(_.sum)
+
+  override def runBatch(sql: SqlStr[Codec]): F[Seq[Int]] =
     val (command, batchArgs) = makeCommand(sql)
     s.prepare(command)
       .flatMap(
         _.pipe
           .apply(fs2.Stream(batchArgs*))
-          .map {
-            case Completion.Begin                   => 0
-            case Completion.Commit                  => 0
-            case Completion.CreateIndex             => 0
-            case Completion.Delete(count)           => count
-            case Completion.DropIndex               => 0
-            case Completion.Listen                  => 0
-            case Completion.LockTable               => 0
-            case Completion.Notify                  => 0
-            case Completion.Reset                   => 0
-            case Completion.Rollback                => 0
-            case Completion.Savepoint               => 0
-            case Completion.Select(count)           => count
-            case Completion.Set                     => 0
-            case Completion.Truncate                => 0
-            case Completion.Unlisten                => 0
-            case Completion.Update(count)           => count
-            case Completion.Insert(count)           => count
-            case Completion.CreateTable             => 0
-            case Completion.DropTable               => 0
-            case Completion.AlterTable              => 0
-            case Completion.CreateSchema            => 0
-            case Completion.DropSchema              => 0
-            case Completion.CreateType              => 0
-            case Completion.DropType                => 0
-            case Completion.AlterType               => 0
-            case Completion.CreateFunction          => 0
-            case Completion.DropFunction            => 0
-            case Completion.Copy(count)             => count
-            case Completion.Show                    => 0
-            case Completion.Do                      => 0
-            case Completion.CreateView              => 0
-            case Completion.DropView                => 0
-            case Completion.CreateProcedure         => 0
-            case Completion.DropProcedure           => 0
-            case Completion.Call                    => 0
-            case Completion.CreateDomain            => 0
-            case Completion.DropDomain              => 0
-            case Completion.CreateSequence          => 0
-            case Completion.AlterSequence           => 0
-            case Completion.DropSequence            => 0
-            case Completion.CreateDatabase          => 0
-            case Completion.DropDatabase            => 0
-            case Completion.CreateRole              => 0
-            case Completion.DropRole                => 0
-            case Completion.CreateMaterializedView  => 0
-            case Completion.RefreshMaterializedView => 0
-            case Completion.DropMaterializedView    => 0
-            case Completion.CreateExtension         => 0
-            case Completion.DropExtension           => 0
-            case Completion.CreateTrigger           => 0
-            case Completion.AlterTrigger            => 0
-            case Completion.DropTrigger             => 0
-            case Completion.SetConstraints          => 0
-            case Completion.Explain                 => 0
-            case Completion.Grant                   => 0
-            case Completion.Revoke                  => 0
-            case Completion.AlterIndex              => 0
-            case Completion.Unknown(_)              => 0
-          }
+          .map(completionToInt)
           .compile
-          .fold(0)(_ + _)
+          .to(Seq)
       )
-  }
 
   override def runIntoSimple[Res](
       sql: SqlStr[Codec],

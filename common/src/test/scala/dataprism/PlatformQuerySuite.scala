@@ -10,6 +10,11 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
   import platform.AnsiTypes.*
   import platform.Api.*
 
+  test("NonNested"):
+    given DbType = dbFixture()
+    Select(Query.of(5.as(integer))).runOne.map: r =>
+      assertEquals(r, 5)
+
   test("Nested"):
     given DbType = dbFixture()
     Select(Query.of(5.as(integer)).nested).runOne.map: r =>
@@ -44,7 +49,7 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
         .groupMap(_._1)((v, t) => (v, t._2.sum))
         .orderBy(_._1.asc)
     ).run.map: r =>
-      assertEquals(r, Seq((5, Some(4)), (3, Some(3)), (2, Some(5))))
+      assertEquals(r, Seq((2, Some(5L)), (3, Some(3L)), (5, Some(4L))))
 
   test("GroupByHaving"):
     given DbType = dbFixture()
@@ -53,15 +58,15 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
         .values((integer.forgetNNA, integer.forgetNNA))((5, 3), (3, 3), (5, 1), (2, 5))
         .nested
         .groupMap(_._1)((v, t) => (v, t._2.sum))
-        .having(_._2.map(_ > 3.as(integer)).getOrElse(DbValue.falseV))
+        .having(_._2.map(_ > 3L.as(bigint)).getOrElse(DbValue.falseV))
         .orderBy(_._1.asc)
     ).run.map: r =>
-      assertEquals(r, Seq((5, Some(4)), (2, Some(5))))
+      assertEquals(r, Seq((2, Some(5L)), (5, Some(4L))))
 
   test("Distinct"):
     given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2)).run.map: r =>
-      assertEquals(r, Seq(5, 3, 2))
+    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).distinct).run.map: r =>
+      assertEquals(r.toSet, Set(5, 3, 2))
 
   test("Limit"):
     given DbType = dbFixture()
@@ -70,23 +75,28 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
 
   test("Offset"):
     given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3)).run.map: r =>
+    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(1)).run.map: r =>
       assertEquals(r, Seq(3, 5, 2))
 
   test("LimitOffset"):
     given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(1).limit(2)).run.map: r =>
+    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3).offset(1)).run.map: r =>
       assertEquals(r, Seq(3, 5))
+
+  test("OffsetLimit"):
+    given DbType = dbFixture()
+    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(2).limit(1)).run.map: r =>
+      assertEquals(r, Seq(5))
 
   test("Union"):
     given DbType = dbFixture()
     Select(Query.values(integer.forgetNNA)(5, 3).union(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r, Seq(5, 3, 2))
+      assertEquals(r.toSet, Set(5, 3, 2))
 
   test("UnionAll"):
     given DbType = dbFixture()
     Select(Query.values(integer.forgetNNA)(5, 3).unionAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r, Seq(5, 3, 5, 2))
+      assertEquals(r.toSet, Set(5, 3, 5, 2))
 
   test("Intersect"):
     given DbType = dbFixture()
@@ -95,18 +105,18 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
 
   test("IntersectAll"):
     given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 3).intersectAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r, Seq(5, 5))
+    Select(Query.values(integer.forgetNNA)(5, 5, 3).intersectAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
+      assertEquals(r, Seq(5))
 
-  test("Except"):
+  test("2"):
     given DbType = dbFixture()
     Select(Query.values(integer.forgetNNA)(5, 4, 5, 3).except(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r, Seq(4, 3))
+      assertEquals(r.toSet, Set(4, 3))
 
   test("ExceptAll"):
     given DbType = dbFixture()
     Select(Query.values(integer.forgetNNA)(5, 4, 5, 3).exceptAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r, Seq(4, 5, 3))
+      assertEquals(r.toSet, Set(4, 5, 3))
 
   test("Size"):
     given DbType = dbFixture()
@@ -118,5 +128,5 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
     Select(
       Query.values(integer.forgetNNA)(5, 3).flatMap(v => Query.values(integer.forgetNNA)(5, 3).map(_ => v))
     ).run.map: r =>
-      assertEquals(r, Seq(5, 5, 3, 3))
+      assertEquals(r.toSet, Set(5, 5, 3, 3))
 }

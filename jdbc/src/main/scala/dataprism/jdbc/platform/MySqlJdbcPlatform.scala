@@ -17,9 +17,9 @@ trait MySqlJdbcPlatform extends MySqlQueryPlatform {
     @targetName("castTypeName") override def castTypeName: String  = t.name
     @targetName("castTypeType") override def castTypeType: Type[A] = t.tpe.notNull
 
-  extension [A](tpe: Type[A])
-    @targetName("typeName")
-    override def name: String = tpe.codec.name
+  extension [A](tpe: Codec[A])
+    @targetName("codecTypeName")
+    override def name: String = tpe.name
 
   override val AnsiTypes: AnsiTypes[JdbcCodec] = MySqlJdbcTypes
 

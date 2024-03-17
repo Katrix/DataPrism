@@ -31,7 +31,9 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     def tpe(lhs: DbValue[LHS], rhs: DbValue[RHS]): Type[R]
   }
 
-  extension [A](tpe: Type[A]) @targetName("typeName") def name: String
+  extension [A](tpe: Codec[A]) @targetName("codecTypeName") def name: String
+
+  extension [A](tpe: Type[A]) @targetName("typeName") def name: String = tpe.codec.name
 
   extension [A](tpe: Type[A])
     @targetName("typeTypedChoiceNotNull") protected def typedChoice(
@@ -76,7 +78,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     case Plus[A](numeric: SqlNumeric[A])     extends SqlBinOp[A, A, A]("plus", SqlExpr.BinaryOperation.Plus)
     case Minus[A](numeric: SqlNumeric[A])    extends SqlBinOp[A, A, A]("minus", SqlExpr.BinaryOperation.Minus)
     case Multiply[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, A]("times", SqlExpr.BinaryOperation.Multiply)
-    case Divide[A](numeric: SqlNumeric[A])   extends SqlBinOp[A, A, A]("divide", SqlExpr.BinaryOperation.Divide)
+    case Divide[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, Nullable[A]]("divide", SqlExpr.BinaryOperation.Divide)
+    case Remainder[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, A]("remainder", SqlExpr.BinaryOperation.Remainder)
 
     case NullableOp[LHS1, RHS1, R1](binop: BinOp[LHS1, RHS1, R1])
         extends SqlBinOp[Option[LHS1], Option[RHS1], Option[R1]](binop.name, binop.ast)
@@ -93,10 +96,11 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case GreaterThan()    => AnsiTypes.boolean.notNull
       case GreaterOrEqual() => AnsiTypes.boolean.notNull
 
-      case Plus(numeric)     => numeric.tpe(lhs, rhs)
-      case Minus(numeric)    => numeric.tpe(lhs, rhs)
-      case Multiply(numeric) => numeric.tpe(lhs, rhs)
-      case Divide(numeric)   => numeric.tpe(lhs, rhs)
+      case Plus(numeric)      => numeric.tpe(lhs, rhs)
+      case Minus(numeric)     => numeric.tpe(lhs, rhs)
+      case Multiply(numeric)  => numeric.tpe(lhs, rhs)
+      case Divide(numeric)    => numeric.tpe(lhs, rhs).typedChoice.nullable.asInstanceOf[Type[R]]
+      case Remainder(numeric) => numeric.tpe(lhs, rhs)
 
       case nop: NullableOp[lhs1, rhs1, r1] =>
         given ev1: (DbValue[LHS] =:= DbValue[Option[lhs1]]) = <:<.refl
@@ -128,6 +132,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       type N[B] = B
       type NNA  = A
 
+      override def isNullable: Boolean = false
+
       override def wrapOption[B](n: B): Option[B]                 = Some(n)
       override def nullableToOption[B](n: Nullable[B]): Option[B] = n.asInstanceOf[Option[B]]
 
@@ -140,6 +146,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       type N[B] = Option[B]
       type NNA  = NN
 
+      override def isNullable: Boolean = true
+
       override def wrapOption[B](n: Option[B]): Option[B]                 = n
       override def nullableToOption[B](n: Nullable[Option[B]]): Option[B] = n
 
@@ -151,14 +159,23 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         SqlUnaryOp.NullableOp(unaryOp).liftSqlUnaryOp
 
   trait SqlNumeric[A]:
-    def tpe(lhs: DbValue[A], rhs: DbValue[A]): Type[A]
+    def tpe(lhs: DbValue[A], rhs: DbValue[A]): Type[A] = rhs.tpe
 
     extension (lhs: DbValue[A])
-      @targetName("plus") def +(rhs: DbValue[A]): DbValue[A]
-      @targetName("minus") def -(rhs: DbValue[A]): DbValue[A]
-      @targetName("times") def *(rhs: DbValue[A]): DbValue[A]
-      @targetName("divide") def /(rhs: DbValue[A]): DbValue[A]
-      @targetName("negation") def unary_- : DbValue[A]
+      @targetName("plus") def +(rhs: DbValue[A]): DbValue[A] =
+        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Plus(this).liftSqlBinOp).lift
+      @targetName("minus") def -(rhs: DbValue[A]): DbValue[A] =
+        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Minus(this).liftSqlBinOp).lift
+      @targetName("times") def *(rhs: DbValue[A]): DbValue[A] =
+        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Multiply(this).liftSqlBinOp).lift
+      @targetName("divide") def /(rhs: DbValue[A]): DbValue[Nullable[A]] =
+        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Divide(this).liftSqlBinOp).lift
+      @targetName("remainder") def %(rhs: DbValue[A]): DbValue[A] =
+        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Remainder(this).liftSqlBinOp).lift
+      @targetName("negation") def unary_- : DbValue[A] =
+        SqlDbValue.UnaryOp(lhs, SqlUnaryOp.Negative(this).liftSqlUnaryOp).lift
+
+    protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]]
 
     extension (lhs: Many[A])
       // TODO: Having these in here is quite broad. Might want to tighten this
@@ -172,45 +189,106 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
           )
           .lift
           .asInstanceOf[DbValue[Nullable[A]]]
-      def sum: DbValue[Nullable[A]] =
+      def sum: DbValue[Nullable[SqlNumeric.SumResultOf[A]]] =
         import Many.unsafeAsDbValue
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Sum,
             Seq(lhs.unsafeAsAnyDbVal),
-            lhs.unsafeAsDbValue.tpe.typedChoice.nullable
+            sumType(lhs.unsafeAsDbValue.tpe.typedChoice.nullable.asInstanceOf[Type[Nullable[A]]])
           )
           .lift
-          .asInstanceOf[DbValue[Nullable[A]]]
 
   object SqlNumeric:
-    def defaultInstance[A]: SqlNumeric[A] = new SqlNumeric[A]:
-      override def tpe(lhs: DbValue[A], rhs: DbValue[A]): Type[A] = rhs.tpe
+    type SumResultOf[T] = T match {
+      case Short | Int    => Long
+      case Long           => BigDecimal
+      case Float | Double => Double
+      case Option[a]      => SumResultOf[a]
+      case _              => T
+    }
 
-      extension (lhs: DbValue[A])
-        @targetName("plus") override def +(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Plus(this).liftSqlBinOp).lift
-        @targetName("minus") override def -(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Minus(this).liftSqlBinOp).lift
-        @targetName("times") override def *(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Multiply(this).liftSqlBinOp).lift
-        @targetName("divide") override def /(rhs: DbValue[A]): DbValue[A] =
-          SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Divide(this).liftSqlBinOp).lift
-        @targetName("negation") def unary_- : DbValue[A] =
-          SqlDbValue.UnaryOp(lhs, SqlUnaryOp.Negative(this).liftSqlUnaryOp).lift
+    def defaultInstance[A](sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]]): SqlNumeric[A] =
+      new SqlNumeric[A] {
+        override protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]] = sumType0(v)
+      }
 
-  given sqlNumericShort: SqlNumeric[Short]                      = SqlNumeric.defaultInstance
-  given sqlNumericOptShort: SqlNumeric[Option[Short]]           = SqlNumeric.defaultInstance
-  given sqlNumericInt: SqlNumeric[Int]                          = SqlNumeric.defaultInstance
-  given sqlNumericOptInt: SqlNumeric[Option[Int]]               = SqlNumeric.defaultInstance
-  given sqlNumericLong: SqlNumeric[Long]                        = SqlNumeric.defaultInstance
-  given sqlNumericOptLong: SqlNumeric[Option[Long]]             = SqlNumeric.defaultInstance
-  given sqlNumericFloat: SqlNumeric[Float]                      = SqlNumeric.defaultInstance
-  given sqlNumericOptFloat: SqlNumeric[Option[Float]]           = SqlNumeric.defaultInstance
-  given sqlNumericDouble: SqlNumeric[Double]                    = SqlNumeric.defaultInstance
-  given sqlNumericOptDouble: SqlNumeric[Option[Double]]         = SqlNumeric.defaultInstance
-  given sqlNumericBigDecimal: SqlNumeric[BigDecimal]            = SqlNumeric.defaultInstance
-  given sqlNumericOptBigDecimal: SqlNumeric[Option[BigDecimal]] = SqlNumeric.defaultInstance
+  trait SqlFractional[A] extends SqlNumeric[A]
+  object SqlFractional:
+    def defaultInstance[A](sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]]): SqlFractional[A] =
+      new SqlFractional[A] {
+        override protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]] = sumType0(v)
+      }
+
+  trait SqlIntegral[A] extends SqlNumeric[A]
+  object SqlIntegral:
+    def defaultInstance[A](sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]]): SqlIntegral[A] =
+      new SqlIntegral[A] {
+        override protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]] = sumType0(v)
+      }
+
+  given sqlNumericShort: SqlIntegral[Short]            = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
+  given sqlNumericOptShort: SqlIntegral[Option[Short]] = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
+  given sqlNumericInt: SqlIntegral[Int]                = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
+  given sqlNumericOptInt: SqlIntegral[Option[Int]]     = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
+  given sqlNumericLong: SqlIntegral[Long]              = SqlIntegral.defaultInstance(_ => AnsiTypes.decimal.nullable)
+  given sqlNumericOptLong: SqlIntegral[Option[Long]]   = SqlIntegral.defaultInstance(_ => AnsiTypes.decimal.nullable)
+  given sqlNumericFloat: SqlFractional[Float] = SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
+  given sqlNumericOptFloat: SqlFractional[Option[Float]] =
+    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
+  given sqlNumericDouble: SqlFractional[Double] = SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
+  given sqlNumericOptDouble: SqlFractional[Option[Double]] =
+    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
+  given sqlNumericBigDecimal: SqlFractional[BigDecimal]            = SqlFractional.defaultInstance(identity)
+  given sqlNumericOptBigDecimal: SqlFractional[Option[BigDecimal]] = SqlFractional.defaultInstance(identity)
+
+  type DbMath <: SqlDbMath
+  val DbMath: DbMath
+  trait SqlDbMath:
+    def pow[A: SqlNumeric](a: DbValue[A], b: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Pow, Seq(a.unsafeAsAnyDbVal, b.unsafeAsAnyDbVal), b.tpe).lift
+
+    def sqrt[A: SqlFractional](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Sqrt, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def abs[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Abs, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def ceil[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Ceiling, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def floor[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Floor, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def toDegrees[A: SqlFractional](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Degrees, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def toRadians[A: SqlFractional](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Radians, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def log[A: SqlFractional](a: DbValue[A], b: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Log, Seq(a.unsafeAsAnyDbVal, b.unsafeAsAnyDbVal), b.tpe).lift
+
+    def ln[A: SqlFractional](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Ln, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def log10[A: SqlFractional](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Log10, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def log2[A: SqlFractional](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Log2, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def exp[A: SqlFractional](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Exp, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def sign[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Exp, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+
+    def pi[A](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Pi, Nil, tpe.castTypeType).cast(tpe)
+
+    def random[A](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
+      SqlDbValue.Function(SqlExpr.FunctionName.Random, Nil, tpe.castTypeType).cast(tpe)
 
   trait SqlOrdered[A](using val n: NullabilityOf[A]):
     def greatest(head: DbValue[A], tail: DbValue[A]*): DbValue[A] =
@@ -324,13 +402,25 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     @targetName("dbValInAsSeq") def inAs(values: Seq[A], tpe: Type[A])(
         using n: Nullability[A]
     ): DbValue[n.N[Boolean]] =
-      if values.isEmpty then n.wrapDbVal(DbValue.falseV)
+      if values.isEmpty then
+        if n.isNullable then
+          this.liftDbValue
+            .asInstanceOf[DbValue[Option[n.NNA]]]
+            .map(_ => DbValue.falseV)
+            .asInstanceOf[DbValue[n.N[Boolean]]]
+        else n.wrapDbVal(DbValue.falseV)
       else SqlDbValue.InValues(this.liftDbValue, values.map(_.as(tpe)), n.wrapType(AnsiTypes.boolean.notNull)).lift
 
     @targetName("dbValNotInAsSeq") def notInAs(values: Seq[A], tpe: Type[A])(
         using n: Nullability[A]
     ): DbValue[n.N[Boolean]] =
-      if values.isEmpty then n.wrapDbVal(DbValue.trueV)
+      if values.isEmpty then
+        if n.isNullable then
+          this.liftDbValue
+            .asInstanceOf[DbValue[Option[n.NNA]]]
+            .map(_ => DbValue.trueV)
+            .asInstanceOf[DbValue[n.N[Boolean]]]
+        else n.wrapDbVal(DbValue.trueV)
       else SqlDbValue.NotInValues(this.liftDbValue, values.map(_.as(tpe)), n.wrapType(AnsiTypes.boolean.notNull)).lift
 
     @targetName("dbValNullIf") def nullIf(arg: DbValue[A]): DbValue[Nullable[A]] =
@@ -561,8 +651,8 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
     override def desc: Ord = this.lift.asc
   }
-  given [A]: Lift[SqlDbValue[A], DbValue[A]] = sqlDbValueLift[A]
 
+  given [A]: Lift[SqlDbValue[A], DbValue[A]] = sqlDbValueLift[A]
   protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]]
 
   extension [A](dbValue: DbValue[A])
@@ -731,7 +821,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
   trait SqlDbValueApi {
     export platform.{ConditionCase, NullabilityOf, SqlNumeric, SqlOrdered, ValueCase0, ValueCase1}
-    
+
     inline def Nullability: platform.Nullability.type = platform.Nullability
 
     type AnyDbValue         = platform.AnyDbValue
@@ -741,6 +831,7 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
     type Codec[A]           = platform.Codec[A]
     type Type[A]            = platform.Type[A]
 
+    inline def DbMath: platform.DbMath            = platform.DbMath
     inline def DbValue: platform.DbValueCompanion = platform.DbValue
     inline def Many: platform.Many.type           = platform.Many
 

@@ -41,6 +41,21 @@ object JdbcCodec {
       (a, b, c) => a.setObject(b, c.orNull, sqlType)
     )
 
+  def withWasNullCheck[A](
+      name: String,
+      sqlType: Int,
+      get: (ResultSet, Int) => A,
+      set: (PreparedStatement, Int, A) => Unit
+  ): JdbcCodec[Option[A]] = simple(
+    name,
+    (rs, i) => {
+      val r = get(rs, i)
+      val wasNull = rs.wasNull() || r == null //Seems to sometimes lie...
+      if wasNull then None else Some(r)
+    },
+    (ps, i, vo) => vo.fold(ps.setNull(i, sqlType, name))(v => set(ps, i, v))
+  )
+
   def failable[A](
       name: String,
       get: (ResultSet, Int) => Either[String, Option[A]],

@@ -19,9 +19,9 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
   
   override type ArrayTypeArgs[_] = DummyImplicit
   override type Codec[A]         = skunk.Codec[A]
-  extension [A](tpe: Type[A])
-    @targetName("typeName")
-    override def name: String = tpe.codec.types.head.name
+  extension [A](tpe: Codec[A])
+    @targetName("codecTypeName")
+    override def name: String = tpe.types.head.name
 
   override protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: DummyImplicit): Type[Seq[A]] =
     NullabilityTypeChoice.notNullByDefault(

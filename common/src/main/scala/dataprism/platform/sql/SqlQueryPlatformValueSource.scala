@@ -26,7 +26,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
 
   enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
     case FromQuery(q: Query[A])
-    case FromTable(t: Table[Codec, A])
+    case FromTable(t: Table[Codec, A], withAlias: Boolean = true)
     case InnerJoin[A[_[_]], B[_[_]]](
         lhs: ValueSource[A],
         rhs: ValueSource[B],
@@ -72,8 +72,8 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
     }
 
     def applyKC: ApplyKC[A] = this match
-      case SqlValueSource.FromQuery(q)     => q.applyK
-      case SqlValueSource.FromTable(table) => table.FA
+      case SqlValueSource.FromQuery(q)        => q.applyK
+      case SqlValueSource.FromTable(table, _) => table.FA
       case SqlValueSource.InnerJoin(l: ValueSource[lt], r: ValueSource[rt], _) =>
         given ApplyKC[lt] = l.applyKC
         given ApplyKC[rt] = r.applyKC
@@ -195,7 +195,7 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
           }
         }
 
-      case SqlValueSource.FromTable(table) =>
+      case SqlValueSource.FromTable(table, true) =>
         State { st =>
           given FunctorKC[A] = table.FA
 
@@ -211,6 +211,15 @@ trait SqlQueryPlatformValueSource { this: SqlQueryPlatform =>
             ValueSourceAstMetaData(SelectAst.From.FromTable(table.tableName, Some(queryName)), values)
           )
         }
+
+      case SqlValueSource.FromTable(table, false) =>
+        State.pure:
+          val values = table.columns.mapK(
+            [X] =>
+              (column: Column[Codec, X]) => SqlDbValue.QueryColumn[X](column.nameStr, table.tableName, column.tpe).lift
+          )
+
+          ValueSourceAstMetaData(SelectAst.From.FromTable(table.tableName, None), values)
 
       case SqlValueSource.InnerJoin(lhs: ValueSource[l], rhs: ValueSource[r], on) =>
         fromPartJoin(lhs, rhs, on, SelectAst.From.InnerJoin.apply, (a, b) => (a, b))

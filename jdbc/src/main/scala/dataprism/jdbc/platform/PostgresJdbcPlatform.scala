@@ -11,16 +11,16 @@ trait PostgresJdbcPlatform extends PostgresQueryPlatform {
   type Api = PostgresApi
   val Api: Api = new PostgresApi {}
 
-  override type ArrayTypeArgs[A] = PostgresJdbcTypes.ArrayMapping[A]
+  override type ArrayTypeArgs[A] = Nothing // PostgresJdbcTypes.ArrayMapping[A]
   override type Codec[A]          = JdbcCodec[A]
-  extension [A](tpe: Type[A])
-    @targetName("typeName")
-    override def name: String = tpe.codec.name
+  extension [A](tpe: Codec[A])
+    @targetName("codecTypeName")
+    override def name: String = tpe.name
 
   override protected def arrayType[A](elemType: Type[A])(
-      using extraArrayTypeArgs: PostgresJdbcTypes.ArrayMapping[A]
+      using extraArrayTypeArgs: ArrayTypeArgs[A]
   ): Type[Seq[A]] = 
-    PostgresJdbcTypes.array(elemType).notNull
+    ??? // PostgresJdbcTypes.array(elemType).notNull
 
   override val AnsiTypes: AnsiTypes[JdbcCodec] = PostgresJdbcTypes
 

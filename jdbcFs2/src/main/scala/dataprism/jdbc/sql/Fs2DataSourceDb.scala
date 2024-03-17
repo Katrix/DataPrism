@@ -38,12 +38,20 @@ class Fs2DataSourceDb[F[_]: Sync](ds: DataSource) extends CatsDataSourceDb[F](ds
       .resource(connectionResource)
       .evalMap((con, man) => F.blocking((con, makePrepared(sql, con)(using man), man)))
       .evalTap((_, ps, _) => F.blocking(ps.setFetchSize(chunkSize)))
-      .evalMap((con, ps, man) => F.blocking((con, man.acquire(ps.executeQuery()), man)))
-      .flatMap { (con, rs, man) =>
+      .flatMap { (con, ps, man) =>
+        sql.args.map(_.batchSize).distinct match
+          case Seq()          => fs2.Stream((con, ps, man, None))
+          case Seq(batchSize) => fs2.Stream.emits((0 until batchSize).map(batch => (con, ps, man, Some(batch))))
+          case sizes => fs2.Stream.raiseError(new SQLException(s"Multiple batch sizes: ${sizes.mkString(" ")}"))
+      }
+      .flatMap { (con, ps, man, batch) =>
         given ResourceManager = man
 
         val readChunk: F[Seq[Res[Id]]] = Sync[F]
           .blocking {
+            batch.foreach(b => setArgs(con, ps, sql.args, b))
+            val rs = man.acquire(ps.executeQuery())
+
             Seq
               .unfold((rs.next(), 0))((cond, read) =>
                 Option.when(cond && read < chunkSize) {

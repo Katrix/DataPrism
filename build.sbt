@@ -34,8 +34,10 @@ lazy val common = project.settings(
   name                                   := "dataprism-common",
   libraryDependencies += "net.katsstuff" %% "perspective"             % "0.2.0+17-d7d68444-SNAPSHOT",
   libraryDependencies += "net.katsstuff" %% "perspective-derivation"  % "0.2.0+17-d7d68444-SNAPSHOT",
-  libraryDependencies += "org.scalameta" %% "munit"                   % "0.7.29" % Test,
-  libraryDependencies += "org.typelevel" %% "scalacheck-effect-munit" % "1.0.4"  % Test
+  libraryDependencies += "org.scalameta" %% "munit"                   % "1.0.0-M10" % Test,
+  libraryDependencies += "org.typelevel" %% "scalacheck-effect-munit" % "1.0.4"     % Test,
+  libraryDependencies += "org.typelevel" %% "munit-cats-effect"       % "2.0.0-M4"  % Test,
+  libraryDependencies += "org.scalameta" %% "munit-scalacheck"        % "1.0.0-M10" % Test
 )
 
 lazy val jdbc = project
@@ -44,13 +46,15 @@ lazy val jdbc = project
     publishSettings,
     name := "dataprism-jdbc",
     libraryDependencies ++= Seq(
-      "org.typelevel"     %% "cats-effect"       % "3.5.3"  % Test,
-      "org.postgresql"     % "postgresql"        % "42.7.1" % Test,
-      "com.mysql"          % "mysql-connector-j" % "8.3.0"  % Test,
-      "org.testcontainers" % "testcontainers"    % "1.19.5" % Test,
-      "org.testcontainers" % "mysql"             % "1.19.5" % Test,
-      "org.testcontainers" % "postgresql"        % "1.19.5" % Test,
-      "org.slf4j"          % "slf4j-simple"      % "2.0.12" % Test
+      "org.typelevel"     %% "cats-effect"       % "3.5.3"    % Test,
+      "org.postgresql"     % "postgresql"        % "42.7.1"   % Test,
+      "com.mysql"          % "mysql-connector-j" % "8.3.0"    % Test,
+      "org.testcontainers" % "testcontainers"    % "1.19.5"   % Test,
+      "org.testcontainers" % "mysql"             % "1.19.5"   % Test,
+      "org.testcontainers" % "postgresql"        % "1.19.5"   % Test,
+      "com.h2database"     % "h2"                % "2.2.224"  % Test,
+      "org.xerial"         % "sqlite-jdbc"       % "3.45.2.0" % Test,
+      "org.slf4j"          % "slf4j-simple"      % "2.0.12"   % Test
     ),
     Test / fork := true
   )

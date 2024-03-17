@@ -60,7 +60,7 @@ object SqlExpr {
     case Minus
     case Multiply
     case Divide
-    case Modulo
+    case Remainder
 
     case BitwiseAnd
     case BitwiseOr
@@ -94,11 +94,18 @@ object SqlExpr {
     case Log
     case Log10
     case Log2
+    case Sqrt
     case Pow
     case Exp
 
     case Ceiling
     case Floor
+    
+    case Radians
+    case Degrees
+    
+    case Pi
+    case Random
 
     case Concat
 

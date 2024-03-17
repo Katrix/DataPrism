@@ -9,19 +9,7 @@ trait MySqlJdbcTypes extends JdbcAnsiTypes:
   private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] =
     NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
-  val text: TypeOf[String] = tc(JdbcCodec.byClass[String]("TEXT", Types.VARCHAR))
-
-  val decimal: TypeOf[BigDecimal] = tc(
-    JdbcCodec.byClass[java.math.BigDecimal]("DECIMAL", Types.DECIMAL)
-  ).imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
-
-  def decimalN(m: Int): TypeOf[BigDecimal] = tc(
-    JdbcCodec.byClass[java.math.BigDecimal](s"DECIMAL($m)", Types.DECIMAL)
-  ).imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
-
-  def decimalN(m: Int, n: Int): TypeOf[BigDecimal] = tc(
-    JdbcCodec.byClass[java.math.BigDecimal](s"DECIMAL($m, $n)", Types.DECIMAL)
-  ).imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
+  val text: TypeOf[String] = tc(JdbcCodec.withWasNullCheck("TEXT", Types.VARCHAR, _.getString(_), _.setString(_, _)))
 
   object castType:
     val binary: MySqlJdbcTypeCastable[Seq[Byte]] = MySqlJdbcTypeCastable("BINARY", self.blob)
@@ -52,6 +40,4 @@ trait MySqlJdbcTypes extends JdbcAnsiTypes:
 
     val unsignedInteger: MySqlJdbcTypeCastable[Long] = MySqlJdbcTypeCastable("UNSIGNED INTEGER", self.bigint)
 
-object MySqlJdbcTypes extends MySqlJdbcTypes:
-  override val ArrayMapping: ArrayMappingCompanion =
-    new ArrayMappingCompanion {}
+object MySqlJdbcTypes extends MySqlJdbcTypes

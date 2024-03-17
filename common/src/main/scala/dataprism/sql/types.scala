@@ -14,8 +14,8 @@ class NullabilityTypeChoice[Codec[_], A](
     NullableType(nullableCodec, this)
 
   override type NNA = A
-  override def codec: Codec[A]                         = notNullCodec
-  override def choice: NullabilityTypeChoice[Codec, A] = this
+  override val codec: Codec[A]                         = notNullCodec
+  override val choice: NullabilityTypeChoice[Codec, A] = this
 
   def imap[B](f: A => B)(
       g: B => A

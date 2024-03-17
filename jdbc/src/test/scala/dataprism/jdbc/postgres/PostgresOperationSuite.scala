@@ -15,6 +15,6 @@ class PostgresOperationSuite extends PostgresFunSuite with PlatformOperationSuit
   doTestInsertOnConflictReturning()
 
   doTestUpdateFrom()
-  doTestUpdateReturning()
-  doTestUpdateFromReturning()
+  doTestUpdateReturning((a, _) => a)
+  doTestUpdateFromReturning((_, b) => b, Seq(1, 2))
 }

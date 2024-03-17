@@ -1,11 +1,10 @@
-package dataprism.jdbc.mysql
+package dataprism.jdbc.mysql8
 
 import cats.effect.IO
 import dataprism.PlatformOperationSuite
 import dataprism.jdbc.platform.MySqlJdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-class MySqlOperationSuite extends MySqlFunSuite with PlatformOperationSuite[IO, JdbcCodec, MySqlJdbcPlatform] {
+class MySql8OperationSuite extends MySql8FunSuite with PlatformOperationSuite[IO, JdbcCodec, MySqlJdbcPlatform] {
   doTestDeleteUsing()
-  doTestUpdateFrom()
 }

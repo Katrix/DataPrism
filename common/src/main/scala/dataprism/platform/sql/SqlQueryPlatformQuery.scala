@@ -650,11 +650,6 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     )(using val applyK: ApplyKC[A], val traverseK: TraverseKC[A])
         extends SqlQuery[A] {
 
-      override def mapK[B[_[_]]](
-          f: InMapCapability ?=> A[DbValue] => B[DbValue]
-      )(using FA: ApplyKC[B], FT: TraverseKC[B]): Query[B] =
-        copy(f(value), values.map(a => f(a))).liftSqlQuery
-
       override def orderBy(f: InOrderByCapability ?=> A[DbValue] => OrdSeq): Query[A] =
         SqlQueryOrderedStage(
           this.liftSqlQuery,
@@ -754,9 +749,13 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     ) extends SqlQuery[A] {
       export query.{applyK, traverseK}
 
-      override def take(i: Int): Query[A] = copy(limit = Some(i)).liftSqlQuery
+      override def take(i: Int): Query[A] =
+        copy(limit = limit.fold(Some(i))(existing => Some(Math.min(existing, i)))).liftSqlQuery
 
-      override def drop(i: Int): Query[A] = copy(offset = i).liftSqlQuery
+      override def drop(i: Int): Query[A] =
+        if limit.isDefined
+        then nested.drop(i)
+        else copy(offset = offset + i).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
         query.selectAstAndValues.flatMap { meta =>
@@ -902,7 +901,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
   trait SqlQueryCompanion:
     def from[A[_[_]]](table: Table[Codec, A]): Query[A] =
       import table.given
-      SqlQuery.SqlQueryFromStage(SqlValueSource.FromTable(table).liftSqlValueSource).liftSqlQuery
+      SqlQuery.SqlQueryFromStage(SqlValueSource.FromTable(table, withAlias = true).liftSqlValueSource).liftSqlQuery
 
     def queryCount: DbValue[Long] = SqlDbValue.QueryCount.lift
 

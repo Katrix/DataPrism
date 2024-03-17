@@ -6,6 +6,8 @@ trait Db[F[_], Codec[_]]:
   self =>
 
   def run(sql: SqlStr[Codec]): F[Int]
+  
+  def runBatch(sql: SqlStr[Codec]): F[Seq[Int]]
 
   def runIntoSimple[Res](
       sql: SqlStr[Codec],
@@ -21,6 +23,8 @@ trait Db[F[_], Codec[_]]:
 
   def mapK[G[_]](f: F :~>: G): Db[G, Codec] = new Db[G, Codec]:
     override def run(sql: SqlStr[Codec]): G[Int] = f(self.run(sql))
+
+    override def runBatch(sql: SqlStr[Codec]): G[Seq[Int]] = f(self.runBatch(sql))
 
     override def runIntoSimple[Res](sql: SqlStr[Codec], dbTypes: Codec[Res]): G[Seq[Res]] = f(
       self.runIntoSimple(sql, dbTypes)

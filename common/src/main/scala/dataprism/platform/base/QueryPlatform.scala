@@ -11,6 +11,9 @@ trait QueryPlatform { platform =>
 
   trait Lift[A, B]:
     extension (a: A) def lift: B
+  object Lift:
+    def identity[A]: Lift[A, A] = new Lift[A, A]:
+      extension (a: A) override def lift: A = a
 
   type Nullability[A] <: NullabilityBase[A]
   trait NullabilityBase[A]:
@@ -19,6 +22,7 @@ trait QueryPlatform { platform =>
 
     def wrapOption[B](n: N[B]): Option[B]
     def nullableToOption[B](n: Nullable[N[B]]): Option[B]
+    def isNullable: Boolean
 
   trait DbValueBase[A]:
     def liftDbValue: DbValue[A]

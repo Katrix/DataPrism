@@ -143,6 +143,10 @@ object Testing {
       printSqlStr(sql)
       Future.successful(0)
 
+    override def runBatch(sql: SqlStr[JdbcCodec]): Future[Seq[Int]] =
+      printSqlStr(sql)
+      Future.successful(Nil)
+
     override def runIntoSimple[Res](sql: SqlStr[JdbcCodec], dbTypes: JdbcCodec[Res]): Future[Seq[Res]] =
       printSqlStr(sql)
       Future.successful(Nil)

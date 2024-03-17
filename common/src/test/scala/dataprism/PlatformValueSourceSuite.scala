@@ -35,9 +35,14 @@ trait PlatformValueSourceSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQuery
 
   test("FromTable"):
     given db: DbType = dbFixture()
+    def quoteConst(s: String) = SqlStr.const(platform.sqlRenderer.quote(s))
     for
-      _ <- db.run(sql"CREATE TABLE tempTable (i INTEGER, d DOUBLE PRECISION);")
-      _ <- db.run(sql"INSERT INTO tempTable (i, d) VALUES (5, 3.14)")
+      _ <- db.run(
+        sql"""CREATE TABLE ${quoteConst("tempTable")} (${quoteConst("i")} INTEGER, ${quoteConst("d")} DOUBLE PRECISION);"""
+      )
+      _ <- db.run(
+        sql"""INSERT INTO ${quoteConst("tempTable")} (${quoteConst("i")}, ${quoteConst("d")}) VALUES (5, 3.14)"""
+      )
       r <- Select(Query.from(TempTable.table)).run
     yield assertEquals(r, Seq(TempTable[Id](Some(5), Some(3.14D))))
 
@@ -53,7 +58,7 @@ trait PlatformValueSourceSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQuery
     Select(testQuery.crossJoin(testQuery))
       .run[F]
       .map: r =>
-        assertEquals(r, Seq((5, 5), (5, 3), (3, 3), (3, 5)))
+        assertEquals(r.toSet, Set((5, 5), (5, 3), (3, 3), (3, 5)))
 
   test("LeftJoin"):
     given DbType = dbFixture()

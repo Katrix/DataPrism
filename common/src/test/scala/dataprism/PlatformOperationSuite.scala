@@ -3,9 +3,10 @@ package dataprism
 import cats.MonadThrow
 import cats.data.NonEmptyList
 import cats.syntax.all.*
+import dataprism.platform.base.MapRes
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.*
-import munit.FunSuite
+import munit.{FunSuite, Location}
 import perspective.{DistributiveKC, Id}
 
 //noinspection SqlNoDataSourceInspection
@@ -34,33 +35,39 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
     TestTable(4, "quox", None, None)
   )
 
-  def makeTestTable(name: String)(using db: DbType): F[Table[Codec0, TestTable]] = for
-    _ <- db.run(
-      sql"""|CREATE TABLE ${SqlStr.const(name)} (
-            |  a INTEGER NOT NULL PRIMARY KEY,
-            |  b VARCHAR(254) NOT NULL,
-            |  c DOUBLE PRECISION,
-            |  d REAL
-            |);""".stripMargin
-    )
-    _ <- db.run(
-      sql"""|INSERT INTO ${SqlStr.const(name)} (a, b, c, d) 
-            |    VALUES 
-            |      (1, 'foo', 3, NULL), 
-            |      (2, 'bar', 5.19, 2.1), 
-            |      (3, 'baz', NULL, 56), 
-            |      (4, 'quox', NULL, NULL);""".stripMargin
-    )
-  yield testTableObj(name)
+  def makeTestTable(name: String)(using db: DbType): F[Table[Codec0, TestTable]] =
+    def quoteConst(s: String) = SqlStr.const(platform.sqlRenderer.quote(s))
+    for
+      _ <- db.run(
+        sql"""|CREATE TABLE ${quoteConst(name)} (
+              |  ${quoteConst("a")} INTEGER NOT NULL PRIMARY KEY,
+              |  ${quoteConst("b")} VARCHAR(254) NOT NULL,
+              |  ${quoteConst("c")} DOUBLE PRECISION,
+              |  ${quoteConst("d")} REAL
+              |);""".stripMargin
+      )
+      _ <- db.run(
+        sql"""|INSERT INTO ${quoteConst(name)} (${quoteConst("a")}, ${quoteConst("b")}, ${quoteConst(
+               "c"
+             )}, ${quoteConst("d")})
+              |    VALUES 
+              |      (1, 'foo', 3, NULL), 
+              |      (2, 'bar', 5.19, 2.1), 
+              |      (3, 'baz', NULL, 56), 
+              |      (4, 'quox', NULL, NULL);""".stripMargin
+      )
+    yield testTableObj(name)
 
-  def testWithTable(name: String)(body: DbType ?=> Table[Codec0, TestTable] => F[Seq[TestTable[Id]]]): Unit =
+  def testWithTable(name: String)(body: DbType ?=> Table[Codec0, TestTable] => F[Seq[TestTable[Id]]])(
+      using Location
+  ): Unit =
     test(name):
       given DbType = dbFixture()
       for
         table    <- makeTestTable(name)
         expected <- body(table)
         found    <- Select(Query.from(table)).run
-      yield assertEquals(found, expected)
+      yield assertEquals(found.toSet, expected.toSet)
 
   testWithTable("Delete"): table =>
     Delete
@@ -86,7 +93,7 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
         .run
         .map { returned =>
           assertEquals(returned, Seq("foo"))
-          originalTestTableValues.filter(v => v.a != 1 && v.a != 2)
+          originalTestTableValues.filter(v => v.a != 1)
         }
 
   def doTestDeleteUsingReturning()(using platform.DeleteUsingCapability, platform.DeleteReturningCapability): Unit =
@@ -103,8 +110,9 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
         }
 
   testWithTable("InsertValues"): table =>
-    val v = TestTable[Id](5, "next", None, None)
-    Insert.into(table).values(v).run.map(_ => originalTestTableValues :+ v)
+    val v  = TestTable[Id](5, "next", None, None)
+    val vs = Seq(TestTable[Id](6, "next2", None, None))
+    Insert.into(table).values(v, vs*).run.map(_ => originalTestTableValues ++ (v +: vs))
 
   testWithTable("InsertValuesBatch"): table =>
     val v  = TestTable[Id](5, "next", None, None)
@@ -189,7 +197,7 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
       .where(_.a === 1.as(integer))
       .valuesInColumns(_.b)(_ => "next".as(varchar(254)))
       .run
-      .map(_ => originalTestTableValues.map(v => if v.a == 1 then TestTable(5, "next", None, None) else v))
+      .map(_ => originalTestTableValues.map(v => if v.a == 1 then v.copy(b = "next") else v))
 
   def doTestUpdateFrom()(using platform.UpdateFromCapability): Unit = testWithTable("UpdateFrom"): table =>
     Update
@@ -200,27 +208,34 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
       .run
       .map(_ => originalTestTableValues.map(v => if v.a == 1 || v.a == 2 then v.copy(b = "next") else v))
 
-  def doTestUpdateReturning()(using platform.UpdateReturningCapability): Unit = testWithTable("UpdateReturning"):
-    table =>
+  def doTestUpdateReturning(
+      f: platform.MapUpdateReturning[TestTable[platform.DbValue], TestTable[platform.DbValue], TestTable[
+        platform.DbValue
+      ]]
+  )(using platform.UpdateReturningCapability): Unit =
+    testWithTable("UpdateReturning"): table =>
       Update
         .table(table)
         .where(_.a === 1.as(integer))
         .values(v => v.copy(b = "next".as(varchar(256))))
-        .returning((a, _) => a)
+        .returning(f)
         .run
         .map(res => originalTestTableValues.map(v => if v.a == 1 then res.head else v))
 
-  def doTestUpdateFromReturning()(using platform.UpdateFromCapability, platform.UpdateReturningCapability): Unit =
+  def doTestUpdateFromReturning[Res](
+      f: platform.MapUpdateReturning[TestTable[platform.DbValue], platform.DbValue[Int], platform.DbValue[Res]],
+      expected: Seq[Res]
+  )(using platform.UpdateFromCapability, platform.UpdateReturningCapability): Unit =
     testWithTable("UpdateFromReturning"): table =>
       Update
         .table(table)
         .from(Query.values(integer.forgetNNA)(1, 2))
         .where(_.a === _)
         .values((v, _) => v.copy(b = "next".as(varchar(256))))
-        .returning((_, b) => b)
+        .returning(f)
         .run
         .map { res =>
-          assertEquals(res, Seq(1, 2))
+          assertEquals(res, expected)
           originalTestTableValues.map(v => if v.a == 1 || v.a == 2 then v.copy(b = "next") else v)
         }
 }

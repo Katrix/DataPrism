@@ -1,9 +1,15 @@
 package dataprism.platform.implementations
 
 import dataprism.platform.sql.DefaultCompleteSqlQueryPlatform
-import dataprism.sharedast.{MySqlAstRenderer, SqlExpr}
+import dataprism.sharedast.{SqlExpr, SqliteAstRenderer}
 
-trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
+trait SqliteQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
+
+  override type CastType[A] = Type[A]
+
+  extension [A](t: CastType[A])
+    override def castTypeName: String  = t.name
+    override def castTypeType: Type[A] = t
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -19,49 +25,60 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
   override protected val InHavingCapability: Unit        = ()
   override protected val InOrderByCapability: Unit       = ()
 
-  given DeleteUsingCapability with {}
-  given LateralJoinCapability with {}
+  given DeleteReturningCapability with {}
+  given InsertReturningCapability with {}
+  given UpdateReturningCapability with {}
 
-  override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
-  override protected def contramapUpdateReturning[Table, From, Res](
-      f: MapUpdateReturning[Table, From, Res]
-  ): (Table, From) => Res = f
+  given InsertOnConflictCapability with {}
+  given UpdateFromCapability with       {}
 
-  type Api <: MySqlApi
-  trait MySqlApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
-    export platform.{given DeleteUsingCapability, given LateralJoinCapability}
+  override protected def generateDeleteAlias: Boolean = false
+  override protected def generateUpdateAlias: Boolean = false
+
+  override type MapUpdateReturning[Table, _, Res] = Table => Res
+  override protected def contramapUpdateReturning[Table, From, Res](f: MapUpdateReturning[Table, From, Res]): (Table, From) => Res = (a, _) => f(a)
+
+  type Api <: SqliteApi
+  trait SqliteApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
+    export platform.{
+      given DeleteReturningCapability,
+      given InsertOnConflictCapability,
+      given InsertReturningCapability,
+      given UpdateFromCapability,
+      given UpdateReturningCapability
+    }
   }
 
-  lazy val sqlRenderer: MySqlAstRenderer[Codec] = new MySqlAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
+  lazy val sqlRenderer: SqliteAstRenderer[Codec] = new SqliteAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
   type DbMath = SqlDbMath
   object DbMath extends SqlDbMath
 
-  type DbValue[A] = MySqlDbValue[A]
-  enum MySqlDbValue[A] extends SqlDbValueBase[A]:
+  type DbValue[A] = SqliteDbValue[A]
+  enum SqliteDbValue[A] extends SqlDbValueBase[A]:
     case SqlDbValue(value: platform.SqlDbValue[A])
 
     override def ast: TagState[SqlExpr[Codec]] = this match
-      case MySqlDbValue.SqlDbValue(v) => v.ast
+      case SqliteDbValue.SqlDbValue(v) => v.ast
 
     override def asSqlDbVal: Option[platform.SqlDbValue[A]] = this match
-      case MySqlDbValue.SqlDbValue(v) => Some(v)
+      case SqliteDbValue.SqlDbValue(v) => Some(v)
 
     override def tpe: Type[A] = this match
-      case MySqlDbValue.SqlDbValue(v) => v.tpe
+      case SqliteDbValue.SqlDbValue(v) => v.tpe
 
     override def columnName(prefix: String): String = this match
-      case MySqlDbValue.SqlDbValue(v) => v.columnName(prefix)
+      case SqliteDbValue.SqlDbValue(v) => v.columnName(prefix)
 
     override def unsafeAsAnyDbVal: DbValue[Any] = this.asInstanceOf[DbValue[Any]]
     override def liftDbValue: DbValue[A]        = this
     override def asc: Ord                       = Ord.Asc(this.unsafeAsAnyDbVal)
     override def desc: Ord                      = Ord.Desc(this.unsafeAsAnyDbVal)
-  end MySqlDbValue
+  end SqliteDbValue
 
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] =
     new Lift[SqlDbValue[A], DbValue[A]]:
-      extension (a: SqlDbValue[A]) def lift: DbValue[A] = MySqlDbValue.SqlDbValue(a)
+      extension (a: SqlDbValue[A]) def lift: DbValue[A] = SqliteDbValue.SqlDbValue(a)
 
   override type SelectOperation[A[_[_]]] = SqlSelectOperation[A]
   override type SelectCompanion          = SqlSelectCompanion

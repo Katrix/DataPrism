@@ -6,6 +6,7 @@ import scala.util.{Try, Using}
 
 import cats.Functor
 import cats.data.{State, ValidatedNel}
+import cats.kernel.Monoid
 import cats.syntax.all.*
 import dataprism.sql.*
 import perspective.*
@@ -17,39 +18,54 @@ trait ConnectionDb[F[_]: Functor] extends Db[F, JdbcCodec]:
 
   protected def getConnection(using ResourceManager): Connection
 
-  protected def makePrepared[A](sql: SqlStr[JdbcCodec], con: Connection)(
+  protected def makePrepared(sql: SqlStr[JdbcCodec], con: Connection)(using ResourceManager): PreparedStatement =
+    con.prepareStatement(sql.str).acquire
+
+  protected def setArgs(con: Connection, ps: PreparedStatement, args: Seq[SqlArg[JdbcCodec]], batch: Int)(
       using ResourceManager
-  ): PreparedStatement = {
-    val ps = con.prepareStatement(sql.str).acquire
+  ): Unit =
+    for (obj, i) <- args.zipWithIndex do obj.tpe.set(ps, i + 1, obj.value(batch), con)
 
-    val batchSizes = sql.args.map(_.batchSize).distinct
-    if batchSizes.length != 1 then throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
-    val batchSize = batchSizes.head
+  protected def makePreparedWithBatch[A: Monoid](sql: SqlStr[JdbcCodec], con: Connection, trueBatch: Boolean)(
+      use: PreparedStatement => A
+  )(
+      using ResourceManager
+  ): A =
+    val ps = makePrepared(sql, con)
+    sql.args.map(_.batchSize).distinct match
+      case Seq() => use(ps)
+      case Seq(batchSize) =>
+        val doBatch = trueBatch && batchSize > 1
 
-    var batch = 0
-    while batch < batchSize do {
-      for ((obj, i) <- sql.args.zipWithIndex) {
-        obj.tpe.set(ps, i + 1, obj.value(batch), con)
-      }
-      batch += 1
-      if batch < batchSize then ps.addBatch()
-    }
-    ps
-  }
+        var res   = Monoid[A].empty
+        var batch = 0
+        while batch < batchSize do
+          setArgs(con, ps, sql.args, batch)
+          if doBatch then ps.addBatch() else res = res.combine(use(ps))
+          batch += 1
 
-  protected def makeAndUsePrepared[A](
-      sql: SqlStr[JdbcCodec]
+        if doBatch then use(ps) else res
+      case sizes => throw new SQLException(s"Multiple batch sizes: ${sizes.mkString(" ")}")
+
+  protected def makeAndUsePrepared[A: Monoid](
+      sql: SqlStr[JdbcCodec],
+      trueBatch: Boolean = false
   )(f: ResourceManager ?=> (PreparedStatement, Connection) => A): F[A] = wrapTry {
     Using.Manager { implicit man =>
       given ResourceManager = ResourceManager.proxyForUsingManager
       val con               = getConnection
-      val ps                = makePrepared(sql, con)
-
-      f(ps, con)
+      makePreparedWithBatch(sql, con, trueBatch)(ps => f(ps, con))
     }
   }
 
   override def run(sql: SqlStr[JdbcCodec]): F[Int] = makeAndUsePrepared(sql)((ps, _) => ps.executeUpdate())
+
+  override def runBatch(sql: SqlStr[JdbcCodec]): F[Seq[Int]] =
+    makeAndUsePrepared(sql, trueBatch = true) { (ps, _) =>
+      sql.args.map(_.batchSize).distinct match
+        case Seq(batchSize) if batchSize > 1 => ps.executeBatch().toSeq
+        case _                               => Seq(ps.executeUpdate())
+    }
 
   override def runIntoSimple[Res](
       sql: SqlStr[JdbcCodec],

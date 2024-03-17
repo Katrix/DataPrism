@@ -11,58 +11,52 @@ trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
   private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] =
     NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
-  private def primitive[A <: AnyRef: ClassTag, B <: AnyVal](
+  private def withWasNullCheck[B](
       name: String,
       sqlType: Int,
-      unbox: A => B,
-      box: B => A
+      get: (ResultSet, Int) => B,
+      set: (PreparedStatement, Int, B) => Unit
   ): TypeOf[B] =
-    tc(JdbcCodec.byClass[A](name, sqlType).imap[Option[B]](_.map(unbox))(_.map(box)))
+    tc(JdbcCodec.withWasNullCheck(name, sqlType, get, set))
 
-  val smallint: TypeOf[Short] = primitive[java.lang.Short, Short]("SMALLINT", Types.SMALLINT, _.shortValue(), Short.box)
-  val integer: TypeOf[Int]    = primitive[java.lang.Integer, Int]("INTEGER", Types.INTEGER, _.intValue(), Int.box)
-  val bigint: TypeOf[Long]    = primitive[java.lang.Long, Long]("BIGINT", Types.BIGINT, _.longValue(), Long.box)
-  val real: TypeOf[Float]     = primitive[java.lang.Float, Float]("REAL", Types.REAL, _.floatValue(), Float.box)
+  val smallint: TypeOf[Short] = withWasNullCheck("SMALLINT", Types.SMALLINT, _.getShort(_), _.setShort(_, _))
+  val integer: TypeOf[Int]    = withWasNullCheck("INTEGER", Types.INTEGER, _.getInt(_), _.setInt(_, _))
+  val bigint: TypeOf[Long]    = withWasNullCheck("BIGINT", Types.BIGINT, _.getLong(_), _.setLong(_, _))
+  val real: TypeOf[Float]     = withWasNullCheck("REAL", Types.REAL, _.getFloat(_), _.setFloat(_, _))
   val doublePrecision: TypeOf[Double] =
-    primitive[java.lang.Double, Double]("DOUBLE PRECISION", Types.DOUBLE, _.doubleValue(), Double.box)
-  val boolean: TypeOf[Boolean] =
-    primitive[java.lang.Boolean, Boolean]("BOOLEAN", Types.BOOLEAN, _.booleanValue(), Boolean.box)
+    withWasNullCheck[Double]("DOUBLE PRECISION", Types.DOUBLE, _.getDouble(_), _.setDouble(_, _))
+  val boolean: TypeOf[Boolean] = withWasNullCheck("BOOLEAN", Types.BOOLEAN, _.getBoolean(_), _.setBoolean(_, _))
 
-  def varchar(n: Int): TypeOf[String] = tc(JdbcCodec.byClass[String](s"VARCHAR($n)", Types.VARCHAR))
+  def decimal: TypeOf[BigDecimal] =
+    withWasNullCheck(s"NUMERIC", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
+      .imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
+
+  def decimalN(m: Int): TypeOf[BigDecimal] =
+    withWasNullCheck(s"DECIMAL($m)", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
+      .imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
+
+  def decimalN(m: Int, n: Int): TypeOf[BigDecimal] =
+    withWasNullCheck(s"DECIMAL($m, $n)", Types.DECIMAL, _.getBigDecimal(_), _.setBigDecimal(_, _))
+      .imap(jbd => scala.math.BigDecimal(jbd))(bd => bd.bigDecimal)
+
+  def varchar(n: Int): TypeOf[String] =
+    withWasNullCheck(s"VARCHAR($n)", Types.VARCHAR, _.getString(_), _.setString(_, _))
 
   override def defaultStringType: TypeOf[String] = varchar(254)
 
-  val date: TypeOf[Date] = tc(JdbcCodec.byClass[Date]("DATE", Types.DATE))
-  val time: TypeOf[Time] = tc(JdbcCodec.byClass[Time]("TIME", Types.TIME))
+  val date: TypeOf[Date] = withWasNullCheck("DATE", Types.DATE, _.getDate(_), _.setDate(_, _))
+  val time: TypeOf[Time] = withWasNullCheck("TIME", Types.TIME, _.getTime(_), _.setTime(_, _))
 
-  val timeWithTimezone: TypeOf[Time] = tc(JdbcCodec.byClass[Time]("TIME WITH TIMEZONE", Types.TIME_WITH_TIMEZONE))
+  val timeWithTimezone: TypeOf[Time] =
+    withWasNullCheck[Time]("TIME WITH TIMEZONE", Types.TIME_WITH_TIMEZONE, _.getTime(_), _.setTime(_, _))
 
-  val timestamp: TypeOf[Timestamp] = tc(JdbcCodec.byClass[Timestamp]("TIMESTAMP", Types.TIMESTAMP))
+  val timestamp: TypeOf[Timestamp] =
+    withWasNullCheck[Timestamp]("TIMESTAMP", Types.TIMESTAMP, _.getTimestamp(_), _.setTimestamp(_, _))
 
   val timestampWithTimezone: TypeOf[Timestamp] =
-    tc(JdbcCodec.byClass[Timestamp]("TIMESTAMP WITH TIMEZONE", Types.TIMESTAMP_WITH_TIMEZONE))
+    withWasNullCheck("TIMESTAMP WITH TIMEZONE", Types.TIMESTAMP_WITH_TIMEZONE, _.getTimestamp(_), _.setTimestamp(_, _))
 
-  trait ArrayMapping[A]:
-    def makeArrayType(inner: SelectedType[JdbcCodec, A]): TypeOf[Seq[A]]
+  lazy val blob: TypeOf[Seq[Byte]] =
+    withWasNullCheck("BYTEA", Types.BLOB, _.getBytes(_), _.setBytes(_, _)).imap(_.toSeq)(_.toArray)
 
-  val ArrayMapping: ArrayMappingCompanion
-  trait ArrayMappingCompanion:
-    given ArrayMapping[Byte] with
-      override def makeArrayType(inner: SelectedType[JdbcCodec, Byte]): TypeOf[Seq[Byte]] =
-        tc(
-          JdbcCodec.simple(
-            "BLOB",
-            (a, b) => Option(a.getBytes(b)).map(_.toSeq),
-            (a, b, c) => a.setBytes(b, c.fold(null)(_.toArray))
-          )
-        )
-
-  lazy val blob: TypeOf[Seq[Byte]] = ArrayMapping.given_ArrayMapping_Byte.makeArrayType(
-    primitive[java.lang.Byte, Byte]("BYTE", Types.TINYINT, _.byteValue(), Byte.box).notNull
-  )
-
-  def array[A](inner: SelectedType[JdbcCodec, A])(using mapping: ArrayMapping[A]): TypeOf[Seq[A]] =
-    mapping.makeArrayType(inner)
-
-object JdbcAnsiTypes extends JdbcAnsiTypes:
-  override val ArrayMapping: ArrayMappingCompanion = new ArrayMappingCompanion {}
+object JdbcAnsiTypes extends JdbcAnsiTypes

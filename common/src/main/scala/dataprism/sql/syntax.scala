@@ -2,14 +2,16 @@ package dataprism.sql
 
 import scala.collection.mutable
 
-extension [A, Codec[_]](a: A)(using SqlInterpolation[Codec]) def asArg(tpe: Codec[A]): SqlArg[Codec] = SqlArg.SqlArgObj(Seq(a), tpe)
-extension [A, Codec[_]](a: Seq[A])(using SqlInterpolation[Codec]) def asBatchArg(tpe: Codec[A]): SqlArg[Codec] = SqlArg.SqlArgObj(a, tpe)
+extension [A, Codec[_]](a: A)(using SqlInterpolation[Codec])
+  def asArg(tpe: Codec[A]): SqlArg[Codec] = SqlArg.SqlArgObj(Seq(a), tpe)
+extension [A, Codec[_]](a: Seq[A])(using SqlInterpolation[Codec])
+  def asBatchArg(tpe: Codec[A]): SqlArg[Codec] = SqlArg.SqlArgObj(a, tpe)
 
 //noinspection ScalaFileName
 trait SqlInterpolation[Type[_]]
 
 extension (sc: StringContext)
-  def sql[Type[_]](args: SqlInterpolation[Type] ?=> (SqlArg[Type] | SqlStr[Type])*): SqlStr[Type] =
+  def sql[Type[_]](args: SqlInterpolation[Type] ?=> SqlArg[Type] | SqlStr[Type]*): SqlStr[Type] =
     given sqlInterpolation: SqlInterpolation[Type] = new SqlInterpolation[Type] {}
     StringContext.checkLengths(args, sc.parts)
 
