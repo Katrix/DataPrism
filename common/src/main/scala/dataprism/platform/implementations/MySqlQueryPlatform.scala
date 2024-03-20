@@ -20,6 +20,9 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
   override protected val InOrderByCapability: Unit       = ()
 
   given DeleteUsingCapability with  {}
+  
+  //TODO: Support MySql variant
+  //given UpdateFromCapability with {}
 
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](
