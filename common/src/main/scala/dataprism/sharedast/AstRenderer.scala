@@ -43,10 +43,11 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
 
       case SqlExpr.BinaryOperation.Concat => sql"concat($lhsr, $rhsr)"
 
-      case SqlExpr.BinaryOperation.Plus      => normal("+")
-      case SqlExpr.BinaryOperation.Minus     => normal("-")
-      case SqlExpr.BinaryOperation.Multiply  => normal("*")
-      case SqlExpr.BinaryOperation.Divide    => sql"(${renderExpr(lhs)} / NULLIF(${renderExpr(rhs)}, 0))" //Some databases throw an exception on division by 0
+      case SqlExpr.BinaryOperation.Plus     => normal("+")
+      case SqlExpr.BinaryOperation.Minus    => normal("-")
+      case SqlExpr.BinaryOperation.Multiply => normal("*")
+      case SqlExpr.BinaryOperation.Divide =>
+        sql"(${renderExpr(lhs)} / NULLIF(${renderExpr(rhs)}, 0))" // Some databases throw an exception on division by 0
       case SqlExpr.BinaryOperation.Remainder => normal("%")
 
       case SqlExpr.BinaryOperation.BitwiseAnd => normal("&")
@@ -224,7 +225,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     case SqlExpr.UnaryOp(expr, _)                 => exprIsImmutable(expr)
     case SqlExpr.BinOp(lhs, rhs, _)               => exprIsImmutable(lhs) && exprIsImmutable(rhs)
     case SqlExpr.FunctionCall(functionCall, args) => args.forall(exprIsImmutable) && functionIsImmutable(functionCall)
-    case SqlExpr.PreparedArgument(_, _)           => false //Disables optimizing these away, which could go badly
+    case SqlExpr.PreparedArgument(_, _)           => false // Disables optimizing these away, which could go badly
     case SqlExpr.Null()                           => true
     case SqlExpr.IsNull(expr)                     => exprIsImmutable(expr)
     case SqlExpr.IsNotNull(expr)                  => exprIsImmutable(expr)
@@ -497,18 +498,23 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
 
     val all = if data.all then sql"ALL" else sql""
 
-    def parenthesis(select: SelectAst[Codec]) =
+    def parenthesis(select: SelectAst[Codec], forceParenthesis: Boolean) =
       val str = renderSelect(select)
       if parenthesisAroundSetOps then sql"($str)"
       // Values use union operators to emulate aliases
-      else if select.isInstanceOf[SelectAst.Values[Codec]] then sql"SELECT * FROM ($str)"
+      else if forceParenthesis && (select.isInstanceOf[SelectAst.Values[Codec]] || select.isInstanceOf[SelectAst.SetOperator[Codec]]) then
+        // TODO: Consider having aliases for all SelectAst values
+        val alias = select match
+          case SelectAst.Values(_, Some(alias), _) => SqlStr.const(alias)
+          case _                                   => sql"sq"
+        sql"SELECT * FROM ($str) $alias"
       else str
 
     spaceConcat(
-      parenthesis(data.lhs),
+      parenthesis(data.lhs, forceParenthesis = false),
       SqlStr.const(keyword),
       all,
-      parenthesis(data.rhs)
+      parenthesis(data.rhs, forceParenthesis = true)
     )
 
   protected def renderOrderBy(orderBy: SelectAst.OrderBy[Codec]): SqlStr[Codec] =

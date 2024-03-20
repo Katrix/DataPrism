@@ -5,4 +5,6 @@ import dataprism.PlatformDbValueSuite
 import dataprism.jdbc.platform.SqliteJdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-class SqliteDbValueSuite extends SqliteFunSuite with PlatformDbValueSuite[IO, JdbcCodec, SqliteJdbcPlatform] {}
+object SqliteDbValueSuite extends SqliteFunSuite with PlatformDbValueSuite[JdbcCodec, SqliteJdbcPlatform] {
+  override def leastGreatestBubbleNulls: Boolean = true
+}

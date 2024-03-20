@@ -19,24 +19,24 @@ class CatsDataSourceDb[F[_]: Sync](ds: DataSource) extends TransactionalDb[F, Jd
 
   override protected def wrapTry[A](tryV: => Try[A]): F[A] = Sync[F].blocking(tryV).flatMap(Sync[F].fromTry(_))
 
-  override def runBatch(sql: SqlStr[JdbcCodec]): F[Seq[Int]] = super.runBatch(sql)/*.adaptError { case e =>
+  override def runBatch(sql: SqlStr[JdbcCodec]): F[Seq[Int]] = super.runBatch(sql).adaptError { case e =>
     new DescriptiveSqlException(sql.str, e)
-  }*/
+  }
 
-  override def run(sql: SqlStr[JdbcCodec]): F[Int] = super.run(sql)/*.adaptError { case e =>
+  override def run(sql: SqlStr[JdbcCodec]): F[Int] = super.run(sql).adaptError { case e =>
     new DescriptiveSqlException(sql.str, e)
-  }*/
+  }
 
   override def runIntoSimple[Res](sql: SqlStr[JdbcCodec], dbTypes: JdbcCodec[Res]): F[Seq[Res]] =
-    super.runIntoSimple(sql, dbTypes)/*.adaptError { case e =>
+    super.runIntoSimple(sql, dbTypes).adaptError { case e =>
       new DescriptiveSqlException(sql.str, e)
-    }*/
+    }
 
   override def runIntoRes[Res[_[_]]](sql: SqlStr[JdbcCodec], dbTypes: Res[JdbcCodec], minRows: Int, maxRows: Int)(
       using FT: TraverseKC[Res]
-  ): F[Seq[Res[Id]]] = super.runIntoRes(sql, dbTypes, minRows, maxRows)/*.adaptError { case e =>
+  ): F[Seq[Res[Id]]] = super.runIntoRes(sql, dbTypes, minRows, maxRows).adaptError { case e =>
     new DescriptiveSqlException(sql.str, e)
-  }*/
+  }
 
   override def transaction[A](f: TransactionDb[F, JdbcCodec] ?=> F[A])(
       using NotGiven[TransactionDb[F, JdbcCodec]]

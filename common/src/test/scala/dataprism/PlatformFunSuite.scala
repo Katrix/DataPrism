@@ -1,17 +1,34 @@
 package dataprism
 
+import cats.effect.{IO, Resource}
+import dataprism.PlatformFunSuite.DbToTest
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.Db
-import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
+import weaver.scalacheck.Checkers
+import weaver.{Expectations, IOSuite, Log, TestName}
 
-trait PlatformFunSuite[F[_], Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }](
+trait PlatformFunSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }](
     val platform: Platform
-) extends CatsEffectSuite,
-      ScalaCheckEffectSuite:
+) extends IOSuite,
+      Checkers:
 
-  type DbType = Db[F, Codec0]
-  def dbFixture: Fixture[Db[F, Codec0]]
-  
-  def clueOp[A, Op <: platform.Operation[A]](op: Op): Op =
-    clue(op.sqlAndTypes._1.str)
-    op
+  def dbToTest: DbToTest
+
+  type DbType       = Db[IO, Codec0]
+  override type Res = DbType
+
+  def dbTest(name: TestName)(run: DbType ?=> IO[Expectations]): Unit = test(name): db =>
+    given DbType = db
+    run
+
+  def dbLogTest(name: TestName)(run: DbType ?=> Log[IO] => IO[Expectations]): Unit = test(name): (db, log) =>
+    given DbType = db
+    run(log)
+
+object PlatformFunSuite:
+  enum DbToTest:
+    case Postgres
+    case MySql57
+    case MySql8
+    case H2
+    case Sqlite

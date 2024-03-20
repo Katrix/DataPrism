@@ -1,8 +1,7 @@
 package dataprism.jdbc.mysql8
 
-import cats.effect.IO
 import dataprism.PlatformValueSourceSuite
-import dataprism.jdbc.platform.MySqlJdbcPlatform
+import dataprism.jdbc.platform.MySql8JdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-class MySql8ValueSourceSuite extends MySql8FunSuite with PlatformValueSourceSuite[IO, JdbcCodec, MySqlJdbcPlatform] {}
+object MySql8ValueSourceSuite extends MySql8FunSuite with PlatformValueSourceSuite[JdbcCodec, MySql8JdbcPlatform]

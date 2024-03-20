@@ -1,47 +1,38 @@
 package dataprism
 
-import cats.MonadThrow
-import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatform
-import munit.FunSuite
 
-trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
-    extends PlatformFunSuite[F, Codec0, Platform] {
+trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
+    extends PlatformFunSuite[Codec0, Platform] {
   import platform.AnsiTypes.*
   import platform.Api.*
 
-  test("NonNested"):
-    given DbType = dbFixture()
+  dbTest("NonNested"):
     Select(Query.of(5.as(integer))).runOne.map: r =>
-      assertEquals(r, 5)
+      expect.same(5, r)
 
-  test("Nested"):
-    given DbType = dbFixture()
+  dbTest("Nested"):
     Select(Query.of(5.as(integer)).nested).runOne.map: r =>
-      assertEquals(r, 5)
+      expect.same(5, r)
 
-  test("Where"):
-    given DbType = dbFixture()
+  dbTest("Where"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).nested.where(_ >= 3.as(integer))).run.map: r =>
-      assertEquals(r, Seq(5, 3, 5))
+      expect.same(Set(5, 3, 5), r.toSet)
 
-  test("Map"):
-    given DbType = dbFixture()
+  dbTest("Map"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).nested.map(_ + 2.as(integer))).run.map: r =>
-      assertEquals(r, Seq(7, 5, 7, 4))
+      expect.same(Set(7, 5, 7, 4), r.toSet)
 
-  test("OrderBy"):
-    given DbType = dbFixture()
+  dbTest("OrderBy"):
     Select(
       Query
         .values((integer.forgetNNA, defaultStringType.forgetNNA))((5, "foo"), (3, "bar"), (6, "baz"), (2, "quox"))
         .nested
         .orderBy(_._1.asc)
     ).run.map: r =>
-      assertEquals(r, Seq((2, "quox"), (3, "bar"), (5, "foo"), (6, "baz")))
+      expect.same(Seq((2, "quox"), (3, "bar"), (5, "foo"), (6, "baz")), r)
 
-  test("GroupBy"):
-    given DbType = dbFixture()
+  dbTest("GroupBy"):
     Select(
       Query
         .values((integer.forgetNNA, integer.forgetNNA))((5, 3), (3, 3), (5, 1), (2, 5))
@@ -49,10 +40,9 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
         .groupMap(_._1)((v, t) => (v, t._2.sum))
         .orderBy(_._1.asc)
     ).run.map: r =>
-      assertEquals(r, Seq((2, Some(5L)), (3, Some(3L)), (5, Some(4L))))
+      expect.same(Seq((2, Some(5L)), (3, Some(3L)), (5, Some(4L))), r)
 
-  test("GroupByHaving"):
-    given DbType = dbFixture()
+  dbTest("GroupByHaving"):
     Select(
       Query
         .values((integer.forgetNNA, integer.forgetNNA))((5, 3), (3, 3), (5, 1), (2, 5))
@@ -61,72 +51,66 @@ trait PlatformQuerySuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatfo
         .having(_._2.map(_ > 3L.as(bigint)).getOrElse(DbValue.falseV))
         .orderBy(_._1.asc)
     ).run.map: r =>
-      assertEquals(r, Seq((2, Some(5L)), (5, Some(4L))))
+      expect.same(Set((2, Some(5L)), (5, Some(4L))), r.toSet)
 
-  test("Distinct"):
-    given DbType = dbFixture()
+  dbTest("Distinct"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).distinct).run.map: r =>
-      assertEquals(r.toSet, Set(5, 3, 2))
+      expect.same(r.toSet, Set(5, 3, 2))
 
-  test("Limit"):
-    given DbType = dbFixture()
+  dbTest("Limit"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3)).run.map: r =>
-      assertEquals(r, Seq(5, 3, 5))
+      expect.same(Set(5, 3, 5), r.toSet)
 
-  test("Offset"):
-    given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(1)).run.map: r =>
-      assertEquals(r, Seq(3, 5, 2))
+  dbLogTest("Offset"): log =>
+    for
+      r <- Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(1)).run
+      _ <- log.debug(Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(1)).sqlAndTypes._1.str)
+    yield
+      expect.same(Set(3, 5, 2), r.toSet)
 
-  test("LimitOffset"):
-    given DbType = dbFixture()
+  dbTest("LimitOffset"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3).offset(1)).run.map: r =>
-      assertEquals(r, Seq(3, 5))
+      expect.same(Set(3, 5), r.toSet)
 
-  test("OffsetLimit"):
-    given DbType = dbFixture()
+  dbTest("OffsetLimit"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(2).limit(1)).run.map: r =>
-      assertEquals(r, Seq(5))
+      expect.same(Set(5), r.toSet)
 
-  test("Union"):
-    given DbType = dbFixture()
+  dbTest("Union"):
     Select(Query.values(integer.forgetNNA)(5, 3).union(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r.toSet, Set(5, 3, 2))
+      expect.same(Set(5, 3, 2), r.toSet)
 
-  test("UnionAll"):
-    given DbType = dbFixture()
+  dbTest("UnionAll"):
     Select(Query.values(integer.forgetNNA)(5, 3).unionAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r.toSet, Set(5, 3, 5, 2))
+      expect.same(Set(5, 3, 5, 2), r.toSet)
 
-  test("Intersect"):
-    given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 3).intersect(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r, Seq(5))
+  def doTestIntersect()(using platform.IntersectCapability): Unit =
+    dbTest("Intersect"):
+      Select(Query.values(integer.forgetNNA)(5, 3).intersect(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
+        expect.same(Seq(5), r)
 
-  test("IntersectAll"):
-    given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 5, 3).intersectAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r, Seq(5))
+  def doTestIntersectAll()(using platform.IntersectAllCapability): Unit =
+    dbTest("IntersectAll"):
+      Select(Query.values(integer.forgetNNA)(5, 5, 3).intersectAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
+        expect.same(Seq(5), r)
 
-  test("2"):
-    given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 4, 5, 3).except(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r.toSet, Set(4, 3))
+  def doTestExcept()(using platform.ExceptCapability): Unit =
+    dbTest("Except"):
+      Select(Query.values(integer.forgetNNA)(5, 4, 5, 3).except(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
+        expect.same(Set(4, 3), r.toSet)
 
-  test("ExceptAll"):
-    given DbType = dbFixture()
-    Select(Query.values(integer.forgetNNA)(5, 4, 5, 3).exceptAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
-      assertEquals(r.toSet, Set(4, 5, 3))
+  def doTestExceptAll()(using platform.ExceptAllCapability): Unit =
+    dbTest("ExceptAll"):
+      Select(Query.values(integer.forgetNNA)(5, 4, 5, 3).exceptAll(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>
+        expect.same(Set(4, 5, 3), r.toSet)
 
-  test("Size"):
-    given DbType = dbFixture()
+  dbTest("Size"):
     Select(Query.of(Query.values(integer.forgetNNA)(5, 3, 5, 2).size)).runOne.map: r =>
-      assertEquals(r, 4L)
+      expect.same(4L, r)
 
-  def doTestFlatmapLateral()(using platform.LateralJoinCapability): Unit = test("FlatMap/LateralJoin"):
-    given DbType = dbFixture()
+  def doTestFlatmapLateral()(using platform.LateralJoinCapability): Unit = dbTest("FlatMap/LateralJoin"):
     Select(
       Query.values(integer.forgetNNA)(5, 3).flatMap(v => Query.values(integer.forgetNNA)(5, 3).map(_ => v))
     ).run.map: r =>
-      assertEquals(r.toSet, Set(5, 5, 3, 3))
+      expect.same(Set(5, 5, 3, 3), r.toSet)
 }

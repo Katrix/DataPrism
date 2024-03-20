@@ -25,6 +25,9 @@ trait H2QueryPlatform extends DefaultCompleteSqlQueryPlatform {
   override protected val InGroupByCapability: Unit       = ()
   override protected val InHavingCapability: Unit        = ()
   override protected val InOrderByCapability: Unit       = ()
+  
+  given ExceptCapability with {}
+  given IntersectCapability with {}
 
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](

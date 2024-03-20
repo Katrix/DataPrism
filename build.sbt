@@ -31,13 +31,13 @@ lazy val noPublishSettings = Seq(publish := {}, publishLocal := {}, publishArtif
 lazy val common = project.settings(
   commonSettings,
   publishSettings,
-  name                                   := "dataprism-common",
-  libraryDependencies += "net.katsstuff" %% "perspective"             % "0.2.0+17-d7d68444-SNAPSHOT",
-  libraryDependencies += "net.katsstuff" %% "perspective-derivation"  % "0.2.0+17-d7d68444-SNAPSHOT",
-  libraryDependencies += "org.scalameta" %% "munit"                   % "1.0.0-M10" % Test,
-  libraryDependencies += "org.typelevel" %% "scalacheck-effect-munit" % "1.0.4"     % Test,
-  libraryDependencies += "org.typelevel" %% "munit-cats-effect"       % "2.0.0-M4"  % Test,
-  libraryDependencies += "org.scalameta" %% "munit-scalacheck"        % "1.0.0-M10" % Test
+  name                                         := "dataprism-common",
+  libraryDependencies += "net.katsstuff"       %% "perspective"            % "0.2.0+17-d7d68444-SNAPSHOT",
+  libraryDependencies += "net.katsstuff"       %% "perspective-derivation" % "0.2.0+17-d7d68444-SNAPSHOT",
+  libraryDependencies += "com.disneystreaming" %% "weaver-cats"            % "0.8.4" % Test,
+  libraryDependencies += "com.disneystreaming" %% "weaver-scalacheck"      % "0.8.4" % Test,
+  libraryDependencies += "io.chrisdavenport"   %% "cats-scalacheck"        % "0.3.2" % Test,
+  testFrameworks += new TestFramework("weaver.framework.CatsEffect")
 )
 
 lazy val jdbc = project

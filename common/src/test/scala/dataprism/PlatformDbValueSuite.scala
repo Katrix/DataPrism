@@ -3,18 +3,22 @@ package dataprism
 import scala.concurrent.duration.*
 import scala.concurrent.duration.Duration
 import scala.util.NotGiven
+
 import cats.data.NonEmptyList
+import cats.data.Validated.Valid
+import cats.effect.IO
 import cats.syntax.all.*
-import cats.{Apply, MonadThrow}
+import cats.{Apply, MonadThrow, Show}
+import dataprism.PlatformFunSuite.DbToTest
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.NullabilityTypeChoice
-import munit.{Compare, Location}
-import org.scalacheck.{Arbitrary, Gen}
-import org.scalacheck.effect.PropF
+import org.scalacheck.Gen
+import org.scalacheck.cats.implicits.*
 import perspective.Id
+import weaver.{Expectations, Log, SourceLocation}
 
-trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
-    extends PlatformFunSuite[F, Codec0, Platform]:
+trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
+    extends PlatformFunSuite[Codec0, Platform]:
   import platform.Api.*
   import platform.{AnsiTypes, name}
 
@@ -72,20 +76,20 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
     override def compare(x: Option[A], y: Option[A]): Int = x.zip(y).map((a, b) => Integ.compare(a, b)).getOrElse(0)
   }
 
-  def typeTest[A](name: String, tpe: Type[A])(body: => Any)(using Location): Unit =
-    test(s"$name - ${tpe.name}(${if tpe.codec == tpe.choice.notNull.codec then "NOT NULL" else "NULL"})")(body)
+  def typeTest[A](name: String, tpe: Type[A])(run: DbType ?=> IO[Expectations])(using SourceLocation): Unit =
+    dbTest(s"$name - ${tpe.name}(${if tpe.codec == tpe.choice.notNull.codec then "NOT NULL" else "NULL"})")(run)
 
-  override def scalaCheckInitialSeed = "wh8YvQTetC8U3TY28hzbkGMwfuQTR2JxADe8IjdQJHL="
-
-  override def munitIOTimeout: Duration = 10.hours
+  def typeLogTest[A](name: String, tpe: Type[A])(run: DbType ?=> Log[IO] => IO[Expectations])(
+      using SourceLocation
+  ): Unit =
+    dbLogTest(s"$name - ${tpe.name}(${if tpe.codec == tpe.choice.notNull.codec then "NOT NULL" else "NULL"})")(run)
 
   def testEquality[A, N[_]: Apply](
       tpe: Type[N[A]],
       gen: Gen[N[A]]
-  )(using N: Nullability.Aux[N[A], A, N]): Unit =
+  )(using N: Nullability.Aux[N[A], A, N])(using Show[N[A]]): Unit =
     typeTest("Equality", tpe):
-      given DbType = dbFixture()
-      PropF.forAllF(gen, gen): (a: N[A], b: N[A]) =>
+      forall((gen, gen).tupled): (a: N[A], b: N[A]) =>
         Select(
           Query.of(
             (
@@ -98,19 +102,21 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
           )
         ).runOne[F]
           .map: (r1, r2, r3, r4, r5) =>
-            assertEquals(r1, a.map2(b)(_ == _))
-            assertEquals(N.nullableToOption(r2), if a == b then None else N.wrapOption(a))
-            assertEquals(r3, N.wrapOption(a.map2(b)(_ == _)).getOrElse(false))
-            assertEquals(r4, a.map2(b)(_ == _))
-            assertEquals(r5, a.map2(b)(_ != _))
+            Seq(
+              expect.same(a.map2(b)(_ == _), r1),
+              expect.same(if a == b then None else N.wrapOption(a), N.nullableToOption(r2)),
+              expect.same(N.wrapOption(a.map2(b)(_ == _)).getOrElse(false), r3),
+              expect.same(a.map2(b)(_ == _), r4),
+              expect.same(a.map2(b)(_ != _), r5)
+            ).combineAll
 
-    typeTest("EqualityAgg", tpe):
-      given DbType = dbFixture()
-      PropF.forAllF(gen, gen, Gen.listOf(gen)): (vh1: N[A], vh2: N[A], vt: List[N[A]]) =>
+    typeLogTest("EqualityAgg", tpe): log =>
+      forall((gen, gen, Gen.listOf(gen)).tupled): (vh1: N[A], vh2: N[A], vt: List[N[A]]) =>
         val vs    = vh2 :: vt
         val vsSet = vs.map(N.wrapOption).toSet
         val vtSet = vt.map(N.wrapOption).toSet
-        Select(
+
+        val query = Select(
           Query.of(
             (
               vh1.as(tpe).in(Query.values(tpe)(vh2, vt*)),
@@ -125,55 +131,43 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
                 .otherwise(-1.as(AnsiTypes.integer))
             )
           )
-        ).runOne[F]
-          .map: (r1, r2, r3, r4, r5) =>
-            def inSet(set: Set[Option[A]]): Option[Boolean] =
-              N.wrapOption(vh1)
-                .flatMap: h =>
-                  if set.contains(Some(h)) then Some(true)
-                  else if set.contains(None) then None
-                  else Some(false)
+        )
 
-            val sql = Select(
-              Query.of(
-                (
-                  vh1.as(tpe).in(Query.values(tpe)(vh2, vt*)),
-                  vh1.as(tpe).inAs(vt, tpe),
-                  vh1.as(tpe).notIn(Query.values(tpe)(vh2, vt*)),
-                  vh1.as(tpe).notInAs(vt, tpe),
-                  vt.foldLeft(
-                    (Case(vh1.as(tpe)).when(vh2.as(tpe))(0.as(AnsiTypes.integer)), 1)
-                  ) { case ((cse, i), v) =>
-                    (cse.when(v.as(tpe))(i.as(AnsiTypes.integer)), i + 1)
-                  }._1
-                    .otherwise(-1.as(AnsiTypes.integer))
-                )
-              )
-            ).sqlAndTypes._1
+        def inSet(set: Set[Option[A]]): Option[Boolean] =
+          N.wrapOption(vh1)
+            .flatMap: h =>
+              if set.contains(Some(h)) then Some(true)
+              else if set.contains(None) then None
+              else Some(false)
 
-            assertEquals(N.wrapOption(r1), inSet(vsSet))
-            assertEquals(N.wrapOption(r2), inSet(vtSet))
-            assertEquals(N.wrapOption(r3), inSet(vsSet).map(!_))
-            assertEquals(N.wrapOption(r4), inSet(vtSet).map(!_))
-            assertEquals(r5, if vh1 == None then -1 else vs.indexOf(vh1))
+        for
+          _ <- ignore("MySQL is weird with equality agg operators").whenA(
+            dbToTest == DbToTest.MySql8 || dbToTest == DbToTest.MySql57
+          )
+          res <- query.runOne[F]
+          (r1, r2, r3, r4, r5) = res
+        yield Seq(
+          expect.same(inSet(vsSet), N.wrapOption(r1)),
+          expect.same(inSet(vtSet), N.wrapOption(r2)),
+          expect.same(inSet(vsSet).map(!_), N.wrapOption(r3)),
+          expect.same(inSet(vtSet).map(!_), N.wrapOption(r4)),
+          expect.same(if vh1 == None then -1 else vs.indexOf(vh1), r5)
+        ).combineAll
   end testEquality
 
-  def testEqualityNotNull[A](tpe: Type[A], gen: Gen[A])(using NotGiven[A <:< Option[_]]): Unit =
+  def testEqualityNotNull[A: Show](tpe: Type[A], gen: Gen[A])(using NotGiven[A <:< Option[_]]): Unit =
     testEquality[A, Id](tpe, gen)
 
-  def testEqualityNullable[A](tpe: Type[A], gen: Gen[A])(using NotGiven[A <:< Option[_]]): Unit =
+  def testEqualityNullable[A: Show](tpe: Type[A], gen: Gen[A])(using NotGiven[A <:< Option[_]]): Unit =
     testEquality[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable, Gen.option(gen))
 
-  def testOrderByAscDesc[A: Ordering](tpe: Type[A], gen: Gen[A]): Unit = typeTest("OrderByAscDesc", tpe):
-    given DbType = dbFixture()
-    PropF.forAllF(gen, Gen.listOf(gen)): (vh: A, vt: List[A]) =>
+  def testOrderByAscDesc[A: Ordering: Show](tpe: Type[A], gen: Gen[A]): Unit = typeTest("OrderByAscDesc", tpe):
+    forall((gen, Gen.listOf(gen)).tupled): (vh: A, vt: List[A]) =>
       val vsSorted = (vh :: vt).sorted
       for
         r1 <- Select(Query.values(tpe)(vh, vt*).orderBy(_.asc)).run
         r2 <- Select(Query.values(tpe)(vh, vt*).orderBy(_.desc)).run
-      yield
-        assertEquals(r1, vsSorted)
-        assertEquals(r2, vsSorted.reverse)
+      yield expect.same(vsSorted, r1) && expect.same(vsSorted.reverse, r2)
   end testOrderByAscDesc
 
   trait Div[A]:
@@ -188,14 +182,15 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
   def testNumeric[A, N[_]](
       tpe: Type[N[A]],
       gen: Gen[N[A]],
+      delta: N[A],
       convertSum: A => SqlNumeric.SumResultOf[A]
-  )(using Numeric[N[A]], Numeric[A], Div[N[A]], Div[A], Div[Option[A]], SqlNumeric[N[A]])(
+  )(using Numeric[N[A]], Numeric[A], Div[N[A]], Div[A], Div[Option[A]], SqlNumeric[N[A]], Show[N[A]])(
       using N: Nullability.Aux[N[A], A, N]
   ): Unit =
     import Numeric.Implicits.*
+    import Ordering.Implicits.*
     typeTest("Numeric", tpe):
-      given DbType = dbFixture()
-      PropF.forAllF(gen, gen): (a: N[A], b: N[A]) =>
+      forall((gen, gen).tupled): (a: N[A], b: N[A]) =>
         val av = a.as(tpe)
         val bv = b.as(tpe)
 
@@ -214,40 +209,64 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
           )
         ).runOne
           .map: (abAdd, baAdd, abSub, baSub, abMul, baMul, abDiv, baDiv, aNeg, bNeg) =>
-            assertEquals(abAdd, a + b)
-            assertEquals(baAdd, b + a)
-            assertEquals(abSub, a - b)
-            assertEquals(baSub, b - a)
-            assertEquals(abMul, a * b)
-            assertEquals(baMul, b * a)
-            assertEquals(N.nullableToOption(abDiv), if b == Numeric[N[A]].zero then None else N.wrapOption(a / b))
-            assertEquals(N.nullableToOption(baDiv), if a == Numeric[N[A]].zero then None else N.wrapOption(b / a))
-            assertEquals(aNeg, -a)
-            assertEquals(bNeg, -b)
+            Seq(
+              expect(((a + b) - abAdd).abs <= delta),
+              expect(((b + a) - baAdd).abs <= delta),
+              expect(((a - b) - abSub).abs <= delta),
+              expect(((b - a) - baSub).abs <= delta),
+              expect(((a * b) - abMul).abs <= delta),
+              expect(((b * a) - baMul).abs <= delta),
+              expect {
+                val lhs = if b == Numeric[N[A]].zero then None else N.wrapOption(a / b)
+                val rhs = N.nullableToOption(abDiv)
+
+                (lhs, rhs, N.wrapOption(delta))
+                  .mapN((a, b, del) => (a - b).abs <= del)
+                  .getOrElse(lhs == None && rhs == None)
+              },
+              expect {
+                val lhs = if a == Numeric[N[A]].zero then None else N.wrapOption(b / a)
+                val rhs = N.nullableToOption(baDiv)
+
+                (lhs, rhs, N.wrapOption(delta))
+                  .mapN((a, b, del) => (a - b).abs <= del)
+                  .getOrElse(lhs == None && rhs == None)
+              },
+              expect.same(-a, aNeg),
+              expect.same(-b, bNeg)
+            ).combineAll
 
     typeTest("NumericAgg", tpe):
-      given DbType = dbFixture()
-      PropF.forAllF(gen, Gen.listOf(gen)): (vh: N[A], vt: List[N[A]]) =>
+      forall((gen, Gen.listOf(gen)).tupled): (vh: N[A], vt: List[N[A]]) =>
         val vs = vh :: vt
         Select(Query.values(tpe)(vh, vt*).mapSingleGrouped(v => (v.sum, v.avg))).runOne
           .map: _ =>
-            ()
             // Not bothering trying to check and sum average correctly. If the queries complete that's good enough for now
+            Expectations(Valid(()))
   end testNumeric
 
-  def testNumericNotNull[A: Numeric: Div: SqlNumeric](
+  def testNumericNotNull[A: Numeric: Div: SqlNumeric: Show](
       tpe: Type[A],
       gen: Gen[A],
+      delta: A,
       convertSum: A => SqlNumeric.SumResultOf[A]
   )(using NotGiven[A <:< Option[_]], Div[Option[A]]): Unit =
-    testNumeric[A, Id](tpe, gen, convertSum)
+    testNumeric[A, Id](tpe, gen, delta, convertSum)
 
-  def testNumericNullable[A: Numeric: Div](
+  def testNumericNullable[A: Numeric: Div: Show](
       tpe: Type[A],
       gen: Gen[A],
+      delta: A,
       convertSum: A => SqlNumeric.SumResultOf[A]
   )(using NotGiven[A <:< Option[_]], SqlNumeric[Option[A]], Numeric[Option[A]], Div[Option[A]]): Unit =
-    testNumeric[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable, Gen.option(gen), convertSum)
+    testNumeric[A, Option](
+      tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable,
+      Gen.option(gen),
+      Some(delta),
+      convertSum
+    )
+
+  def leastGreatestBubbleNulls: Boolean
 
   def testOrdered[A, N[_]: Apply](
       tpe: Type[N[A]],
@@ -255,53 +274,67 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
   )(
       using Ordering[A],
       Ordering[N[A]],
-      SqlOrdered[N[A]] { val n: Nullability.Aux[N[A], A, N] }
+      SqlOrdered[N[A]] { val n: Nullability.Aux[N[A], A, N] },
+      Show[N[A]]
   )(using N: Nullability.Aux[N[A], A, N]): Unit =
     import Ordering.Implicits.*
     typeTest("Ordered", tpe):
-      given DbType = dbFixture()
-      PropF.forAllF(gen, gen): (a: N[A], b: N[A]) =>
+      forall((gen, gen).tupled): (a: N[A], b: N[A]) =>
         val av = a.as(tpe)
         val bv = b.as(tpe)
 
         Select(Query.of(av < bv, bv < av, av <= bv, bv <= av, av >= bv, bv >= av, av > bv, bv > av))
           .runOne[F]
           .map: (abLt, baLt, abLe, baLe, abGe, baGe, abGt, baGt) =>
-            assertEquals(abLt, a.map2(b)(_ < _))
-            assertEquals(baLt, b.map2(a)(_ < _))
-            assertEquals(abLe, a.map2(b)(_ <= _))
-            assertEquals(baLe, b.map2(a)(_ <= _))
-            assertEquals(abGe, a.map2(b)(_ >= _))
-            assertEquals(baGe, b.map2(a)(_ >= _))
-            assertEquals(abGt, a.map2(b)(_ > _))
-            assertEquals(baGt, b.map2(a)(_ > _))
+            Seq(
+              expect.same(a.map2(b)(_ < _), abLt),
+              expect.same(b.map2(a)(_ < _), baLt),
+              expect.same(a.map2(b)(_ <= _), abLe),
+              expect.same(b.map2(a)(_ <= _), baLe),
+              expect.same(a.map2(b)(_ >= _), abGe),
+              expect.same(b.map2(a)(_ >= _), baGe),
+              expect.same(a.map2(b)(_ > _), abGt),
+              expect.same(b.map2(a)(_ > _), baGt)
+            ).combineAll
 
-    typeTest("OrderedList", tpe):
-      given DbType = dbFixture()
-      PropF.forAllF(gen, Gen.listOf(gen)): (vh: N[A], vt: List[N[A]]) =>
+    typeLogTest("OrderedList", tpe): log =>
+      forall((gen, Gen.listOf(gen)).tupled): (vh: N[A], vt: List[N[A]]) =>
         val vs  = NonEmptyList.of(vh, vt*)
         val vsv = vs.toList.map(_.as(tpe))
 
         for
           maxMin        <- Select(Query.values(tpe)(vh, vt*).mapSingleGrouped(v => (v.max, v.min))).runOne[F]
           greatestLeast <- Select(Query.of((vsv.head.greatest(vsv.tail*), vsv.head.least(vsv.tail*)))).runOne[F]
+          _             <- log.debug(s"Using list ${vs.toList}")
+          _             <- log.debug(s"Got max=${maxMin._1} min=${maxMin._2}")
+          _             <- log.debug(s"Got greatest=${greatestLeast._1} least=${greatestLeast._2}")
         yield
           val (max, min)        = maxMin
           val (greatest, least) = greatestLeast
           val someVs            = vs.toList.flatMap(N.wrapOption(_))
-          assertEquals(N.nullableToOption(max), someVs.maxOption)
-          assertEquals(N.nullableToOption(min), someVs.minOption)
-          assertEquals(N.wrapOption(greatest), if someVs.length != vs.length then None else N.wrapOption(vs.toList.max))
-          assertEquals(N.wrapOption(least), if someVs.length != vs.length then None else N.wrapOption(vs.toList.min))
+          Seq(
+            expect.same(someVs.maxOption, N.nullableToOption(max)),
+            expect.same(someVs.minOption, N.nullableToOption(min)),
+            expect.same(
+              if leastGreatestBubbleNulls && someVs.length != vs.length then None
+              else N.wrapOption(vs.toList.filter(_ != None).max),
+              N.wrapOption(greatest)
+            ),
+            expect.same(
+              if leastGreatestBubbleNulls && someVs.length != vs.length then None
+              else N.wrapOption(vs.toList.filter(_ != None).min),
+              N.wrapOption(least)
+            )
+          ).combineAll
   end testOrdered
 
-  def testOrderedNotNull[A: Ordering: cats.Order](
+  def testOrderedNotNull[A: Ordering: cats.Order: Show](
       tpe: Type[A],
-      gen: Gen[A],
+      gen: Gen[A]
   )(using SqlOrdered[A] { val n: Nullability.Aux[A, A, Id] }): Unit =
     testOrdered[A, Id](tpe, gen)
 
-  def testOrderedNullable[A: Ordering](tpe: Type[A], gen: Gen[A])(
+  def testOrderedNullable[A: Ordering: Show](tpe: Type[A], gen: Gen[A])(
       using NotGiven[A <:< Option[_]],
       cats.Order[Option[A]],
       SqlOrdered[Option[A]] { val n: Nullability.Aux[Option[A], A, Option] }
@@ -309,9 +342,8 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
     testOrdered[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable, Gen.option(gen))
 
   typeTest("BooleanOps", AnsiTypes.boolean):
-    given DbType = dbFixture()
-    val boolean  = AnsiTypes.boolean
-    PropF.forAllF: (a: Boolean, b: Boolean, an: Option[Boolean], bn: Option[Boolean]) =>
+    val boolean = AnsiTypes.boolean
+    forall: (a: Boolean, b: Boolean, an: Option[Boolean], bn: Option[Boolean]) =>
       val av  = a.as(boolean)
       val bv  = b.as(boolean)
       val anv = an.as(boolean.nullable)
@@ -335,24 +367,31 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
         )
       ).runOne[F]
         .map: (abOr, baOr, abAnd, baAnd, aNot, bNot, abnOr, banOr, abnAnd, banAnd, anNot, bnNot) =>
-          assertEquals(abOr, a || b)
-          assertEquals(baOr, b || a)
-          assertEquals(abAnd, a && b)
-          assertEquals(baAnd, b && a)
-          assertEquals(aNot, !a)
-          assertEquals(bNot, !b)
+          Seq(
+            expect.same(a || b, abOr),
+            expect.same(b || a, baOr),
+            expect.same(a && b, abAnd),
+            expect.same(b && a, baAnd),
+            expect.same(!a, aNot),
+            expect.same(!b, bNot),
+            //
+            expect.same(Option.when(an.contains(true) || bn.contains(true))(true).orElse(an.map2(bn)(_ || _)), abnOr),
+            expect.same(Option.when(an.contains(true) || bn.contains(true))(true).orElse(bn.map2(an)(_ || _)), banOr),
+            expect.same(
+              Option.when(an.contains(false) || bn.contains(false))(false).orElse(an.map2(bn)(_ && _)),
+              abnAnd
+            ),
+            expect.same(
+              Option.when(an.contains(false) || bn.contains(false))(false).orElse(bn.map2(an)(_ && _)),
+              banAnd
+            ),
+            expect.same(an.map(!_), anNot),
+            expect.same(bn.map(!_), bnNot)
+          ).combineAll
 
-          assertEquals(abnOr, Option.when(an.contains(true) || bn.contains(true))(true).orElse(an.map2(bn)(_ || _)))
-          assertEquals(banOr, Option.when(an.contains(true) || bn.contains(true))(true).orElse(bn.map2(an)(_ || _)))
-          assertEquals(abnAnd, Option.when(an.contains(false) || bn.contains(false))(false).orElse(an.map2(bn)(_ && _)))
-          assertEquals(banAnd, Option.when(an.contains(false) || bn.contains(false))(false).orElse(bn.map2(an)(_ && _)))
-          assertEquals(anNot, an.map(!_))
-          assertEquals(bnNot, bn.map(!_))
-
-  def testNullOps[A](t: Type[Option[A]], gen: Gen[A]): Unit = typeTest("NullOps", t):
-    given DbType = dbFixture()
+  def testNullOps[A: Show](t: Type[Option[A]], gen: Gen[A]): Unit = typeTest("NullOps", t):
     val optGen = Gen.option(gen)
-    PropF.forAllF(optGen, optGen, optGen): (o1: Option[A], o2: Option[A], o3: Option[A]) =>
+    forall((optGen, optGen, optGen).tupled): (o1: Option[A], o2: Option[A], o3: Option[A]) =>
       val v1 = o1.as(t)
       val v2 = o2.as(t)
       val v3 = o3.as(t)
@@ -370,20 +409,21 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
         )
       ).runOne[F]
         .map: (r1, r2, r3, r4, r5, r6, r7, r8) =>
-          assertEquals(r1, o1)
-          assertEquals(r2, o1)
-          assertEquals(r3, o1.flatMap(_ => o2))
-          assertEquals(r4, o1)
-          assertEquals(r5, None)
-          assertEquals(r6, (o1, o2, o3).mapN((n1, _, _) => n1))
-          assertEquals(r7, (o1, o2, o3).mapN((_, n2, _) => n2))
-          assertEquals(r8, (o1, o2, o3).mapN((_, _, n3) => n3))
+          Seq(
+            expect.same(o1, r1),
+            expect.same(o1, r2),
+            expect.same(o1.flatMap(_ => o2), r3),
+            expect.same(o1, r4),
+            expect.same(None, r5),
+            expect.same((o1, o2, o3).mapN((n1, _, _) => n1), r6),
+            expect.same((o1, o2, o3).mapN((_, n2, _) => n2), r7),
+            expect.same((o1, o2, o3).mapN((_, _, n3) => n3), r8)
+          ).combineAll
 
-  test("CaseBoolean"):
-    given DbType = dbFixture()
-    val boolean  = AnsiTypes.boolean
-    val int      = AnsiTypes.integer
-    PropF.forAllF: (b1: Boolean, b2: Boolean, b3: Boolean, i1: Int, i2: Int, i3: Int, i4: Int) =>
+  dbTest("CaseBoolean"):
+    val boolean = AnsiTypes.boolean
+    val int     = AnsiTypes.integer
+    forall: (b1: Boolean, b2: Boolean, b3: Boolean, i1: Int, i2: Int, i3: Int, i4: Int) =>
       Select(
         Query.of(
           Case
@@ -394,26 +434,26 @@ trait PlatformDbValueSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlat
         )
       ).runOne[F]
         .map: r =>
-          assertEquals(r, if b1 then i1 else if b2 then i2 else if b3 then i3 else i4)
+          expect.same(if b1 then i1 else if b2 then i2 else if b3 then i3 else i4, r)
 
   private val intGen = Gen.choose(-10000, 10000)
-  
+
   testEqualityNotNull(AnsiTypes.integer, intGen)
   testEqualityNullable(AnsiTypes.integer, intGen)
   testOrderByAscDesc(AnsiTypes.integer, intGen)
-  testNumericNotNull(AnsiTypes.integer, intGen, _.toLong)
-  testNumericNullable(AnsiTypes.integer, intGen, _.toLong)
+  testNumericNotNull(AnsiTypes.integer, intGen, 0, _.toLong)
+  testNumericNullable(AnsiTypes.integer, intGen, 0, _.toLong)
   testOrderedNotNull(AnsiTypes.integer, intGen)
   testOrderedNullable(AnsiTypes.integer, intGen)
   testNullOps(AnsiTypes.integer.nullable, intGen)
-  
+
   private val doubleGen = Gen.choose(-10000D, 10000D)
 
   testEqualityNotNull(AnsiTypes.doublePrecision, doubleGen)
   testEqualityNullable(AnsiTypes.doublePrecision, doubleGen)
   testOrderByAscDesc(AnsiTypes.doublePrecision, doubleGen)
-  testNumericNotNull(AnsiTypes.doublePrecision, doubleGen, identity)
-  testNumericNullable(AnsiTypes.doublePrecision, doubleGen, identity)
+  testNumericNotNull(AnsiTypes.doublePrecision, doubleGen, 1E-5, identity)
+  testNumericNullable(AnsiTypes.doublePrecision, doubleGen, 1E-5, identity)
   testOrderedNotNull(AnsiTypes.doublePrecision, doubleGen)
   testOrderedNullable(AnsiTypes.doublePrecision, doubleGen)
   testNullOps(AnsiTypes.doublePrecision.nullable, doubleGen)

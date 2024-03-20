@@ -21,11 +21,24 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
   override protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]]): SqlStr[Codec] =
     inline def rendered                         = args.map(renderExpr).intercalate(sql", ")
     inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
+
+    def subdivided(f: String) =
+      if args.length > 100 then
+        val slidingArgs            = args.sliding(99).toSeq
+        val (handled, notHandleds) = slidingArgs.splitAt(99)
+        val handledArgs            = handled.map(args => SqlExpr.FunctionCall(call, args))
+        val notHandledArg = if notHandleds.nonEmpty then Seq(SqlExpr.FunctionCall(call, notHandleds.flatten)) else Nil
+
+        val allArgs = handledArgs ++ notHandledArg
+
+        sql"${SqlStr.const(f)}(${allArgs.map(renderExpr).intercalate(sql", ")})"
+      else normal(f)
+
     call match
       case SqlExpr.FunctionName.Max      => normal("max")
-      case SqlExpr.FunctionName.Greatest => normal("max")
+      case SqlExpr.FunctionName.Greatest => subdivided("max")
       case SqlExpr.FunctionName.Min      => normal("min")
-      case SqlExpr.FunctionName.Least    => normal("min")
+      case SqlExpr.FunctionName.Least    => subdivided("min")
       case _                             => super.renderFunctionCall(call, args)
 
   override protected def renderFrom(from: SelectAst.From[Codec]): SqlStr[Codec] = from match

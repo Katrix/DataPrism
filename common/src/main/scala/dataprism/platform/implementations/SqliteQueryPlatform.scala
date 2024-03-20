@@ -31,12 +31,18 @@ trait SqliteQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
 
   given InsertOnConflictCapability with {}
   given UpdateFromCapability with       {}
+  given FullJoinCapability with         {}
+
+  given ExceptCapability with    {}
+  given IntersectCapability with {}
 
   override protected def generateDeleteAlias: Boolean = false
   override protected def generateUpdateAlias: Boolean = false
 
   override type MapUpdateReturning[Table, _, Res] = Table => Res
-  override protected def contramapUpdateReturning[Table, From, Res](f: MapUpdateReturning[Table, From, Res]): (Table, From) => Res = (a, _) => f(a)
+  override protected def contramapUpdateReturning[Table, From, Res](
+      f: MapUpdateReturning[Table, From, Res]
+  ): (Table, From) => Res = (a, _) => f(a)
 
   type Api <: SqliteApi
   trait SqliteApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
@@ -49,7 +55,8 @@ trait SqliteQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
     }
   }
 
-  lazy val sqlRenderer: SqliteAstRenderer[Codec] = new SqliteAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
+  lazy val sqlRenderer: SqliteAstRenderer[Codec] =
+    new SqliteAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
   type DbMath = SqlDbMath
   object DbMath extends SqlDbMath

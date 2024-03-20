@@ -1,10 +1,11 @@
 package dataprism.jdbc.sqlite
 
-import cats.effect.IO
 import dataprism.PlatformValueSourceSuite
 import dataprism.jdbc.platform.SqliteJdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-class SqliteValueSourceSuite
+object SqliteValueSourceSuite
     extends SqliteFunSuite
-    with PlatformValueSourceSuite[IO, JdbcCodec, SqliteJdbcPlatform] {}
+    with PlatformValueSourceSuite[JdbcCodec, SqliteJdbcPlatform] {
+  doTestFullJoin()
+}

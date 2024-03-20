@@ -26,4 +26,3 @@ trait MySqlJdbcPlatform extends MySqlQueryPlatform {
   type Compile = SqlCompile
   object Compile extends SqlCompile
 }
-object MySqlJdbcPlatform extends MySqlJdbcPlatform

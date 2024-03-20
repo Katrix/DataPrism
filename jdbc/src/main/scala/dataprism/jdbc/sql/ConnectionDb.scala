@@ -24,7 +24,7 @@ trait ConnectionDb[F[_]: Functor] extends Db[F, JdbcCodec]:
   protected def setArgs(con: Connection, ps: PreparedStatement, args: Seq[SqlArg[JdbcCodec]], batch: Int)(
       using ResourceManager
   ): Unit =
-    for (obj, i) <- args.zipWithIndex do obj.tpe.set(ps, i + 1, obj.value(batch), con)
+    for (obj, i) <- args.zipWithIndex do obj.codec.set(ps, i + 1, obj.value(batch), con)
 
   protected def makePreparedWithBatch[A: Monoid](sql: SqlStr[JdbcCodec], con: Connection, trueBatch: Boolean)(
       use: PreparedStatement => A

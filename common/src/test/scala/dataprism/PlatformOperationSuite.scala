@@ -1,17 +1,18 @@
 package dataprism
 
-import cats.MonadThrow
 import cats.data.NonEmptyList
+import cats.kernel.Eq
 import cats.syntax.all.*
+import cats.{MonadThrow, Monoid}
 import dataprism.platform.base.MapRes
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.*
-import munit.{FunSuite, Location}
 import perspective.{DistributiveKC, Id}
+import weaver.{Expectations, SourceLocation, TestName}
 
 //noinspection SqlNoDataSourceInspection
-trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
-    extends PlatformFunSuite[F, Codec0, Platform] {
+trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
+    extends PlatformFunSuite[Codec0, Platform] {
   import PlatformOperationSuite.TestTable
   import platform.AnsiTypes.*
   import platform.Api.*
@@ -58,16 +59,22 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
       )
     yield testTableObj(name)
 
-  def testWithTable(name: String)(body: DbType ?=> Table[Codec0, TestTable] => F[Seq[TestTable[Id]]])(
-      using Location
+  def testWithTableAndExpectation(name: TestName)(
+      body: DbType ?=> Table[Codec0, TestTable] => F[(Expectations, Seq[TestTable[Id]])]
+  )(
+      using loc: SourceLocation
   ): Unit =
-    test(name):
-      given DbType = dbFixture()
+    dbTest(name):
       for
-        table    <- makeTestTable(name)
-        expected <- body(table)
-        found    <- Select(Query.from(table)).run
-      yield assertEquals(found.toSet, expected.toSet)
+        table <- makeTestTable(name.name)
+        t     <- body(table)
+        (expectations, expected) = t
+        found <- Select(Query.from(table)).run
+      yield expectations && expect.same(expected.toSet, found.toSet)(using Eq.fromUniversalEquals, loc = loc)
+
+  def testWithTable(name: TestName)(body: DbType ?=> Table[Codec0, TestTable] => F[Seq[TestTable[Id]]])(
+      using SourceLocation
+  ): Unit = testWithTableAndExpectation(name)(table => body(table).map(r => (Monoid[Expectations].empty, r)))
 
   testWithTable("Delete"): table =>
     Delete
@@ -84,20 +91,19 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
       .run
       .map(_ => originalTestTableValues.filter(v => v.a != 1 && v.a != 2))
 
-  def doTestDeleteReturning()(using platform.DeleteReturningCapability): Unit = testWithTable("DeleteReturning"):
-    table =>
+  def doTestDeleteReturning()(using platform.DeleteReturningCapability): Unit =
+    testWithTableAndExpectation("DeleteReturning"): table =>
       Delete
         .from(table)
         .where(_.a === 1.as(integer))
         .returning((v, _) => v.b)
         .run
         .map { returned =>
-          assertEquals(returned, Seq("foo"))
-          originalTestTableValues.filter(v => v.a != 1)
+          (expect.same(Seq("foo"), returned), originalTestTableValues.filter(v => v.a != 1))
         }
 
   def doTestDeleteUsingReturning()(using platform.DeleteUsingCapability, platform.DeleteReturningCapability): Unit =
-    testWithTable("DeleteUsingReturning"): table =>
+    testWithTableAndExpectation("DeleteUsingReturning"): table =>
       Delete
         .from(table)
         .using(Query.values(integer.forgetNNA)(1, 2))
@@ -105,8 +111,7 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
         .returning((v, _) => v.b)
         .run
         .map { returned =>
-          assertEquals(returned, Seq("foo", "bar"))
-          originalTestTableValues.filter(v => v.a != 1 && v.a != 2)
+          (expect.same(Seq("foo", "bar"), returned), originalTestTableValues.filter(v => v.a != 1 && v.a != 2))
         }
 
   testWithTable("InsertValues"): table =>
@@ -226,7 +231,7 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
       f: platform.MapUpdateReturning[TestTable[platform.DbValue], platform.DbValue[Int], platform.DbValue[Res]],
       expected: Seq[Res]
   )(using platform.UpdateFromCapability, platform.UpdateReturningCapability): Unit =
-    testWithTable("UpdateFromReturning"): table =>
+    testWithTableAndExpectation("UpdateFromReturning"): table =>
       Update
         .table(table)
         .from(Query.values(integer.forgetNNA)(1, 2))
@@ -235,8 +240,10 @@ trait PlatformOperationSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPl
         .returning(f)
         .run
         .map { res =>
-          assertEquals(res, expected)
-          originalTestTableValues.map(v => if v.a == 1 || v.a == 2 then v.copy(b = "next") else v)
+          (
+            expect.same(expected, res),
+            originalTestTableValues.map(v => if v.a == 1 || v.a == 2 then v.copy(b = "next") else v)
+          )
         }
 }
 object PlatformOperationSuite:

@@ -18,6 +18,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
   trait LateralJoinCapability
 
+  trait ExceptAllCapability
+  trait ExceptCapability
+  trait IntersectAllCapability
+  trait IntersectCapability
+
   trait SqlQueryBase[A[_[_]]] extends QueryBase[A] {
 
     private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]]
@@ -41,7 +46,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     def fullJoin[B[_[_]]](that: Table[Codec, B])(
         on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ): Query[FullJoin[A, B]] = this.fullJoin(Query.from(that))(on)
+    )(using FullJoinCapability): Query[FullJoin[A, B]] = this.fullJoin(Query.from(that))(on)
 
     def flatMap[B[_[_]]](f: A[DbValue] => Query[B])(using LateralJoinCapability): Query[B]
 
@@ -52,11 +57,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     def union(that: Query[A]): Query[A]
     def unionAll(that: Query[A]): Query[A]
 
-    def intersect(that: Query[A]): Query[A]
-    def intersectAll(that: Query[A]): Query[A]
+    def intersect(that: Query[A])(using IntersectCapability): Query[A]
+    def intersectAll(that: Query[A])(using IntersectAllCapability): Query[A]
 
-    def except(that: Query[A]): Query[A]
-    def exceptAll(that: Query[A]): Query[A]
+    def except(that: Query[A])(using ExceptCapability): Query[A]
+    def exceptAll(that: Query[A])(using ExceptAllCapability): Query[A]
 
     // TODO: Ensure the type of this will always be Long
     def size: DbValue[Long] = this.map(_ => Query.queryCount).asDbValue
@@ -120,7 +125,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     override def fullJoin[B[_[_]]](that: Query[B])(
         on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ): Query[FullJoin[A, B]] = nested.fullJoin(that)(on)
+    )(using FullJoinCapability): Query[FullJoin[A, B]] = nested.fullJoin(that)(on)
 
     override def groupMapK[B[_[_]]: TraverseKC, C[_[_]]: ApplyKC: TraverseKC](
         group: InGroupByCapability ?=> A[DbValue] => B[DbValue]
@@ -137,11 +142,11 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
     override def union(that: Query[A]): Query[A]    = nested.union(that)
     override def unionAll(that: Query[A]): Query[A] = nested.unionAll(that)
 
-    override def intersect(that: Query[A]): Query[A]    = nested.intersect(that)
-    override def intersectAll(that: Query[A]): Query[A] = nested.intersectAll(that)
+    override def intersect(that: Query[A])(using IntersectCapability): Query[A]       = nested.intersect(that)
+    override def intersectAll(that: Query[A])(using IntersectAllCapability): Query[A] = nested.intersectAll(that)
 
-    override def except(that: Query[A]): Query[A]    = nested.except(that)
-    override def exceptAll(that: Query[A]): Query[A] = nested.exceptAll(that)
+    override def except(that: Query[A])(using ExceptCapability): Query[A]       = nested.except(that)
+    override def exceptAll(that: Query[A])(using ExceptAllCapability): Query[A] = nested.exceptAll(that)
   }
 
   object SqlQuery {
@@ -323,7 +328,7 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def fullJoin[B[_[_]]](that: Query[B])(
           on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]
-      ): Query[FullJoin[A, B]] =
+      )(using FullJoinCapability): Query[FullJoin[A, B]] =
         import that.given
         given AppTravKC[FullJoin[A, B]] = fullJoinInstances
 
@@ -363,14 +368,14 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def unionAll(that: Query[A]): Query[A] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(true), that))).liftSqlQuery
 
-      override def intersect(that: Query[A]): Query[A] =
+      override def intersect(that: Query[A])(using IntersectCapability): Query[A] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(false), that))).liftSqlQuery
-      override def intersectAll(that: Query[A]): Query[A] =
+      override def intersectAll(that: Query[A])(using IntersectAllCapability): Query[A] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(true), that))).liftSqlQuery
 
-      override def except(that: Query[A]): Query[A] =
+      override def except(that: Query[A])(using ExceptCapability): Query[A] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(false), that))).liftSqlQuery
-      override def exceptAll(that: Query[A]): Query[A] =
+      override def exceptAll(that: Query[A])(using ExceptAllCapability): Query[A] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(true), that))).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
@@ -441,16 +446,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def unionAll(that: Query[B]): Query[B] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(true), that))).liftSqlQuery
 
-      override def intersect(that: Query[B]): Query[B] =
+      override def intersect(that: Query[B])(using IntersectCapability): Query[B] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(false), that))).liftSqlQuery
 
-      override def intersectAll(that: Query[B]): Query[B] =
+      override def intersectAll(that: Query[B])(using IntersectAllCapability): Query[B] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(true), that))).liftSqlQuery
 
-      override def except(that: Query[B]): Query[B] =
+      override def except(that: Query[B])(using ExceptCapability): Query[B] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(false), that))).liftSqlQuery
 
-      override def exceptAll(that: Query[B]): Query[B] =
+      override def exceptAll(that: Query[B])(using ExceptAllCapability): Query[B] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(true), that))).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[B]] =
@@ -537,16 +542,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def unionAll(that: Query[Ma]): Query[Ma] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(true), that))).liftSqlQuery
 
-      override def intersect(that: Query[Ma]): Query[Ma] =
+      override def intersect(that: Query[Ma])(using IntersectCapability): Query[Ma] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(false), that))).liftSqlQuery
 
-      override def intersectAll(that: Query[Ma]): Query[Ma] =
+      override def intersectAll(that: Query[Ma])(using IntersectAllCapability): Query[Ma] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Intersect(true), that))).liftSqlQuery
 
-      override def except(that: Query[Ma]): Query[Ma] =
+      override def except(that: Query[Ma])(using ExceptCapability): Query[Ma] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(false), that))).liftSqlQuery
 
-      override def exceptAll(that: Query[Ma]): Query[Ma] =
+      override def exceptAll(that: Query[Ma])(using ExceptAllCapability): Query[Ma] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Except(true), that))).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[Ma]] =
@@ -859,16 +864,16 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
       override def unionAll(that: Query[A]): Query[A] =
         copy(tail = tail ++ Seq((SetOperation.Union(true), that))).liftSqlQuery
 
-      override def intersect(that: Query[A]): Query[A] =
+      override def intersect(that: Query[A])(using IntersectCapability): Query[A] =
         copy(tail = tail ++ Seq((SetOperation.Intersect(false), that))).liftSqlQuery
 
-      override def intersectAll(that: Query[A]): Query[A] =
+      override def intersectAll(that: Query[A])(using IntersectAllCapability): Query[A] =
         copy(tail = tail ++ Seq((SetOperation.Intersect(true), that))).liftSqlQuery
 
-      override def except(that: Query[A]): Query[A] =
+      override def except(that: Query[A])(using ExceptCapability): Query[A] =
         copy(tail = tail ++ Seq((SetOperation.Except(false), that))).liftSqlQuery
 
-      override def exceptAll(that: Query[A]): Query[A] =
+      override def exceptAll(that: Query[A])(using ExceptAllCapability): Query[A] =
         copy(tail = tail ++ Seq((SetOperation.Except(true), that))).liftSqlQuery
 
       override def orderBy(f: InOrderByCapability ?=> A[DbValue] => OrdSeq): Query[A] =

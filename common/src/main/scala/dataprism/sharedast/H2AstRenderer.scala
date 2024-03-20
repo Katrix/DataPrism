@@ -29,5 +29,5 @@ class H2AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A]
       case _                                  => super.renderBinaryOp(lhs, rhs, op)
 
   override protected def renderPreparedArgument(arg: SqlExpr.PreparedArgument[Codec]): SqlStr[Codec] =
-    SqlStr(s"CAST(? AS ${arg.arg.tpe.name})", Seq(arg.arg))
+    SqlStr(s"CAST(? AS ${arg.arg.codec.name})", Seq(arg.arg))
 }

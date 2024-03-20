@@ -28,9 +28,9 @@ abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Co
           override def sql: State[Int, String] = State.pure("")
 
           override def encode(a: Seq[Any]): List[Option[String]] =
-            sqlStr.args.map(_.tpe).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
+            sqlStr.args.map(_.codec).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
 
-          override def types: List[Type] = sqlStr.args.toList.flatMap(_.tpe.types)
+          override def types: List[Type] = sqlStr.args.toList.flatMap(_.codec.types)
         }
       ),
       Seq.tabulate(batchSize)(batch => sql.args.map(_.value(batch)))
@@ -53,9 +53,9 @@ abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Co
           override def sql: State[Int, String] = State.pure("")
 
           override def encode(a: Seq[Any]): List[Option[String]] =
-            sqlStr.args.map(_.tpe).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
+            sqlStr.args.map(_.codec).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
 
-          override def types: List[Type] = sqlStr.args.toList.flatMap(_.tpe.types)
+          override def types: List[Type] = sqlStr.args.toList.flatMap(_.codec.types)
         },
         new Decoder[Res[Id]] {
           override def types: List[Type] = dbTypes.foldMapK([Z] => (codec: Codec[Z]) => codec.types)

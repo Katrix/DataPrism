@@ -19,8 +19,7 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
   override protected val InHavingCapability: Unit        = ()
   override protected val InOrderByCapability: Unit       = ()
 
-  given DeleteUsingCapability with {}
-  given LateralJoinCapability with {}
+  given DeleteUsingCapability with  {}
 
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](
@@ -31,8 +30,6 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =>
   trait MySqlApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
     export platform.{given DeleteUsingCapability, given LateralJoinCapability}
   }
-
-  lazy val sqlRenderer: MySqlAstRenderer[Codec] = new MySqlAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
   type DbMath = SqlDbMath
   object DbMath extends SqlDbMath

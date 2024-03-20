@@ -29,6 +29,12 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform { platform =
   given UpdateReturningCapability with  {}
   given InsertOnConflictCapability with {}
   given LateralJoinCapability with      {}
+  given IntersectAllCapability with     {}
+  given ExceptAllCapability with        {}
+  given FullJoinCapability with         {}
+
+  given ExceptCapability with {}
+  given IntersectCapability with {}
 
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](

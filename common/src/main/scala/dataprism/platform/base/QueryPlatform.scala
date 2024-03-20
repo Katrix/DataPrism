@@ -65,6 +65,8 @@ trait QueryPlatform { platform =>
   protected val InHavingCapability: InHavingCapability
   type InOrderByCapability
   protected val InOrderByCapability: InOrderByCapability
+  
+  trait FullJoinCapability
 
   trait QueryBase[A[_[_]]]:
     def filter(f: InFilterCapability ?=> A[DbValue] => DbValue[Boolean]): Query[A]
@@ -95,7 +97,7 @@ trait QueryPlatform { platform =>
 
     def fullJoin[B[_[_]]](that: Query[B])(
         on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]
-    ): Query[FullJoin[A, B]]
+    )(using FullJoinCapability): Query[FullJoin[A, B]]
 
     def groupMapK[B[_[_]]: TraverseKC, C[_[_]]: ApplyKC: TraverseKC](
         group: InGroupByCapability ?=> A[DbValue] => B[DbValue]

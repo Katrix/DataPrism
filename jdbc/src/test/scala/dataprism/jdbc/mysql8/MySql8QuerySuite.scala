@@ -1,10 +1,13 @@
 package dataprism.jdbc.mysql8
 
-import cats.effect.IO
 import dataprism.PlatformQuerySuite
-import dataprism.jdbc.platform.MySqlJdbcPlatform
+import dataprism.jdbc.platform.MySql8JdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-class MySql8QuerySuite extends MySql8FunSuite with PlatformQuerySuite[IO, JdbcCodec, MySqlJdbcPlatform] {
+object MySql8QuerySuite extends MySql8FunSuite with PlatformQuerySuite[JdbcCodec, MySql8JdbcPlatform] {
   doTestFlatmapLateral()
+  doTestExcept()
+  doTestIntersect()
+  doTestIntersectAll()
+  doTestExceptAll()
 }

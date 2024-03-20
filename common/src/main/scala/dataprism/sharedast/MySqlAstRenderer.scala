@@ -4,7 +4,7 @@ import cats.syntax.all.*
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection
-class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] => Codec[A] => String)
+abstract class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] => Codec[A] => String)
     extends AstRenderer[Codec](ansiTypes, getCodecTypeName) {
 
   override def quote(s: String): String = s"`$s`"
@@ -30,8 +30,10 @@ class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: 
     inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
 
     call match
-      case SqlExpr.FunctionName.Random => normal("rand")
-      case _                           => super.renderFunctionCall(call, args)
+      case SqlExpr.FunctionName.Random                       => normal("rand")
+      case SqlExpr.FunctionName.Greatest if args.length == 1 => renderExpr(args.head)
+      case SqlExpr.FunctionName.Least if args.length == 1    => renderExpr(args.head)
+      case _                                                 => super.renderFunctionCall(call, args)
 
   override protected def renderRow(row: Seq[SqlExpr[Codec]]): SqlStr[Codec] = sql"ROW${super.renderRow(row)}"
 

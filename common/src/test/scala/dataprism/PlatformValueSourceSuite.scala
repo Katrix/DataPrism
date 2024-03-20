@@ -1,25 +1,22 @@
 package dataprism
 
-import cats.MonadThrow
 import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.*
-import munit.FunSuite
 import perspective.Id
 
-trait PlatformValueSourceSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
-    extends PlatformFunSuite[F, Codec0, Platform] {
+trait PlatformValueSourceSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
+    extends PlatformFunSuite[Codec0, Platform] {
   import platform.AnsiTypes
   import platform.Api.*
 
   private val testQuery = Query.values(AnsiTypes.integer.forgetNNA)(5, 3)
 
-  test("FromQuery"):
-    given DbType = dbFixture()
+  dbTest("FromQuery"):
     Select(testQuery.nested)
       .run[F]
       .map: r =>
-        assertEquals(r, Seq(5, 3))
+        expect.same(Seq(5, 3), r)
 
   case class TempTable[G[_]](i: G[Option[Int]], d: G[Option[Double]])
   object TempTable:
@@ -33,52 +30,49 @@ trait PlatformValueSourceSuite[F[_]: MonadThrow, Codec0[_], Platform <: SqlQuery
       )
     )
 
-  test("FromTable"):
-    given db: DbType = dbFixture()
+  dbTest("FromTable"):
     def quoteConst(s: String) = SqlStr.const(platform.sqlRenderer.quote(s))
     for
-      _ <- db.run(
-        sql"""CREATE TABLE ${quoteConst("tempTable")} (${quoteConst("i")} INTEGER, ${quoteConst("d")} DOUBLE PRECISION);"""
+      _ <- summon[DbType].run(
+        sql"""CREATE TABLE ${quoteConst("tempTable")} (${quoteConst("i")} INTEGER, ${quoteConst(
+            "d"
+          )} DOUBLE PRECISION);"""
       )
-      _ <- db.run(
+      _ <- summon[DbType].run(
         sql"""INSERT INTO ${quoteConst("tempTable")} (${quoteConst("i")}, ${quoteConst("d")}) VALUES (5, 3.14)"""
       )
       r <- Select(Query.from(TempTable.table)).run
-    yield assertEquals(r, Seq(TempTable[Id](Some(5), Some(3.14D))))
+    yield expect.same(Seq(TempTable[Id](Some(5), Some(3.14D))), r)
 
-  test("InnerJoin"):
-    given DbType = dbFixture()
+  dbTest("InnerJoin"):
     Select(testQuery.join(testQuery)(_ === _))
       .run[F]
       .map: r =>
-        assertEquals(r, Seq((5, 5), (3, 3)))
+        expect.same(Seq((5, 5), (3, 3)), r)
 
-  test("CrossJoin"):
-    given DbType = dbFixture()
+  dbTest("CrossJoin"):
     Select(testQuery.crossJoin(testQuery))
       .run[F]
       .map: r =>
-        assertEquals(r.toSet, Set((5, 5), (5, 3), (3, 3), (3, 5)))
+        expect.same(Set((5, 5), (5, 3), (3, 3), (3, 5)), r.toSet)
 
-  test("LeftJoin"):
-    given DbType = dbFixture()
+  dbTest("LeftJoin"):
     Select(testQuery.leftJoin(testQuery)(_ === _))
       .run[F]
       .map: r =>
-        assertEquals(r, Seq((5, Some(5)), (3, Some(3))))
+        expect.same(Seq((5, Some(5)), (3, Some(3))), r)
 
-  test("RightJoin"):
-    given DbType = dbFixture()
+  dbTest("RightJoin"):
     Select(testQuery.rightJoin(testQuery)(_ === _))
       .run[F]
       .map: r =>
-        assertEquals(r, Seq((Some(5), 5), (Some(3), 3)))
+        expect.same(Seq((Some(5), 5), (Some(3), 3)), r)
 
-  test("FullJoin"):
-    given DbType = dbFixture()
-    Select(testQuery.fullJoin(testQuery)(_ === _))
-      .run[F]
-      .map: r =>
-        assertEquals(r, Seq((Some(5), Some(5)), (Some(3), Some(3))))
+  def doTestFullJoin()(using platform.FullJoinCapability): Unit =
+    dbTest("FullJoin"):
+      Select(testQuery.fullJoin(testQuery)(_ === _))
+        .run[F]
+        .map: r =>
+          expect.same(Seq((Some(5), Some(5)), (Some(3), Some(3))), r)
 
 }
