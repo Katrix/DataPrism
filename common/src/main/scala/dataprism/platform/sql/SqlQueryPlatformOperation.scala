@@ -72,7 +72,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
       given FunctorKC[Res] = summon[ApplyKC[Res]]
       val astMeta          = query.selectAstAndValues.runA(freshTaggedState).value
       (
-        sqlRenderer.renderSelect(astMeta.ast),
+        sqlRenderer.renderSelectStatement(astMeta.ast),
         astMeta.values.mapK([Z] => (value: DbValue[Z]) => value.tpe)
       )
   end SqlSelectOperation

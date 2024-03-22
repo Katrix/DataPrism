@@ -101,9 +101,14 @@ lazy val skunk = project
     commonSettings,
     publishSettings,
     name                                  := "dataprism-skunk",
-    libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2"
+    libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2",
+    libraryDependencies ++= Seq(
+      "org.testcontainers" % "testcontainers" % "1.19.5" % Test,
+      "org.testcontainers" % "postgresql"     % "1.19.5" % Test,
+      "org.slf4j"          % "slf4j-simple"   % "2.0.12" % Test
+    )
   )
-  .dependsOn(common, cats, fs2)
+  .dependsOn(common % "compile->compile;test->test", cats, fs2)
 
 lazy val docs = project
   .enablePlugins(ScalaUnidocPlugin)

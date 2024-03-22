@@ -1,13 +1,15 @@
 package dataprism.skunk.sql
 
-import cats.effect.Concurrent
+import cats.effect.{Concurrent, Resource}
 import cats.syntax.all.*
 import dataprism.sql.CatsTransactionDb
 import skunk.{Codec, Session, Transaction}
 
 class SkunkTransactionDb[F[_]: Concurrent](s: Session[F], val xa: Transaction[F])
-    extends SkunkBaseDb[F](s),
+    extends SkunkSessionDb[F](false),
       CatsTransactionDb[F, Codec] {
+
+  override protected def getSession: Resource[F, Session[F]] = Resource.pure(s)
 
   override type Savepoint = xa.Savepoint
 

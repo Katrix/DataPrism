@@ -1,9 +1,7 @@
 package dataprism.sharedast
 
-import java.util.UUID
-
-import dataprism.sql.*
 import cats.syntax.all.*
+import dataprism.sql.*
 
 sealed trait SqlExpr[Codec[_]]
 //noinspection ScalaUnusedSymbol
@@ -100,10 +98,10 @@ object SqlExpr {
 
     case Ceiling
     case Floor
-    
+
     case Radians
     case Degrees
-    
+
     case Pi
     case Random
 
@@ -130,7 +128,7 @@ object SelectAst {
       groupBy: Option[SelectAst.GroupBy[Codec]],
       having: Option[SqlExpr[Codec]],
       orderBy: Option[SelectAst.OrderBy[Codec]],
-      limitOffset: Option[SelectAst.LimitOffset],
+      limitOffset: Option[SelectAst.LimitOffset[Codec]],
       locks: Option[SelectAst.Locks]
   ) extends SelectAst[Codec]
 
@@ -178,7 +176,7 @@ object SelectAst {
     case NullsFirst
     case NullsLast
 
-  case class LimitOffset(limit: Option[Int], offset: Int, withTies: Boolean)
+  case class LimitOffset[Codec[_]](limit: Option[SqlExpr[Codec]], offset: Option[SqlExpr[Codec]], withTies: Boolean)
 
   case class Locks() // TODO
 }

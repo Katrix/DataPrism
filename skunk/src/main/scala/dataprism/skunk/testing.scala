@@ -4,10 +4,11 @@ import java.time.{Instant, ZoneOffset}
 import java.util.UUID
 
 import cats.effect.IO
+import cats.effect.kernel.Resource
 import dataprism.KMacros
 import dataprism.skunk.platform.PostgresSkunkPlatform
 import dataprism.skunk.sql.SkunkAnsiTypes.*
-import dataprism.skunk.sql.SkunkDb
+import dataprism.skunk.sql.SkunkSessionPoolDb
 import dataprism.sql.*
 import perspective.*
 import skunk.codec.all.*
@@ -86,8 +87,8 @@ object ResidentK {
 object Testing {
   import PostgresSkunkPlatform.Api.*
 
-  val session: Session[IO] = ???
-  given db: SkunkDb[IO]    = SkunkDb(session)
+  val session: Resource[IO, Session[IO]] = ???
+  given db: SkunkSessionPoolDb[IO]       = SkunkSessionPoolDb(session)
 
   Select(Query.from(HomeK.table).filter(_.name === "some_name".as(text.wrap))).run
 

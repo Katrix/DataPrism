@@ -5,7 +5,6 @@ import java.sql.{Date, Time, Timestamp}
 import scala.annotation.targetName
 import scala.util.NotGiven
 
-import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.platform.base.MapRes
@@ -176,19 +175,19 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
         SqlDbValue.UnaryOp(lhs, SqlUnaryOp.Negative(this).liftSqlUnaryOp).lift
 
     protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]]
+    protected def avgType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.AvgResultOf[A]]]
 
     extension (lhs: Many[A])
       // TODO: Having these in here is quite broad. Might want to tighten this
-      def avg: DbValue[Nullable[A]] =
+      def avg: DbValue[Nullable[SqlNumeric.AvgResultOf[A]]] =
         import Many.unsafeAsDbValue
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Avg,
             Seq(lhs.unsafeAsAnyDbVal),
-            lhs.unsafeAsDbValue.tpe.typedChoice.nullable
+            avgType(lhs.unsafeAsDbValue.tpe.typedChoice.nullable.asInstanceOf[Type[Nullable[A]]])
           )
           .lift
-          .asInstanceOf[DbValue[Nullable[A]]]
       def sum: DbValue[Nullable[SqlNumeric.SumResultOf[A]]] =
         import Many.unsafeAsDbValue
         SqlDbValue
@@ -207,40 +206,69 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
       case Option[a]      => SumResultOf[a]
       case _              => T
     }
+    type AvgResultOf[T] = T match {
+      case Short | Int | Long => BigDecimal
+      case Float | Double     => Double
+      case Option[a]          => AvgResultOf[a]
+      case _                  => T
+    }
 
-    def defaultInstance[A](sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]]): SqlNumeric[A] =
+    def defaultInstance[A](
+        sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]],
+        avgType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.AvgResultOf[A]]]
+    ): SqlNumeric[A] =
       new SqlNumeric[A] {
         override protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]] = sumType0(v)
+
+        override protected def avgType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.AvgResultOf[A]]] = avgType0(v)
       }
 
   trait SqlFractional[A] extends SqlNumeric[A]
   object SqlFractional:
-    def defaultInstance[A](sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]]): SqlFractional[A] =
+    def defaultInstance[A](
+        sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]],
+        avgType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.AvgResultOf[A]]]
+    ): SqlFractional[A] =
       new SqlFractional[A] {
         override protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]] = sumType0(v)
+
+        override protected def avgType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.AvgResultOf[A]]] = avgType0(v)
       }
 
   trait SqlIntegral[A] extends SqlNumeric[A]
   object SqlIntegral:
-    def defaultInstance[A](sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]]): SqlIntegral[A] =
+    def defaultInstance[A](
+        sumType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.SumResultOf[A]]],
+        avgType0: Type[Nullable[A]] => Type[Nullable[SqlNumeric.AvgResultOf[A]]]
+    ): SqlIntegral[A] =
       new SqlIntegral[A] {
         override protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]] = sumType0(v)
+
+        override protected def avgType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.AvgResultOf[A]]] = avgType0(v)
       }
 
-  given sqlNumericShort: SqlIntegral[Short]            = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
-  given sqlNumericOptShort: SqlIntegral[Option[Short]] = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
-  given sqlNumericInt: SqlIntegral[Int]                = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
-  given sqlNumericOptInt: SqlIntegral[Option[Int]]     = SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable)
-  given sqlNumericLong: SqlIntegral[Long]              = SqlIntegral.defaultInstance(_ => AnsiTypes.decimal.nullable)
-  given sqlNumericOptLong: SqlIntegral[Option[Long]]   = SqlIntegral.defaultInstance(_ => AnsiTypes.decimal.nullable)
-  given sqlNumericFloat: SqlFractional[Float] = SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
+  given sqlNumericShort: SqlIntegral[Short] =
+    SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable, _ => AnsiTypes.decimal.nullable)
+  given sqlNumericOptShort: SqlIntegral[Option[Short]] =
+    SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable, _ => AnsiTypes.decimal.nullable)
+  given sqlNumericInt: SqlIntegral[Int] =
+    SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable, _ => AnsiTypes.decimal.nullable)
+  given sqlNumericOptInt: SqlIntegral[Option[Int]] =
+    SqlIntegral.defaultInstance(_ => AnsiTypes.bigint.nullable, _ => AnsiTypes.decimal.nullable)
+  given sqlNumericLong: SqlIntegral[Long] =
+    SqlIntegral.defaultInstance(_ => AnsiTypes.decimal.nullable, _ => AnsiTypes.decimal.nullable)
+  given sqlNumericOptLong: SqlIntegral[Option[Long]] =
+    SqlIntegral.defaultInstance(_ => AnsiTypes.decimal.nullable, _ => AnsiTypes.decimal.nullable)
+  given sqlNumericFloat: SqlFractional[Float] =
+    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable, _ => AnsiTypes.doublePrecision.nullable)
   given sqlNumericOptFloat: SqlFractional[Option[Float]] =
-    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
-  given sqlNumericDouble: SqlFractional[Double] = SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
+    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable, _ => AnsiTypes.doublePrecision.nullable)
+  given sqlNumericDouble: SqlFractional[Double] =
+    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable, _ => AnsiTypes.doublePrecision.nullable)
   given sqlNumericOptDouble: SqlFractional[Option[Double]] =
-    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable)
-  given sqlNumericBigDecimal: SqlFractional[BigDecimal]            = SqlFractional.defaultInstance(identity)
-  given sqlNumericOptBigDecimal: SqlFractional[Option[BigDecimal]] = SqlFractional.defaultInstance(identity)
+    SqlFractional.defaultInstance(_ => AnsiTypes.doublePrecision.nullable, _ => AnsiTypes.doublePrecision.nullable)
+  given sqlNumericBigDecimal: SqlFractional[BigDecimal]            = SqlFractional.defaultInstance(identity, identity)
+  given sqlNumericOptBigDecimal: SqlFractional[Option[BigDecimal]] = SqlFractional.defaultInstance(identity, identity)
 
   type DbMath <: SqlDbMath
   val DbMath: DbMath
@@ -536,7 +564,10 @@ trait SqlQueryPlatformDbValue { platform: SqlQueryPlatform =>
 
       case SqlDbValue.Placeholder(value, tpe) =>
         State.pure(SqlExpr.PreparedArgument(None, SqlArg.SqlArgObj(value, tpe.codec)))
+
       case SqlDbValue.CompilePlaceholder(identifier, tpe) =>
+        State.pure(SqlExpr.PreparedArgument(None, SqlArg.CompileArg(identifier, tpe.codec)))
+
         State.pure(SqlExpr.PreparedArgument(None, SqlArg.CompileArg(identifier, tpe.codec)))
 
       case SqlDbValue.SubSelect(query) => query.selectAstAndValues.map(m => SqlExpr.SubSelect(m.ast))

@@ -1,11 +1,10 @@
 package dataprism.skunk.platform
 
 import scala.annotation.targetName
-
 import cats.data.State
 import dataprism.platform.base.MapRes
 import dataprism.platform.implementations.PostgresQueryPlatform
-import dataprism.skunk.sql.SkunkAnsiTypes
+import dataprism.skunk.sql.{PostgresSkunkAstRenderer, SkunkAnsiTypes}
 import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}
 import perspective.*
 import skunk.data.Arr
@@ -22,6 +21,9 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
   extension [A](tpe: Codec[A])
     @targetName("codecTypeName")
     override def name: String = tpe.types.head.name
+
+  lazy override val sqlRenderer: PostgresSkunkAstRenderer[Codec] =
+    new PostgresSkunkAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
   override protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: DummyImplicit): Type[Seq[A]] =
     NullabilityTypeChoice.notNullByDefault(

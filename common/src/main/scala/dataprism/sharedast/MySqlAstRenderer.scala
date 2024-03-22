@@ -37,12 +37,13 @@ abstract class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecT
 
   override protected def renderRow(row: Seq[SqlExpr[Codec]]): SqlStr[Codec] = sql"ROW${super.renderRow(row)}"
 
-  override protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Codec] =
-    // Some large number.....
-    spaceConcat(
-      sql"LIMIT ${limitOffset.limit.fold(SqlStr.const("18446744073709551615"))(_.asArg(ansiTypes.integer.notNull.codec))}",
-      sql"OFFSET ${limitOffset.offset.asArg(ansiTypes.integer.notNull.codec)}"
-    )
+  // Swap the order
+  override protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset[Codec]): SqlStr[Codec] =
+    spaceConcat(renderLimit(limitOffset).getOrElse(sql""), renderOffset(limitOffset).getOrElse(sql""))
+
+  // Some large number.....
+  override protected def renderLimit(limitOffset: SelectAst.LimitOffset[Codec]): Option[SqlStr[Codec]] =
+    Some(sql"LIMIT ${limitOffset.limit.fold(SqlStr.const("18446744073709551615"))(renderExpr)}")
 
   override def renderDelete(query: SelectAst[Codec], returning: Boolean): SqlStr[Codec] =
     val (alias, from, where, exprs) = query match {

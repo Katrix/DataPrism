@@ -19,11 +19,11 @@ trait PlatformFunSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] =
 
   def dbTest(name: TestName)(run: DbType ?=> IO[Expectations]): Unit = test(name): db =>
     given DbType = db
-    run
+    IO(run).flatten
 
   def dbLogTest(name: TestName)(run: DbType ?=> Log[IO] => IO[Expectations]): Unit = test(name): (db, log) =>
     given DbType = db
-    run(log)
+    IO(run(log)).flatten
 
 object PlatformFunSuite:
   enum DbToTest:

@@ -47,9 +47,10 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
 
   override protected def parenthesisAroundSetOps: Boolean = false
 
-  override protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Codec] =
-    spaceConcat(
-      sql"LIMIT ${limitOffset.limit.getOrElse(-1).asArg(ansiTypes.integer.notNull.codec)}",
-      sql"OFFSET ${limitOffset.offset.asArg(ansiTypes.integer.notNull.codec)}"
-    )
+  // Swap the order
+  override protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset[Codec]): SqlStr[Codec] =
+    spaceConcat(renderLimit(limitOffset).getOrElse(sql""), renderOffset(limitOffset).getOrElse(sql""))
+
+  override protected def renderLimit(limitOffset: SelectAst.LimitOffset[Codec]): Option[SqlStr[Codec]] =
+    Some(sql"LIMIT ${limitOffset.limit.fold(SqlStr.const("-1"))(renderExpr)}")
 }

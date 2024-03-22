@@ -72,8 +72,11 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3).offset(1)).run.map: r =>
       expect.same(Set(3, 5), r.toSet)
 
-  dbTest("OffsetLimit"):
-    Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(2).limit(1)).run.map: r =>
+  dbLogTest("OffsetLimit"): log =>
+    for
+      r <- Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(2).limit(1)).run
+      _ <- log.debug(Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(2).limit(1)).sqlAndTypes._1.str)
+    yield
       expect.same(Set(5), r.toSet)
 
   dbTest("Union"):

@@ -13,7 +13,7 @@ class PostgresAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeNam
       case _                                  => super.renderBinaryOp(lhs, rhs, op)
 
   override protected def renderPreparedArgument(arg: SqlExpr.PreparedArgument[Codec]): SqlStr[Codec] =
-    SqlStr(s"?::${arg.arg.codec.name}", Seq(arg.arg))
+    SqlStr(s"(?::${arg.arg.codec.name})", Seq(arg.arg))
 
   override protected def renderSelectValues(values: SelectAst.Values[Codec]): SqlStr[Codec] =
     val res = spaceConcat(

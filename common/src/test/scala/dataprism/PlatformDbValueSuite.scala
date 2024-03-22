@@ -1,14 +1,12 @@
 package dataprism
 
-import scala.concurrent.duration.*
-import scala.concurrent.duration.Duration
 import scala.util.NotGiven
 
 import cats.data.NonEmptyList
 import cats.data.Validated.Valid
 import cats.effect.IO
 import cats.syntax.all.*
-import cats.{Apply, MonadThrow, Show}
+import cats.{Apply, Show}
 import dataprism.PlatformFunSuite.DbToTest
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.NullabilityTypeChoice
@@ -83,13 +81,15 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       using SourceLocation
   ): Unit =
     dbLogTest(s"$name - ${tpe.name}(${if tpe.codec == tpe.choice.notNull.codec then "NOT NULL" else "NULL"})")(run)
+    
+  val configuredForall: PartiallyAppliedForall = forall
 
   def testEquality[A, N[_]: Apply](
       tpe: Type[N[A]],
       gen: Gen[N[A]]
   )(using N: Nullability.Aux[N[A], A, N])(using Show[N[A]]): Unit =
     typeTest("Equality", tpe):
-      forall((gen, gen).tupled): (a: N[A], b: N[A]) =>
+      configuredForall((gen, gen).tupled): (a: N[A], b: N[A]) =>
         Select(
           Query.of(
             (
@@ -111,7 +111,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
             ).combineAll
 
     typeLogTest("EqualityAgg", tpe): log =>
-      forall((gen, gen, Gen.listOf(gen)).tupled): (vh1: N[A], vh2: N[A], vt: List[N[A]]) =>
+      configuredForall((gen, gen, Gen.listOf(gen)).tupled): (vh1: N[A], vh2: N[A], vt: List[N[A]]) =>
         val vs    = vh2 :: vt
         val vsSet = vs.map(N.wrapOption).toSet
         val vtSet = vt.map(N.wrapOption).toSet
@@ -162,7 +162,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
     testEquality[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable, Gen.option(gen))
 
   def testOrderByAscDesc[A: Ordering: Show](tpe: Type[A], gen: Gen[A]): Unit = typeTest("OrderByAscDesc", tpe):
-    forall((gen, Gen.listOf(gen)).tupled): (vh: A, vt: List[A]) =>
+    configuredForall((gen, Gen.listOf(gen)).tupled): (vh: A, vt: List[A]) =>
       val vsSorted = (vh :: vt).sorted
       for
         r1 <- Select(Query.values(tpe)(vh, vt*).orderBy(_.asc)).run
@@ -190,7 +190,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
     import Numeric.Implicits.*
     import Ordering.Implicits.*
     typeTest("Numeric", tpe):
-      forall((gen, gen).tupled): (a: N[A], b: N[A]) =>
+      configuredForall((gen, gen).tupled): (a: N[A], b: N[A]) =>
         val av = a.as(tpe)
         val bv = b.as(tpe)
 
@@ -237,7 +237,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
             ).combineAll
 
     typeTest("NumericAgg", tpe):
-      forall((gen, Gen.listOf(gen)).tupled): (vh: N[A], vt: List[N[A]]) =>
+      configuredForall((gen, Gen.listOf(gen)).tupled): (vh: N[A], vt: List[N[A]]) =>
         val vs = vh :: vt
         Select(Query.values(tpe)(vh, vt*).mapSingleGrouped(v => (v.sum, v.avg))).runOne
           .map: _ =>
@@ -279,7 +279,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
   )(using N: Nullability.Aux[N[A], A, N]): Unit =
     import Ordering.Implicits.*
     typeTest("Ordered", tpe):
-      forall((gen, gen).tupled): (a: N[A], b: N[A]) =>
+      configuredForall((gen, gen).tupled): (a: N[A], b: N[A]) =>
         val av = a.as(tpe)
         val bv = b.as(tpe)
 
@@ -298,7 +298,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
             ).combineAll
 
     typeLogTest("OrderedList", tpe): log =>
-      forall((gen, Gen.listOf(gen)).tupled): (vh: N[A], vt: List[N[A]]) =>
+      configuredForall((gen, Gen.listOf(gen)).tupled): (vh: N[A], vt: List[N[A]]) =>
         val vs  = NonEmptyList.of(vh, vt*)
         val vsv = vs.toList.map(_.as(tpe))
 
@@ -343,7 +343,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
 
   typeTest("BooleanOps", AnsiTypes.boolean):
     val boolean = AnsiTypes.boolean
-    forall: (a: Boolean, b: Boolean, an: Option[Boolean], bn: Option[Boolean]) =>
+    configuredForall: (a: Boolean, b: Boolean, an: Option[Boolean], bn: Option[Boolean]) =>
       val av  = a.as(boolean)
       val bv  = b.as(boolean)
       val anv = an.as(boolean.nullable)
@@ -391,7 +391,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
 
   def testNullOps[A: Show](t: Type[Option[A]], gen: Gen[A]): Unit = typeTest("NullOps", t):
     val optGen = Gen.option(gen)
-    forall((optGen, optGen, optGen).tupled): (o1: Option[A], o2: Option[A], o3: Option[A]) =>
+    configuredForall((optGen, optGen, optGen).tupled): (o1: Option[A], o2: Option[A], o3: Option[A]) =>
       val v1 = o1.as(t)
       val v2 = o2.as(t)
       val v3 = o3.as(t)
@@ -423,7 +423,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
   dbTest("CaseBoolean"):
     val boolean = AnsiTypes.boolean
     val int     = AnsiTypes.integer
-    forall: (b1: Boolean, b2: Boolean, b3: Boolean, i1: Int, i2: Int, i3: Int, i4: Int) =>
+    configuredForall: (b1: Boolean, b2: Boolean, b3: Boolean, i1: Int, i2: Int, i3: Int, i4: Int) =>
       Select(
         Query.of(
           Case

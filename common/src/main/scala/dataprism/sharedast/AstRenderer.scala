@@ -217,7 +217,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     case SqlExpr.Custom(args, render) => SqlExpr.Custom(args.map(simplifyExpr), render)
 
   protected def functionIsImmutable(func: SqlExpr.FunctionName): Boolean = func match
-    case FunctionName.Custom(f) => false
+    case FunctionName.Custom(_) => false
     case _                      => true
 
   protected def exprIsImmutable(expr: SqlExpr[Codec]): Boolean = expr match
@@ -408,7 +408,9 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     )
   end renderDelete
 
-  def renderSelect(data: SelectAst[Codec]): SqlStr[Codec] = data match
+  def renderSelectStatement(data: SelectAst[Codec]): SqlStr[Codec] = renderSelect(data)
+
+  protected def renderSelect(data: SelectAst[Codec]): SqlStr[Codec] = data match
     case d: SelectAst.SelectFrom[Codec]  => renderSelectFrom(d)
     case d: SelectAst.Values[Codec]      => renderSelectValues(d)
     case d: SelectAst.SetOperator[Codec] => renderSetOperatorData(d)
@@ -502,7 +504,9 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       val str = renderSelect(select)
       if parenthesisAroundSetOps then sql"($str)"
       // Values use union operators to emulate aliases
-      else if forceParenthesis && (select.isInstanceOf[SelectAst.Values[Codec]] || select.isInstanceOf[SelectAst.SetOperator[Codec]]) then
+      else if forceParenthesis && (select.isInstanceOf[SelectAst.Values[Codec]] || select
+          .isInstanceOf[SelectAst.SetOperator[Codec]])
+      then
         // TODO: Consider having aliases for all SelectAst values
         val alias = select match
           case SelectAst.Values(_, Some(alias), _) => SqlStr.const(alias)
@@ -535,13 +539,13 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     case SelectAst.NullsOrder.NullsFirst => sql"NULLS FIRST"
     case SelectAst.NullsOrder.NullsLast  => sql"NULLS LAST"
 
-  protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Codec] =
-    spaceConcat(renderOffset(limitOffset), renderLimit(limitOffset).getOrElse(sql""))
+  protected def renderLimitOffset(limitOffset: SelectAst.LimitOffset[Codec]): SqlStr[Codec] =
+    spaceConcat(renderOffset(limitOffset).getOrElse(sql""), renderLimit(limitOffset).getOrElse(sql""))
 
-  protected def renderOffset(limitOffset: SelectAst.LimitOffset): SqlStr[Codec] =
-    sql"OFFSET ${limitOffset.offset.asArg(ansiTypes.integer.notNull.codec)}"
+  protected def renderOffset(limitOffset: SelectAst.LimitOffset[Codec]): Option[SqlStr[Codec]] =
+    limitOffset.offset.map(o => sql"OFFSET ${renderExpr(o)}")
 
-  protected def renderLimit(limitOffset: SelectAst.LimitOffset): Option[SqlStr[Codec]] =
+  protected def renderLimit(limitOffset: SelectAst.LimitOffset[Codec]): Option[SqlStr[Codec]] =
     val tiesPart = if limitOffset.withTies then sql"WITH TIES" else sql"ONLY"
-    limitOffset.limit.map(l => sql"FETCH NEXT ${l.asArg(ansiTypes.integer.notNull.codec)} ROWS $tiesPart")
+    limitOffset.limit.map(l => sql"FETCH NEXT ${renderExpr(l)} ROWS $tiesPart")
 }

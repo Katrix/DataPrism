@@ -3,73 +3,80 @@ package dataprism.skunk.sql
 import java.sql.SQLException
 
 import cats.data.State
-import cats.effect.Concurrent
+import cats.effect.{Concurrent, Resource}
 import cats.syntax.all.*
-import dataprism.sql.{CatsDb, SqlStr}
+import dataprism.sql.{CatsDb, Fs2Db, SqlStr}
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 import skunk.*
 import skunk.data.{Completion, Type}
 import skunk.util.Origin
 
-abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Codec]:
+abstract class SkunkSessionDb[F[_]: Concurrent](autoTransact: Boolean) extends Fs2Db[F, Codec]:
+
+  protected def getSession: Resource[F, Session[F]]
 
   protected def makeCommand(sql: SqlStr[Codec]): (Command[Seq[Any]], Seq[Seq[Any]]) =
-    val sqlStr     = sql
-    val batchSizes = sql.args.map(_.batchSize).distinct
-    if batchSizes.length != 1 then throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
-    val batchSize = batchSizes.head
+    val sqlStr = sql
+    val encoder = new Encoder[Seq[Any]] {
+      override def sql: State[Int, String] = State.pure("")
 
-    (
-      Command(
-        sql.str,
-        Origin.unknown,
-        new Encoder[Seq[Any]] {
-          override def sql: State[Int, String] = State.pure("")
+      override def encode(a: Seq[Any]): List[Option[String]] =
+        sqlStr.args.map(_.codec).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
 
-          override def encode(a: Seq[Any]): List[Option[String]] =
-            sqlStr.args.map(_.codec).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
+      override def types: List[Type] = sqlStr.args.toList.flatMap(_.codec.types)
+    }
+    sql.args.map(_.batchSize).distinct match
+      case Seq() => (Command(sql.str, Origin.unknown, encoder), Seq(Nil))
 
-          override def types: List[Type] = sqlStr.args.toList.flatMap(_.codec.types)
-        }
-      ),
-      Seq.tabulate(batchSize)(batch => sql.args.map(_.value(batch)))
-    )
+      case Seq(batchSize) =>
+        (Command(sql.str, Origin.unknown, encoder), Seq.tabulate(batchSize)(batch => sql.args.map(_.value(batch))))
+
+      case batchSizes => throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
 
   protected def makeQuery[Res[_[_]]](
       sql: SqlStr[Codec],
       dbTypes: Res[Codec]
   )(using FT: TraverseKC[Res]): (Query[Seq[Any], Res[Id]], Seq[Seq[Any]]) =
-    val sqlStr     = sql
-    val batchSizes = sql.args.map(_.batchSize).distinct
-    if batchSizes.length != 1 then throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
-    val batchSize = batchSizes.head
+    val sqlStr = sql
+    val encoder = new Encoder[Seq[Any]] {
+      override def sql: State[Int, String] = State.pure("")
 
-    (
-      Query(
-        sql.str,
-        Origin.unknown,
-        new Encoder[Seq[Any]] {
-          override def sql: State[Int, String] = State.pure("")
+      override def encode(a: Seq[Any]): List[Option[String]] =
+        sqlStr.args.map(_.codec).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
 
-          override def encode(a: Seq[Any]): List[Option[String]] =
-            sqlStr.args.map(_.codec).zip(a).toList.flatMap(t => t._1.asInstanceOf[Codec[Any]].encode(t._2))
+      override def types: List[Type] = sqlStr.args.toList.flatMap(_.codec.types)
+    }
+    val resDecoder = new Decoder[Res[Id]] {
+      override def types: List[Type] = dbTypes.foldMapK([Z] => (codec: Codec[Z]) => codec.types)
 
-          override def types: List[Type] = sqlStr.args.toList.flatMap(_.codec.types)
-        },
-        new Decoder[Res[Id]] {
-          override def types: List[Type] = dbTypes.foldMapK([Z] => (codec: Codec[Z]) => codec.types)
+      override def decode(offset: Int, ss: List[Option[String]]): Either[Decoder.Error, Res[Id]] = {
+        val indicesState: State[Int, Res[[Z] =>> Either[Decoder.Error, Z]]] =
+          dbTypes.traverseK(
+            [A] =>
+              (c: Codec[A]) =>
+                State((acc: Int) =>
+                  val nextIdx = acc + c.types.length
+                  val args    = ss.slice(acc, nextIdx)
+                  (nextIdx, c.decode(acc, args))
+              )
+          )
 
-          override def decode(offset: Int, ss: List[Option[String]]): Either[Decoder.Error, Res[Id]] = {
-            val indicesState: State[Int, Res[[Z] =>> Either[Decoder.Error, Z]]] =
-              dbTypes.traverseK([A] => (c: Codec[A]) => State((acc: Int) => (acc + c.types.length, c.decode(acc, ss))))
+        indicesState.runA(offset).value.sequenceIdK
+      }
+    }
 
-            indicesState.runA(offset).value.sequenceIdK
-          }
-        }
-      ),
-      Seq.tabulate(batchSize)(batch => sql.args.map(_.value(batch)))
-    )
+    sql.args.map(_.batchSize).distinct match
+      case Seq() =>
+        (Query(sql.str, Origin.unknown, encoder, resDecoder), Seq(Nil))
+
+      case Seq(batchSize) =>
+        (
+          Query(sql.str, Origin.unknown, encoder, resDecoder),
+          Seq.tabulate(batchSize)(batch => sql.args.map(_.value(batch)))
+        )
+
+      case batchSizes => throw new SQLException(s"Multiple batch sizes: ${batchSizes.mkString(" ")}")
 
   protected def completionToInt(completion: Completion): Int = completion match
     case Completion.Begin                   => 0
@@ -136,14 +143,18 @@ abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Co
 
   override def runBatch(sql: SqlStr[Codec]): F[Seq[Int]] =
     val (command, batchArgs) = makeCommand(sql)
-    s.prepare(command)
-      .flatMap(
-        _.pipe
-          .apply(fs2.Stream(batchArgs*))
-          .map(completionToInt)
-          .compile
-          .to(Seq)
-      )
+    getSession.use: s =>
+      val action = s
+        .prepare(command)
+        .flatMap { preparedCommand =>
+          preparedCommand.pipe
+            .apply(fs2.Stream(batchArgs*))
+            .map(completionToInt)
+            .compile
+            .to(Seq)
+        }
+
+      if autoTransact then s.transaction.surround(action) else action
 
   override def runIntoSimple[Res](
       sql: SqlStr[Codec],
@@ -160,5 +171,15 @@ abstract class SkunkBaseDb[F[_]: Concurrent](s: Session[F]) extends CatsDb[F, Co
   )(using FT: TraverseKC[Res]): F[Seq[Res[Id]]] = {
     // TODO: Limit based on min and max rows
     val (query, batchArgs) = makeQuery(sql, dbTypes)
-    s.prepare(query).flatMap(q => q.pipe(512).apply(fs2.Stream.apply(batchArgs*)).compile.toList.map(_.toSeq))
+    getSession.use: s =>
+      val action: F[Seq[Res[Id]]] =
+        s.prepare(query).flatMap(q => q.pipe(512).apply(fs2.Stream.apply(batchArgs *)).compile.toList.map(_.toSeq))
+      if autoTransact then s.transaction.surround(action) else action
   }
+
+  override def runIntoResStream[Res[_[_]]](sql: SqlStr[Codec], dbTypes: Res[Codec], chunkSize: Int)(
+      using FT: TraverseKC[Res]
+  ): fs2.Stream[F, Res[Id]] =
+    val (query, batchArgs) = makeQuery(sql, dbTypes)
+    fs2.Stream.resource(getSession).flatMap: s =>
+      fs2.Stream.eval(s.prepare(query)).flatMap(q => q.pipe(512).apply(fs2.Stream.apply(batchArgs*)))

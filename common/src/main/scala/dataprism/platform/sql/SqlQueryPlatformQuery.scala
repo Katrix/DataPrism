@@ -350,12 +350,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def take(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        limit = Some(i)
+        limit = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def drop(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = i
+        offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def distinct: Query[A] = SqlQueryDistinctStage(
@@ -427,12 +427,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def take(i: Int): Query[B] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        limit = Some(i)
+        limit = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def drop(i: Int): Query[B] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = i
+        offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def distinct: Query[B] = SqlQueryDistinctStage(
@@ -523,12 +523,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def take(i: Int): Query[Ma] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        limit = Some(i)
+        limit = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def drop(i: Int): Query[Ma] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = i
+        offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def distinct: Query[Ma] = SqlQueryDistinctStage(
@@ -607,12 +607,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def take(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        limit = Some(i)
+        limit = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def drop(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = i
+        offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       def selectAstAndValues: TagState[QueryAstMetadata[A]] =
@@ -663,12 +663,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def take(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        limit = Some(i)
+        limit = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def drop(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = i
+        offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]] =
@@ -722,12 +722,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def take(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        limit = Some(i)
+        limit = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def drop(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = i
+        offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
@@ -749,38 +749,43 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
     case class SqlQueryLimitOffsetStage[A[_[_]]](
         query: Query[A],
-        limit: Option[Int] = None,
-        offset: Int = 0
+        limit: Option[DbValue[Int]] = None,
+        offset: Option[DbValue[Int]] = None
     ) extends SqlQuery[A] {
       export query.{applyK, traverseK}
 
       override def take(i: Int): Query[A] =
-        copy(limit = limit.fold(Some(i))(existing => Some(Math.min(existing, i)))).liftSqlQuery
+        copy(limit =
+          Some(limit.fold(i.as(AnsiTypes.integer))(existing => existing.least(i.as(AnsiTypes.integer))))
+        ).liftSqlQuery
 
       override def drop(i: Int): Query[A] =
         if limit.isDefined
         then nested.drop(i)
-        else copy(offset = offset + i).liftSqlQuery
+        else copy(offset = Some(offset.fold(i.as(AnsiTypes.integer))(_ + i.as(AnsiTypes.integer)))).liftSqlQuery
 
       override def selectAstAndValues: TagState[QueryAstMetadata[A]] =
-        query.selectAstAndValues.flatMap { meta =>
-          meta.ast match
+        for
+          meta      <- query.selectAstAndValues
+          limitAst  <- limit.traverse(_.ast)
+          offsetAst <- offset.traverse(_.ast)
+          res <- meta.ast match
             case from: SelectAst.SelectFrom[Codec] =>
               val oldLimitOffset = from.limitOffset
 
               val newLimitOffset = oldLimitOffset match {
-                case Some(old: SelectAst.LimitOffset) =>
-                  Some(old.copy(limit = limit.orElse(old.limit), offset = if offset != 0 then offset else old.offset))
+                case Some(old: SelectAst.LimitOffset[Codec]) =>
+                  Some(old.copy(limit = limitAst.orElse(old.limit), offset = offsetAst.orElse(old.offset)))
 
-                case None if limit.isDefined || offset != 0 =>
-                  Some(SelectAst.LimitOffset(limit, offset, false))
+                case None if limitAst.isDefined || offsetAst.isDefined =>
+                  Some(SelectAst.LimitOffset(limitAst, offsetAst, false))
 
                 case None => None
               }
 
               State.pure(meta.copy(ast = from.copy(limitOffset = newLimitOffset)))
             case _ => SqlQueryLimitOffsetStage(query.nested, limit, offset).selectAstAndValues
-        }
+        yield res
     }
 
     case class SqlQueryFlatMap[A[_[_]], B[_[_]]](query: Query[A], f: A[DbValue] => Query[B]) extends SqlQuery[B] {
@@ -884,12 +889,12 @@ trait SqlQueryPlatformQuery { platform: SqlQueryPlatform =>
 
       override def take(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        limit = Some(i)
+        limit = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def drop(i: Int): Query[A] = SqlQueryLimitOffsetStage(
         this.liftSqlQuery,
-        offset = i
+        offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
       override def applyK: ApplyKC[A] = head.applyK

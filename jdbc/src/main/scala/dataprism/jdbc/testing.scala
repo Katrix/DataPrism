@@ -136,7 +136,7 @@ object Testing {
     println()
 
   def printQuery[A[_[_]]](q: Query[A]): Unit =
-    printSqlStr(PostgresJdbcPlatform.sqlRenderer.renderSelect(q.selectAst))
+    printSqlStr(PostgresJdbcPlatform.sqlRenderer.renderSelectStatement(q.selectAst))
 
   given Db[Future, JdbcCodec] with {
     override def run(sql: SqlStr[JdbcCodec]): Future[Int] =
