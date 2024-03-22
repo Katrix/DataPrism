@@ -13,7 +13,10 @@ in `Fs2SqlQueryPlatform`. Here's an example.
 import dataprism.jdbc.platform.PostgresJdbcPlatform
 import dataprism.platform.sql.Fs2SqlQueryPlatform
 
-object MyPlatform extends PostgresJdbcPlatform, Fs2SqlQueryPlatform
+object MyPlatform extends PostgresJdbcPlatform, Fs2SqlQueryPlatform {
+  override type Api = PostgresApi & Fs2Api
+  object Api extends PostgresApi, Fs2Api
+}
 ```
 
 From there you create the stream aware `Db` using a `DataSource` like normal.

@@ -8,8 +8,7 @@ import scala.annotation.targetName
 
 trait H2JdbcPlatform extends H2QueryPlatform {
 
-  type Api = H2Api
-  val Api: Api = new H2Api {}
+  type Api <: H2Api
 
   //override type ArrayTypeArgs[A] = Nothing // H2JdbcTypes.ArrayMapping[A]
   override type Codec[A]          = JdbcCodec[A]
@@ -27,4 +26,7 @@ trait H2JdbcPlatform extends H2QueryPlatform {
   type Compile = SqlCompile
   object Compile extends SqlCompile
 }
-object H2JdbcPlatform extends H2JdbcPlatform
+object H2JdbcPlatform extends H2JdbcPlatform {
+  override type Api = H2Api
+  object Api extends H2Api
+}

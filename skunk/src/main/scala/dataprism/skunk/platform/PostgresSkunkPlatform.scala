@@ -13,9 +13,9 @@ import skunk.{Codec, Decoder, data}
 
 trait PostgresSkunkPlatform extends PostgresQueryPlatform {
 
-  type Api = PostgresApi
-  val Api: Api = new PostgresApi {}
-  
+  type Api <: PostgresSkunkApi
+  trait PostgresSkunkApi extends PostgresApi
+
   override type ArrayTypeArgs[_] = DummyImplicit
   override type Codec[A]         = skunk.Codec[A]
   extension [A](tpe: Codec[A])
@@ -118,4 +118,7 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
     ): skunk.Command[res.K[Id]] =
       commandK(res.toK(types))(f)(using res.applyKC, res.traverseKC, origin)
 }
-object PostgresSkunkPlatform extends PostgresSkunkPlatform
+object PostgresSkunkPlatform extends PostgresSkunkPlatform {
+  override type Api = PostgresSkunkApi
+  object Api extends PostgresSkunkApi
+}

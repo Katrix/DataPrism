@@ -10,8 +10,7 @@ trait MySqlJdbcPlatform extends MySqlQueryPlatform {
   override type Codec[A]    = JdbcCodec[A]
   override type CastType[A] = MySqlJdbcTypeCastable[A]
 
-  type Api = MySqlApi
-  val Api: Api = new MySqlApi {}
+  type Api <: MySqlApi
 
   extension [A](t: CastType[A])
     @targetName("castTypeName") override def castTypeName: String  = t.name

@@ -139,7 +139,7 @@ lazy val docs = project
       "-revision",
       "main",
       "-Yapi-subdirectory",
-      "api",
+      //"api",
       "-Ygenerate-inkuire",
       "-snippet-compiler:compile"
     )

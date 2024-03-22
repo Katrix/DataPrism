@@ -8,8 +8,7 @@ import dataprism.sql.AnsiTypes
 
 trait SqliteJdbcPlatform extends SqliteQueryPlatform {
 
-  type Api = SqliteApi
-  val Api: Api = new SqliteApi {}
+  type Api <: SqliteApi
 
   override type Codec[A] = JdbcCodec[A]
   extension [A](tpe: Codec[A])
@@ -21,4 +20,7 @@ trait SqliteJdbcPlatform extends SqliteQueryPlatform {
   type Compile = SqlCompile
   object Compile extends SqlCompile
 }
-object SqliteJdbcPlatform extends SqliteJdbcPlatform
+object SqliteJdbcPlatform extends SqliteJdbcPlatform {
+  override type Api = SqliteApi
+  object Api extends SqliteApi
+}

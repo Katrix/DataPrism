@@ -8,8 +8,7 @@ import scala.annotation.targetName
 
 trait PostgresJdbcPlatform extends PostgresQueryPlatform {
 
-  type Api = PostgresApi
-  val Api: Api = new PostgresApi {}
+  type Api <: PostgresApi
 
   override type ArrayTypeArgs[A] = Nothing // PostgresJdbcTypes.ArrayMapping[A]
   override type Codec[A]          = JdbcCodec[A]
@@ -27,4 +26,7 @@ trait PostgresJdbcPlatform extends PostgresQueryPlatform {
   type Compile = SqlCompile
   object Compile extends SqlCompile
 }
-object PostgresJdbcPlatform extends PostgresJdbcPlatform
+object PostgresJdbcPlatform extends PostgresJdbcPlatform {
+  override type Api = PostgresApi
+  object Api extends PostgresApi
+}

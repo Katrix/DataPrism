@@ -45,7 +45,7 @@ given DataSourceDb[Future] = DataSourceDb.ofFuture(???)
 The simplest operation is `Select`, used like so.
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
 import scala.concurrent.Future
 import perspective.Id
 
@@ -62,7 +62,7 @@ The simples way is just `Insert.into(table).values(value, values*)`. For this fu
 to insert, and values to insert. The next option is `Insert.into(table).valuesFromQuery(query)`.
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
 
 Insert.into(UserK.table).values(UserK(5, Some("foo"), "bar", "foo@example.com")).run
 
@@ -78,7 +78,7 @@ of the table while `B` is  a projection to the columns you want to set. From the
 either a `Query[B]` or values of type `B[Id]`..
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
 import perspective.Compose2
 
 Insert
@@ -110,7 +110,7 @@ as was done with inserts. There are in general four forms
 Here are some examples:
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
 import perspective.Compose2
 
 Update
@@ -147,7 +147,7 @@ nothing about only
 affecting some columns. Here are some examples of how Delete works.
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
 
 Delete.from(UserK.table).where(_.username === "foo".as(text)).run
 Delete.from(UserK.table).using(Query.from(UserK.table)).where { (a, b) =>

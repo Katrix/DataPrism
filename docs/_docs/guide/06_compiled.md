@@ -49,7 +49,7 @@ Here are two examples of how operation works. Due to Scala inferring too precise
 the code calls `forgetNNA` on the types.
 
 ```scala 3 sc-compile-with:Setup.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
 import perspective.Id
 import scala.concurrent.Future
 
