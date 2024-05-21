@@ -22,6 +22,6 @@ trait MySqlJdbcPlatform extends MySqlQueryPlatform {
 
   override val AnsiTypes: AnsiTypes[JdbcCodec] = MySqlJdbcTypes
 
-  type Compile = SqlCompile
-  object Compile extends SqlCompile
+  type Compile = SqlCompileImpl
+  object Compile extends SqlCompileImpl
 }

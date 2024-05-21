@@ -23,10 +23,13 @@ trait PostgresJdbcPlatform extends PostgresQueryPlatform {
 
   override val AnsiTypes: AnsiTypes[JdbcCodec] = PostgresJdbcTypes
 
-  type Compile = SqlCompile
-  object Compile extends SqlCompile
+  type Compile = SqlCompileImpl
+  object Compile extends SqlCompileImpl
 }
 object PostgresJdbcPlatform extends PostgresJdbcPlatform {
   override type Api = PostgresApi
   object Api extends PostgresApi
+
+  override type Impl = DefaultCompleteImpl
+  object Impl extends DefaultCompleteImpl
 }

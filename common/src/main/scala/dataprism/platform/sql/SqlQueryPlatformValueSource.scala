@@ -1,28 +1,12 @@
 package dataprism.platform.sql
 
-import scala.annotation.targetName
-
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait SqlQueryPlatformValueSource { platform: SqlQueryPlatform =>
-
-  case class ValueSourceAstMetaData[A[_[_]]](ast: SelectAst.From[Codec], values: A[DbValue])
-
-  trait SqlValueSourceBase[A[_[_]]] {
-    def applyKC: ApplyKC[A]
-
-    given ApplyKC[A] = applyKC
-
-    def fromPartAndValues: TagState[ValueSourceAstMetaData[A]]
-  }
-
-  type ValueSource[A[_[_]]] <: SqlValueSourceBase[A]
-  type ValueSourceCompanion
-  val ValueSource: ValueSourceCompanion
+trait SqlQueryPlatformValueSource extends SqlQueryPlatformValueSourceBase { platform: SqlQueryPlatform =>
 
   enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
     case FromQuery(q: Query[A])
@@ -247,8 +231,4 @@ trait SqlQueryPlatformValueSource { platform: SqlQueryPlatform =>
   }
 
   extension [A[_[_]]](sqlValueSource: SqlValueSource[A]) def liftSqlValueSource: ValueSource[A]
-
-  extension (c: ValueSourceCompanion)
-    @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A]
-
 }

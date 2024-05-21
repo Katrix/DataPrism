@@ -1,6 +1,7 @@
 package dataprism.skunk.platform
 
 import scala.annotation.targetName
+
 import cats.data.State
 import dataprism.platform.base.MapRes
 import dataprism.platform.implementations.PostgresQueryPlatform
@@ -22,27 +23,29 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
     @targetName("codecTypeName")
     override def name: String = tpe.types.head.name
 
-  lazy override val sqlRenderer: PostgresSkunkAstRenderer[Codec] =
+  override lazy val sqlRenderer: PostgresSkunkAstRenderer[Codec] =
     new PostgresSkunkAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
   override protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: DummyImplicit): Type[Seq[A]] =
-    NullabilityTypeChoice.notNullByDefault(
-      Codec
-        .array[A](
-          a => elemType.codec.encode(a).head.get,
-          s => elemType.codec.decode(0, List(Some(s))).left.map(_.message),
-          elemType.codec.types.head
-        )
-        .imap(arr => Seq.tabulate(arr.size)(arr.get(_).get))(seq => Arr(seq: _*)),
-      _.opt
-    ).notNull
+    NullabilityTypeChoice
+      .notNullByDefault(
+        Codec
+          .array[A](
+            a => elemType.codec.encode(a).head.get,
+            s => elemType.codec.decode(0, List(Some(s))).left.map(_.message),
+            elemType.codec.types.head
+          )
+          .imap(arr => Seq.tabulate(arr.size)(arr.get(_).get))(seq => Arr(seq: _*)),
+        _.opt
+      )
+      .notNull
 
   override val AnsiTypes: AnsiTypes[Codec] = SkunkAnsiTypes
 
   type Compile = SkunkCompile
   object Compile extends SkunkCompile
 
-  trait SkunkCompile extends SqlCompile:
+  trait SkunkCompile extends SqlCompileImpl:
     def queryK[A[_[_]]: ApplyKC: TraverseKC, Res[_[_]]](types: A[Type])(f: A[DbValue] => ResultOperation[Res])(
         using origin: Origin
     ): skunk.Query[A[Id], Res[Id]] =
@@ -51,7 +54,7 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
       val tpesWithIdentifiers: A[Tuple2K[Const[Object], Type]] = types.mapK([Z] => (tpe: Type[Z]) => (new Object, tpe))
 
       val dbValues =
-        tpesWithIdentifiers.mapK([Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).liftDbValue)
+        tpesWithIdentifiers.mapK([Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).lift)
       val op = f(dbValues)
       import op.given
       val (sqlStr, resTypes) = op.sqlAndTypes
@@ -95,7 +98,7 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
       val tpesWithIdentifiers: A[Tuple2K[Const[Object], Type]] = types.mapK([Z] => (tpe: Type[Z]) => (new Object, tpe))
 
       val dbValues =
-        tpesWithIdentifiers.mapK([Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).liftDbValue)
+        tpesWithIdentifiers.mapK([Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).lift)
       val (sqlStr, _) = f(dbValues).sqlAndTypes
 
       skunk.Command(
@@ -121,4 +124,7 @@ trait PostgresSkunkPlatform extends PostgresQueryPlatform {
 object PostgresSkunkPlatform extends PostgresSkunkPlatform {
   override type Api = PostgresSkunkApi
   object Api extends PostgresSkunkApi
+
+  override type Impl = DefaultCompleteImpl
+  object Impl extends DefaultCompleteImpl
 }

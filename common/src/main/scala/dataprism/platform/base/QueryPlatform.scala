@@ -12,8 +12,8 @@ trait QueryPlatform { platform =>
   trait Lift[A, B]:
     extension (a: A) def lift: B
   object Lift:
-    def identity[A]: Lift[A, A] = new Lift[A, A]:
-      extension (a: A) override def lift: A = a
+    def subtype[A <: B, B]: Lift[A, B] = new Lift[A, B]:
+      extension (a: A) override def lift: B = a
 
   type Nullability[A] <: NullabilityBase[A]
   trait NullabilityBase[A]:
@@ -25,7 +25,7 @@ trait QueryPlatform { platform =>
     def isNullable: Boolean
 
   trait DbValueBase[A]:
-    def liftDbValue: DbValue[A]
+    protected def liftDbValue: DbValue[A]
 
     @targetName("dbEquals") def ===(that: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
     @targetName("dbNotEquals") def !==(that: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]

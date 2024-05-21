@@ -13,9 +13,16 @@ trait DefaultCompleteSqlQueryPlatform extends SqlQueryPlatform {
   extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
 
   type DbValueCompanion = SqlDbValueCompanion
-  val DbValue: DbValueCompanion = new SqlDbValueCompanion {}
+  val DbValue: DbValueCompanion = new SqlDbValueCompanionImpl {}
 
   override type AnyDbValue = DbValue[Any]
+
+  type Impl <: DefaultCompleteImpl
+  trait DefaultCompleteImpl extends SqlBaseImpl, SqlDbValueImpl:
+    override def asc[A](v: DbValue[A]): Ord = Ord.Asc(v.unsafeAsAnyDbVal)
+    override def desc[A](v: DbValue[A]): Ord = Ord.Desc(v.unsafeAsAnyDbVal)
+    override def unsafeAsAnyDbVal[A](v: DbValue[A]): DbValue[Any] = v.asInstanceOf[DbValue[Any]]
+
 
   sealed trait OrdSeq extends SqlOrdSeqBase
   enum Ord extends OrdSeq:
@@ -50,7 +57,7 @@ trait DefaultCompleteSqlQueryPlatform extends SqlQueryPlatform {
   type Query[A[_[_]]] = SqlQuery[A]
   type QueryGrouped[A[_[_]]] = SqlQueryGrouped[A]
 
-  val Query: QueryCompanion = new SqlQueryCompanion {}
+  val Query: QueryCompanion = new SqlQueryCompanionImpl {}
   override type QueryCompanion = SqlQueryCompanion
 
   extension [A[_[_]]](sqlQuery: SqlQuery[A]) def liftSqlQuery: Query[A] = sqlQuery

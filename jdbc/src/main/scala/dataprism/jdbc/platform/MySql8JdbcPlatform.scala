@@ -6,4 +6,7 @@ trait MySql8JdbcPlatform  extends MySqlJdbcPlatform, MySql8QueryPlatform
 object MySql8JdbcPlatform extends MySql8JdbcPlatform {
   override type Api = MySqlApi
   object Api extends MySqlApi
+
+  override type Impl = DefaultCompleteImpl
+  object Impl extends DefaultCompleteImpl
 }

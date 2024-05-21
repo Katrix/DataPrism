@@ -8,64 +8,17 @@ import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
+trait SqlQueryPlatformOperation extends SqlQueryPlatformOperationBase { platform: SqlQueryPlatform =>
 
-  sealed trait Operation[A]:
-    type Types
+  class SqlSelectCompanionImpl extends SqlSelectCompanion:
+    def apply[Res[_[_]]](query: Query[Res]): SelectOperation[Res] = new SqlSelectOperationImpl(query).lift
 
-    def sqlAndTypes: (SqlStr[Codec], Types)
+  given sqlSelectCompanionLift: Lift[SqlSelectCompanionImpl, SelectCompanion]
 
-    def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Codec], types: Types)(using db: Db[F, Codec])(using MonadThrow[F]): F[A]
+  class SqlSelectOperationImpl[Res[_[_]]](protected val query: Query[Res])
+      extends SqlSelectOperation[Res],
+        ResultOperation[Res](using query.applyK, query.traverseK):
 
-    def run[F[_]](using Db[F, Codec])(using MonadThrow[F]): F[A] =
-      val (sqlStr, types) = sqlAndTypes
-      runWithSqlAndTypes(sqlStr, types)
-  end Operation
-
-  trait IntOperation extends Operation[Int]:
-    type Types = Type[Int]
-
-    override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Codec], types: Type[Int])(using db: Db[F, Codec])(
-        using MonadThrow[F]
-    ): F[Int] =
-      MonadThrow[F].map(db.runBatch(sqlStr))(_.sum)
-
-  trait ResultOperation[Res[_[_]]](
-      using val resApplyK: ApplyKC[Res],
-      val resTraverseK: TraverseKC[Res]
-  ) extends Operation[Seq[Res[Id]]]:
-    type Types = Res[Type]
-
-    private def runWithMinMax[F[_]](minRows: Int, maxRows: Int)(using db: Db[F, Codec])(
-        using MonadThrow[F]
-    ): F[Seq[Res[Id]]] =
-      val (sqlStr, types) = sqlAndTypes
-      db.runIntoRes(sqlStr, types.mapK([X] => (tpe: Type[X]) => tpe.codec), minRows, maxRows)
-
-    override def runWithSqlAndTypes[F[_]](sqlStr: SqlStr[Codec], types: Res[Type])(
-        using db: Db[F, Codec]
-    )(using MonadThrow[F]): F[Seq[Res[Id]]] =
-      db.runIntoRes(sqlStr, types.mapK([X] => (tpe: Type[X]) => tpe.codec))
-
-    def runOne[F[_]](using db: Db[F, Codec])(using MonadThrow[F]): F[Res[Id]] = runWithMinMax(1, 1).map(_.head)
-
-    def runMaybeOne[F[_]](using db: Db[F, Codec])(using MonadThrow[F]): F[Option[Res[Id]]] =
-      runWithMinMax(0, 1).map(_.headOption)
-
-    def runOneOrMore[F[_]](using db: Db[F, Codec])(using MonadThrow[F]): F[NonEmptySeq[Res[Id]]] =
-      runWithMinMax(1, -1).map(s => NonEmptySeq.fromSeqUnsafe(s))
-
-  type SelectOperation[Res[_[_]]] <: SqlSelectOperation[Res]
-
-  type SelectCompanion <: SqlSelectCompanion
-  class SqlSelectCompanion:
-    def apply[Res[_[_]]](query: Query[Res]): SelectOperation[Res] = new SqlSelectOperation(query).lift
-
-  given Lift[SqlSelectCompanion, SelectCompanion] = sqlSelectCompanionLift
-  protected def sqlSelectCompanionLift: Lift[SqlSelectCompanion, SelectCompanion]
-
-  class SqlSelectOperation[Res[_[_]]](protected val query: Query[Res])
-      extends ResultOperation[Res](using query.applyK, query.traverseK):
     override def sqlAndTypes: (SqlStr[Codec], Res[Type]) =
       import query.given
 
@@ -75,21 +28,17 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         sqlRenderer.renderSelectStatement(astMeta.ast),
         astMeta.values.mapK([Z] => (value: DbValue[Z]) => value.tpe)
       )
-  end SqlSelectOperation
+  end SqlSelectOperationImpl
 
-  given [A[_[_]]]: Lift[SqlSelectOperation[A], SelectOperation[A]] = sqlSelectOperationLift[A]
-  protected def sqlSelectOperationLift[A[_[_]]]: Lift[SqlSelectOperation[A], SelectOperation[A]]
-
-  trait DeleteReturningCapability
+  given sqlSelectOperationLift[A[_[_]]]: Lift[SqlSelectOperationImpl[A], SelectOperation[A]]
 
   protected def generateDeleteAlias: Boolean = true
 
-  type DeleteOperation[A[_[_]], B[_[_]]] <: SqlDeleteOperation[A, B]
-  class SqlDeleteOperation[A[_[_]], B[_[_]]](
+  class SqlDeleteOperationImpl[A[_[_]], B[_[_]]](
       protected val from: Table[Codec, A],
       protected val usingV: Option[Query[B]] = None,
       protected val where: (A[DbValue], B[DbValue]) => DbValue[Boolean]
-  ) extends IntOperation:
+  ) extends SqlDeleteOperation[A, B]:
     given ApplyKC[B]    = usingV.fold(from.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
     given TraverseKC[B] = usingV.fold(from.FT.asInstanceOf[TraverseKC[B]])(_.traverseK)
 
@@ -124,27 +73,20 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
       )
     end sqlAndTypes
 
-    def returningK[C[_[_]]: ApplyKC: TraverseKC](
+    override def returningK[C[_[_]]: ApplyKC: TraverseKC](
         f: (A[DbValue], B[DbValue]) => C[DbValue]
     )(using DeleteReturningCapability): DeleteReturningOperation[A, B, C] =
-      new SqlDeleteReturningOperation(from, usingV, where, f).lift
+      new SqlDeleteReturningOperationImpl(from, usingV, where, f).lift
+  end SqlDeleteOperationImpl
 
-    inline def returning[C](f: (A[DbValue], B[DbValue]) => C)(
-        using MR: MapRes[DbValue, C]
-    )(using cap: DeleteReturningCapability): DeleteReturningOperation[A, B, MR.K] =
-      returningK((a, b) => MR.toK(f(a, b)))(using MR.applyKC, MR.traverseKC, cap)
-  end SqlDeleteOperation
+  given sqlDeleteOperationLift[A[_[_]], B[_[_]]]: Lift[SqlDeleteOperationImpl[A, B], DeleteOperation[A, B]]
 
-  given [A[_[_]], B[_[_]]]: Lift[SqlDeleteOperation[A, B], DeleteOperation[A, B]] = sqlDeleteOperationLift[A, B]
-  protected def sqlDeleteOperationLift[A[_[_]], B[_[_]]]: Lift[SqlDeleteOperation[A, B], DeleteOperation[A, B]]
-
-  type DeleteReturningOperation[A[_[_]], B[_[_]], C[_[_]]] <: SqlDeleteReturningOperation[A, B, C]
-  class SqlDeleteReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
+  class SqlDeleteReturningOperationImpl[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
       protected val from: Table[Codec, A],
       protected val usingV: Option[Query[B]] = None,
       protected val where: (A[DbValue], B[DbValue]) => DbValue[Boolean],
       protected val returning: (A[DbValue], B[DbValue]) => C[DbValue]
-  ) extends ResultOperation[C]:
+  ) extends SqlDeleteReturningOperation[A, B, C]:
 
     given ApplyKC[B] = usingV.fold(from.FA.asInstanceOf[ApplyKC[B]])(_.applyK)
 
@@ -175,55 +117,40 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         ),
         astMeta.values.mapK([Z] => (value: DbValue[Z]) => value.tpe)
       )
-  end SqlDeleteReturningOperation
+  end SqlDeleteReturningOperationImpl
 
-  given [A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlDeleteReturningOperation[A, B, C], DeleteReturningOperation[A, B, C]] =
-    sqlDeleteReturningOperationLift[A, B, C]
-  protected def sqlDeleteReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]
-      : Lift[SqlDeleteReturningOperation[A, B, C], DeleteReturningOperation[A, B, C]]
+  given sqlDeleteReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlDeleteReturningOperationImpl[A, B, C], DeleteReturningOperation[A, B, C]]
 
-  type DeleteCompanion <: SqlDeleteCompanion
-  class SqlDeleteCompanion:
-    def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = SqlDeleteFrom(from).lift
-  end SqlDeleteCompanion
+  class SqlDeleteCompanionImpl extends SqlDeleteCompanion:
+    def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = SqlDeleteFromImpl(from).lift
+  end SqlDeleteCompanionImpl
 
-  given Lift[SqlDeleteCompanion, DeleteCompanion] = sqlDeleteCompanionLift
-  protected def sqlDeleteCompanionLift: Lift[SqlDeleteCompanion, DeleteCompanion]
+  given sqlDeleteCompanionLift: Lift[SqlDeleteCompanionImpl, DeleteCompanion]
 
-  trait DeleteUsingCapability
-
-  type DeleteFrom[A[_[_]]] <: SqlDeleteFrom[A]
-  class SqlDeleteFrom[A[_[_]]](protected val from: Table[Codec, A]):
+  class SqlDeleteFromImpl[A[_[_]]](protected val from: Table[Codec, A]) extends SqlDeleteFrom[A]:
     def using[B[_[_]]](query: Query[B])(using DeleteUsingCapability): DeleteFromUsing[A, B] =
-      SqlDeleteFromUsing(from, query).lift
+      SqlDeleteFromUsingImpl(from, query).lift
     def where(f: A[DbValue] => DbValue[Boolean]): DeleteOperation[A, A] =
-      SqlDeleteOperation[A, A](from, None, (a, _) => f(a)).lift
-  end SqlDeleteFrom
+      SqlDeleteOperationImpl[A, A](from, None, (a, _) => f(a)).lift
+  end SqlDeleteFromImpl
 
-  given [A[_[_]]]: Lift[SqlDeleteFrom[A], DeleteFrom[A]] = sqlDeleteFromLift
-  protected def sqlDeleteFromLift[A[_[_]]]: Lift[SqlDeleteFrom[A], DeleteFrom[A]]
+  given sqlDeleteFromLift[A[_[_]]]: Lift[SqlDeleteFromImpl[A], DeleteFrom[A]]
 
-  type DeleteFromUsing[A[_[_]], B[_[_]]] <: SqlDeleteFromUsing[A, B]
-  class SqlDeleteFromUsing[A[_[_]], B[_[_]]](protected val from: Table[Codec, A], val query: Query[B]):
+  class SqlDeleteFromUsingImpl[A[_[_]], B[_[_]]](protected val from: Table[Codec, A], val query: Query[B])
+      extends SqlDeleteFromUsing[A, B]:
     def where(f: (A[DbValue], B[DbValue]) => DbValue[Boolean]): DeleteOperation[A, B] =
-      SqlDeleteOperation(from, Some(query), f).lift
-  end SqlDeleteFromUsing
+      SqlDeleteOperationImpl(from, Some(query), f).lift
+  end SqlDeleteFromUsingImpl
 
-  given [A[_[_]], B[_[_]]]: Lift[SqlDeleteFromUsing[A, B], DeleteFromUsing[A, B]] = sqlDeleteFromUsingLift
-  protected def sqlDeleteFromUsingLift[A[_[_]], B[_[_]]]: Lift[SqlDeleteFromUsing[A, B], DeleteFromUsing[A, B]]
+  given sqlDeleteFromUsingLift[A[_[_]], B[_[_]]]: Lift[SqlDeleteFromUsingImpl[A, B], DeleteFromUsing[A, B]]
 
-  type InsertOperation[A[_[_]], B[_[_]]] <: SqlInsertOperation[A, B]
-
-  trait InsertOnConflictCapability
-  trait InsertReturningCapability
-
-  class SqlInsertOperation[A[_[_]], B[_[_]]](
+  class SqlInsertOperationImpl[A[_[_]], B[_[_]]](
       protected val table: Table[Codec, A],
       protected val columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
       protected val values: Query[B],
       protected val conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, _]],
       protected val onConflict: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
-  ) extends IntOperation:
+  ) extends SqlInsertOperation[A, B]:
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
       import values.given
 
@@ -234,8 +161,8 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
             [Z] =>
               (f: (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]], column: Column[Codec, Z]) =>
                 f(
-                  SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe).liftDbValue,
-                  SqlDbValue.QueryColumn(column.nameStr, "excluded", column.tpe).liftDbValue
+                  SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe).lift,
+                  SqlDbValue.QueryColumn(column.nameStr, "excluded", column.tpe).lift
                 ).traverse(r => r.ast.map(column.name -> _))
           }
           .traverseK[TagState, Const[Option[(SqlStr[Codec], SqlExpr[Codec])]]](FunctionK.identity)
@@ -254,7 +181,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]],
         a: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
     )(using InsertOnConflictCapability): InsertOperation[A, B] =
-      SqlInsertOperation(table, columns, values, on(_).toList, a).lift
+      SqlInsertOperationImpl(table, columns, values, on(_).toList, a).lift
 
     def onConflictUpdate(on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]])(
         using InsertOnConflictCapability
@@ -270,22 +197,19 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     def returning[C[_[_]]: ApplyKC: TraverseKC](f: A[DbValue] => C[DbValue])(
         using InsertReturningCapability
     ): InsertReturningOperation[A, B, C] =
-      SqlInsertReturningOperation(table, columns, values, conflictOn, onConflict, f).lift
-  end SqlInsertOperation
+      SqlInsertReturningOperationImpl(table, columns, values, conflictOn, onConflict, f).lift
+  end SqlInsertOperationImpl
 
-  given [A[_[_]], B[_[_]]]: Lift[SqlInsertOperation[A, B], InsertOperation[A, B]] = sqlInsertOperationLift
-  protected def sqlInsertOperationLift[A[_[_]], B[_[_]]]: Lift[SqlInsertOperation[A, B], InsertOperation[A, B]]
+  given sqlInsertOperationLift[A[_[_]], B[_[_]]]: Lift[SqlInsertOperationImpl[A, B], InsertOperation[A, B]]
 
-  type InsertReturningOperation[A[_[_]], B[_[_]], C[_[_]]] <: SqlInsertReturningOperation[A, B, C]
-
-  class SqlInsertReturningOperation[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
+  class SqlInsertReturningOperationImpl[A[_[_]], B[_[_]], C[_[_]]: ApplyKC: TraverseKC](
       protected val table: Table[Codec, A],
       protected val columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
       protected val values: Query[B],
       protected val conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, _]],
       protected val onConflict: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]],
       protected val returning: A[DbValue] => C[DbValue]
-  ) extends ResultOperation[C]:
+  ) extends SqlInsertReturningOperation[A, B, C]:
 
     override type Types = C[Type]
 
@@ -300,14 +224,14 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
             [Z] =>
               (f: (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]], column: Column[Codec, Z]) =>
                 f(
-                  SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe).liftDbValue,
-                  SqlDbValue.QueryColumn(column.nameStr, "excluded", column.tpe).liftDbValue
+                  SqlDbValue.QueryColumn(column.nameStr, table.tableName, column.tpe).lift,
+                  SqlDbValue.QueryColumn(column.nameStr, "excluded", column.tpe).lift
                 ).traverse(r => r.ast.map(column.name -> _))
           }
           .traverseK[TagState, Const[Option[(SqlStr[Codec], SqlExpr[Codec])]]](FunctionK.identity)
         returningValues = returning(
           table.columns.mapK(
-            [Z] => (col: Column[Codec, Z]) => SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe).liftDbValue
+            [Z] => (col: Column[Codec, Z]) => SqlDbValue.QueryColumn(col.nameStr, table.tableName, col.tpe).lift
           )
         )
         computedReturning <-
@@ -325,29 +249,25 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
       )
 
       ret.runA(freshTaggedState).value
-  end SqlInsertReturningOperation
+  end SqlInsertReturningOperationImpl
 
-  given [A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlInsertReturningOperation[A, B, C], InsertReturningOperation[A, B, C]] =
-    sqlInsertReturningOperationLift
-  protected def sqlInsertReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]
-      : Lift[SqlInsertReturningOperation[A, B, C], InsertReturningOperation[A, B, C]]
+  given sqlInsertReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlInsertReturningOperationImpl[A, B, C], InsertReturningOperation[A, B, C]]
 
-  type InsertCompanion <: SqlInsertCompanion
-  class SqlInsertCompanion:
-    def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A] = SqlInsertInto(table).lift
-  end SqlInsertCompanion
+  class SqlInsertCompanionImpl extends SqlInsertCompanion:
+    def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A] = SqlInsertIntoImpl(table).lift
+  end SqlInsertCompanionImpl
 
-  given Lift[SqlInsertCompanion, InsertCompanion] = sqlInsertCompanionLift
-  protected def sqlInsertCompanionLift: Lift[SqlInsertCompanion, InsertCompanion]
+  given sqlInsertCompanionLift: Lift[SqlInsertCompanionImpl, InsertCompanion]
 
-  type InsertInto[A[_[_]]] <: SqlInsertInto[A]
-  class SqlInsertInto[A[_[_]]](protected val table: Table[Codec, A]):
+  class SqlInsertIntoImpl[A[_[_]]](protected val table: Table[Codec, A]) extends SqlInsertInto[A]:
 
-    def valuesInColumnsFromQueryK[B[_[_]]](columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]])(
+    override def valuesInColumnsFromQueryK[B[_[_]]](
+        columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
+    )(
         query: Query[B]
     ): InsertOperation[A, B] =
       import query.given_ApplyKC_A
-      SqlInsertOperation[A, B](
+      SqlInsertOperationImpl[A, B](
         table,
         columns,
         query,
@@ -357,14 +277,9 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         )
       ).lift
 
-    inline def valuesInColumnsFromQuery[T](columns: A[[X] =>> Column[Codec, X]] => T)(
-        using mr: MapRes[[X] =>> Column[Codec, X], T]
-    )(query: Query[mr.K]): InsertOperation[A, mr.K] =
-      valuesInColumnsFromQueryK(a => mr.toK(columns(a)))(query)
-
-    def valuesFromQuery(query: Query[A]): InsertOperation[A, A] =
+    override def valuesFromQuery(query: Query[A]): InsertOperation[A, A] =
       import table.given
-      SqlInsertOperation(
+      SqlInsertOperationImpl(
         table,
         identity,
         query,
@@ -374,30 +289,31 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         )
       ).lift
 
-    def values(value: A[Id], values: A[Id]*): InsertOperation[A, A] =
+    override def values(value: A[Id], values: A[Id]*): InsertOperation[A, A] =
       valuesFromQuery(Query.valuesOf(table, value, values*))
 
-    def valuesBatch(value: A[Id], values: A[Id]*)(using DistributiveKC[A]): InsertOperation[A, A] =
+    override def valuesBatch(value: A[Id], values: A[Id]*)(using DistributiveKC[A]): InsertOperation[A, A] =
       valuesFromQuery(Query.valuesOfBatch(table, value, values*))
 
-    def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
+    override def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
         columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
     )(value: B[Id], values: B[Id]*): InsertOperation[A, B] =
       valuesInColumnsFromQueryK(columns)(
         Query.valuesK[B](columns(table.columns).mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
       )
 
-    def valuesInColumnsKBatch[B[_[_]]: ApplyKC: TraverseKC: DistributiveKC](
+    override def valuesInColumnsKBatch[B[_[_]]: ApplyKC: TraverseKC: DistributiveKC](
         columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
     )(value: B[Id], values: B[Id]*): InsertOperation[A, B] =
       valuesInColumnsFromQueryK(columns)(
         Query.valuesKBatch[B](columns(table.columns).mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
       )
 
-    def valuesInColumns[T](
+    override def valuesInColumns[T](
         columns: A[[X] =>> Column[Codec, X]] => T
     )(using mr: MapRes[[X] =>> Column[Codec, X], T])(value: mr.K[Id], values: mr.K[Id]*): InsertOperation[A, mr.K] =
       given FunctorKC[mr.K] = mr.applyKC
+
       valuesInColumnsFromQueryK(a => mr.toK(columns(a)))(
         Query.valuesK[mr.K](
           mr.toK(columns(table.columns)).mapK([Z] => (col: Column[Codec, Z]) => col.tpe),
@@ -406,12 +322,13 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         )(using mr.applyKC, mr.traverseKC)
       )
 
-    def valuesInColumnsKBatch[T](
+    override def valuesInColumnsKBatch[T](
         columns: A[[X] =>> Column[Codec, X]] => T
     )(using mr: MapRes[[X] =>> Column[Codec, X], T])(value: mr.K[Id], values: mr.K[Id]*)(
         using D: DistributiveKC[mr.K]
     ): InsertOperation[A, mr.K] =
       given FunctorKC[mr.K] = mr.applyKC
+
       valuesInColumnsFromQueryK(a => mr.toK(columns(a)))(
         Query.valuesKBatch[mr.K](
           mr.toK(columns(table.columns)).mapK([Z] => (col: Column[Codec, Z]) => col.tpe),
@@ -419,26 +336,23 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
           values*
         )(using mr.applyKC, mr.traverseKC, D)
       )
-  end SqlInsertInto
+  end SqlInsertIntoImpl
 
-  given [A[_[_]]]: Lift[SqlInsertInto[A], InsertInto[A]] = sqlInsertIntoLift
-  protected def sqlInsertIntoLift[A[_[_]]]: Lift[SqlInsertInto[A], InsertInto[A]]
-
-  trait UpdateReturningCapability
+  given sqlInsertIntoLift[A[_[_]]]: Lift[SqlInsertIntoImpl[A], InsertInto[A]]
 
   protected def generateUpdateAlias: Boolean = true
 
-  type MapUpdateReturning[Table, From, Res]
-  protected def contramapUpdateReturning[Table, From, Res](f: MapUpdateReturning[Table, From, Res]): (Table, From) => Res
+  protected def contramapUpdateReturning[Table, From, Res](
+      f: MapUpdateReturning[Table, From, Res]
+  ): (Table, From) => Res
 
-  type UpdateOperation[A[_[_]], B[_[_]], C[_[_]]] <: SqlUpdateOperation[A, B, C]
-  class SqlUpdateOperation[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]]](
+  class SqlUpdateOperationImpl[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]]](
       protected val table: Table[Codec, A],
       protected val columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
       protected val from: Option[Query[C]],
       protected val setValues: (A[DbValue], C[DbValue]) => B[DbValue],
       protected val where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
-  ) extends IntOperation:
+  ) extends SqlUpdateOperation[A, B, C]:
 
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
       import table.given
@@ -469,14 +383,14 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     def returningK[D[_[_]]: ApplyKC: TraverseKC](
         f: MapUpdateReturning[A[DbValue], C[DbValue], D[DbValue]]
     )(using UpdateReturningCapability): UpdateReturningOperation[A, B, C, D] =
-      SqlUpdateReturningOperation(table, columns, from, setValues, where, contramapUpdateReturning(f)).lift
+      SqlUpdateReturningOperationImpl(table, columns, from, setValues, where, contramapUpdateReturning(f)).lift
 
     def returning[T](
         f: MapUpdateReturning[A[DbValue], C[DbValue], T]
     )(using mr: MapRes[DbValue, T], cap: UpdateReturningCapability): UpdateReturningOperation[A, B, C, mr.K] =
       given ApplyKC[mr.K]    = mr.applyKC
       given TraverseKC[mr.K] = mr.traverseKC
-      SqlUpdateReturningOperation(
+      SqlUpdateReturningOperationImpl(
         table,
         columns,
         from,
@@ -484,23 +398,18 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
         where,
         (a, b) => mr.toK(contramapUpdateReturning(f)(a, b))
       ).lift
-  end SqlUpdateOperation
+  end SqlUpdateOperationImpl
 
-  given [A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlUpdateOperation[A, B, C], UpdateOperation[A, B, C]] =
-    sqlUpdateOperationLift
-  protected def sqlUpdateOperationLift[A[_[_]], B[_[_]], C[_[_]]]
-      : Lift[SqlUpdateOperation[A, B, C], UpdateOperation[A, B, C]]
+  given sqlUpdateOperationLift[A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlUpdateOperationImpl[A, B, C], UpdateOperation[A, B, C]]
 
-  type UpdateReturningOperation[A[_[_]], B[_[_]], C[_[_]], D[_[_]]] <: SqlUpdateReturningOperation[A, B, C, D]
-
-  class SqlUpdateReturningOperation[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]], D[_[_]]: ApplyKC: TraverseKC](
+  class SqlUpdateReturningOperationImpl[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]], D[_[_]]: ApplyKC: TraverseKC](
       protected val table: Table[Codec, A],
       protected val columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
       protected val from: Option[Query[C]],
       protected val setValues: (A[DbValue], C[DbValue]) => B[DbValue],
       protected val where: (A[DbValue], C[DbValue]) => DbValue[Boolean],
       protected val returning: (A[DbValue], C[DbValue]) => D[DbValue]
-  ) extends ResultOperation[D]:
+  ) extends SqlUpdateReturningOperation[A, B, C, D]:
 
     override def sqlAndTypes: (SqlStr[Codec], D[Type]) = {
       import table.given
@@ -571,105 +480,72 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
       ret.runA(freshTaggedState).value
     }
-  end SqlUpdateReturningOperation
+  end SqlUpdateReturningOperationImpl
 
-  given [A[_[_]], B[_[_]], C[_[_]], D[_[_]]]
-      : Lift[SqlUpdateReturningOperation[A, B, C, D], UpdateReturningOperation[A, B, C, D]] =
-    sqlUpdateReturningOperationLift
-  protected def sqlUpdateReturningOperationLift[A[_[_]], B[_[_]], C[_[_]], D[_[_]]]
-      : Lift[SqlUpdateReturningOperation[A, B, C, D], UpdateReturningOperation[A, B, C, D]]
+  given sqlUpdateReturningOperationLift[A[_[_]], B[_[_]], C[_[_]], D[_[_]]]: Lift[SqlUpdateReturningOperationImpl[A, B, C, D], UpdateReturningOperation[A, B, C, D]]
 
-  type UpdateCompanion <: SqlUpdateCompanion
-  class SqlUpdateCompanion:
-    def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A] = SqlUpdateTable(table).lift
+  class SqlUpdateCompanionImpl extends SqlUpdateCompanion:
+    def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A] = SqlUpdateTableImpl(table).lift
 
-  given Lift[SqlUpdateCompanion, UpdateCompanion] = sqlUpdateCompanionLift
-  protected def sqlUpdateCompanionLift: Lift[SqlUpdateCompanion, UpdateCompanion]
+  given sqlUpdateCompanionLift: Lift[SqlUpdateCompanionImpl, UpdateCompanion]
 
-  trait UpdateFromCapability
-
-  type UpdateTable[A[_[_]]] <: SqlUpdateTable[A]
-  class SqlUpdateTable[A[_[_]]](protected val table: Table[Codec, A]):
+  class SqlUpdateTableImpl[A[_[_]]](protected val table: Table[Codec, A]) extends SqlUpdateTable[A]:
     def from[B[_[_]]](fromQ: Query[B])(using UpdateFromCapability): UpdateTableFrom[A, B] =
-      SqlUpdateTableFrom(table, fromQ).lift
+      SqlUpdateTableFromImpl(table, fromQ).lift
 
-    def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A] = SqlUpdateTableWhere(table, where).lift
+    def where(where: A[DbValue] => DbValue[Boolean]): UpdateTableWhere[A] = SqlUpdateTableWhereImpl(table, where).lift
 
-  given [A[_[_]]]: Lift[SqlUpdateTable[A], UpdateTable[A]] = sqlUpdateTableLift
-  protected def sqlUpdateTableLift[A[_[_]]]: Lift[SqlUpdateTable[A], UpdateTable[A]]
+  given sqlUpdateTableLift[A[_[_]]]: Lift[SqlUpdateTableImpl[A], UpdateTable[A]]
 
-  type UpdateTableFrom[A[_[_]], C[_[_]]] <: SqlUpdateTableFrom[A, C]
-  class SqlUpdateTableFrom[A[_[_]], C[_[_]]](protected val table: Table[Codec, A], protected val from: Query[C]):
+  class SqlUpdateTableFromImpl[A[_[_]], C[_[_]]](protected val table: Table[Codec, A], protected val from: Query[C])
+      extends SqlUpdateTableFrom[A, C]:
     def where(where: (A[DbValue], C[DbValue]) => DbValue[Boolean]): UpdateTableFromWhere[A, C] =
-      SqlUpdateTableFromWhere(table, from, where).lift
+      SqlUpdateTableFromWhereImpl(table, from, where).lift
 
-  given [A[_[_]], C[_[_]]]: Lift[SqlUpdateTableFrom[A, C], UpdateTableFrom[A, C]] = sqlUpdateTableFromLift
-  protected def sqlUpdateTableFromLift[A[_[_]], C[_[_]]]: Lift[SqlUpdateTableFrom[A, C], UpdateTableFrom[A, C]]
+  given sqlUpdateTableFromLift[A[_[_]], C[_[_]]]: Lift[SqlUpdateTableFromImpl[A, C], UpdateTableFrom[A, C]]
 
-  type UpdateTableWhere[A[_[_]]] <: SqlUpdateTableWhere[A]
-  class SqlUpdateTableWhere[A[_[_]]](
+  class SqlUpdateTableWhereImpl[A[_[_]]](
       protected val table: Table[Codec, A],
       protected val where: A[DbValue] => DbValue[Boolean]
-  ):
+  ) extends SqlUpdateTableWhere[A]:
     def values(setValues: A[DbValue] => A[DbValue]): UpdateOperation[A, A, A] =
       import table.given
-      SqlUpdateOperation[A, A, A](table, identity, None, (a, _) => setValues(a), (a, _) => where(a)).lift
+      SqlUpdateOperationImpl[A, A, A](table, identity, None, (a, _) => setValues(a), (a, _) => where(a)).lift
 
     def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
         columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
     )(
         setValues: A[DbValue] => B[DbValue]
     ): UpdateOperation[A, B, A] =
-      SqlUpdateOperation[A, B, A](table, columns, None, (a, _) => setValues(a), (a, _) => where(a)).lift
+      SqlUpdateOperationImpl[A, B, A](table, columns, None, (a, _) => setValues(a), (a, _) => where(a)).lift
 
-    inline def valuesInColumns[T](columns: A[[X] =>> Column[Codec, X]] => T)(
-        using mr: MapRes[[X] =>> Column[Codec, X], T]
-    )(setValues: A[DbValue] => mr.K[DbValue]): UpdateOperation[A, mr.K, A] =
-      valuesInColumnsK(a => mr.toK(columns(a)))(a => setValues(a))(using mr.applyKC, mr.traverseKC)
+  given sqlUpdateTableWhereLift[A[_[_]]]: Lift[SqlUpdateTableWhereImpl[A], UpdateTableWhere[A]]
 
-  given [A[_[_]]]: Lift[SqlUpdateTableWhere[A], UpdateTableWhere[A]] = sqlUpdateTableWhereLift
-  protected def sqlUpdateTableWhereLift[A[_[_]]]: Lift[SqlUpdateTableWhere[A], UpdateTableWhere[A]]
-
-  type UpdateTableFromWhere[A[_[_]], C[_[_]]] <: SqlUpdateTableFromWhere[A, C]
-  class SqlUpdateTableFromWhere[A[_[_]], C[_[_]]](
+  class SqlUpdateTableFromWhereImpl[A[_[_]], C[_[_]]](
       protected val table: Table[Codec, A],
       protected val from: Query[C],
       protected val where: (A[DbValue], C[DbValue]) => DbValue[Boolean]
-  ):
+  ) extends SqlUpdateTableFromWhere[A, C]:
     def values(setValues: (A[DbValue], C[DbValue]) => A[DbValue]): UpdateOperation[A, A, C] =
       import table.given
-      SqlUpdateOperation[A, A, C](table, identity, Some(from), setValues, where).lift
+      SqlUpdateOperationImpl[A, A, C](table, identity, Some(from), setValues, where).lift
 
     def valuesInColumnsK[B[_[_]]: ApplyKC: TraverseKC](
         columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]]
     )(
         setValues: (A[DbValue], C[DbValue]) => B[DbValue]
-    ): UpdateOperation[A, B, C] = SqlUpdateOperation[A, B, C](table, columns, Some(from), setValues, where).lift
+    ): UpdateOperation[A, B, C] = SqlUpdateOperationImpl[A, B, C](table, columns, Some(from), setValues, where).lift
 
-    inline def valuesInColumns[T](columns: A[[X] =>> Column[Codec, X]] => T)(
-        using mr: MapRes[[X] =>> Column[Codec, X], T]
-    )(setValues: (A[DbValue], C[DbValue]) => mr.K[DbValue]): UpdateOperation[A, mr.K, C] =
-      valuesInColumnsK(a => mr.toK(columns(a)))((a, b) => setValues(a, b))(using mr.applyKC, mr.traverseKC)
+  given sqlUpdateTableFromWhereLift[A[_[_]], C[_[_]]]: Lift[SqlUpdateTableFromWhereImpl[A, C], UpdateTableFromWhere[A, C]]
 
-  given [A[_[_]], C[_[_]]]: Lift[SqlUpdateTableFromWhere[A, C], UpdateTableFromWhere[A, C]] =
-    sqlUpdateTableFromWhereLift
-  protected def sqlUpdateTableFromWhereLift[A[_[_]], C[_[_]]]
-      : Lift[SqlUpdateTableFromWhere[A, C], UpdateTableFromWhere[A, C]]
+  trait SqlOperationCompanionImpl extends SqlOperationCompanion:
+    val Select: SelectCompanion = new SqlSelectCompanionImpl().lift
+    val Delete: DeleteCompanion = new SqlDeleteCompanionImpl().lift
+    val Insert: InsertCompanion = new SqlInsertCompanionImpl().lift
+    val Update: UpdateCompanion = new SqlUpdateCompanionImpl().lift
+  end SqlOperationCompanionImpl
 
-  val Operation: OperationCompanion
-  type OperationCompanion <: SqlOperationCompanion
-  trait SqlOperationCompanion:
-    val Select: SelectCompanion = new SqlSelectCompanion().lift
-    val Delete: DeleteCompanion = new SqlDeleteCompanion().lift
-    val Insert: InsertCompanion = new SqlInsertCompanion().lift
-    val Update: UpdateCompanion = new SqlUpdateCompanion().lift
-
-  end SqlOperationCompanion
-
-  val Compile: Compile
-  type Compile <: SqlCompile
-
-  trait SqlCompile:
+  trait SqlCompileImpl extends SqlCompile:
     protected def simple[A[_[_]]: ApplyKC: TraverseKC, B](types: A[Type])(f: A[DbValue] => B)(
         doReplacement: (B, Map[Object, Seq[Any]]) => B
     ): A[Id] => B =
@@ -680,7 +556,7 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
 
       val dbValues =
         tpesWithIdentifiers.mapK(
-          [Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).liftDbValue
+          [Z] => (t: (Object, Type[Z])) => SqlDbValue.CompilePlaceholder(t._1, t._2).lift
         )
       val b = f(dbValues)
 
@@ -696,11 +572,6 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
     def rawK[A[_[_]]: ApplyKC: TraverseKC](types: A[Type])(f: A[DbValue] => SqlStr[Codec]): A[Id] => SqlStr[Codec] =
       simple(types)(f)(_.compileWithValues(_))
 
-    inline def raw[A](types: A)(using res: MapRes[Type, A])(
-        f: res.K[DbValue] => SqlStr[Codec]
-    ): res.K[Id] => SqlStr[Codec] =
-      rawK(res.toK(types))(f)(using res.applyKC, res.traverseKC)
-
     def operationK[A[_[_]]: ApplyKC: TraverseKC, B, F[_]: MonadThrow](types: A[Type])(f: A[DbValue] => Operation[B])(
         using db: Db[F, Codec]
     ): A[Id] => F[B] =
@@ -709,42 +580,4 @@ trait SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
       }.andThen { case (op, (sqlStr, resultTypes)) =>
         op.runWithSqlAndTypes(sqlStr, resultTypes.asInstanceOf[op.Types])
       }
-
-    inline def operation[A, B, F[_]: MonadThrow](types: A)(using res: MapRes[Type, A])(
-        f: res.K[DbValue] => Operation[B]
-    )(
-        using db: Db[F, Codec]
-    ): res.K[Id] => F[B] =
-      operationK(res.toK(types))(f)(using res.applyKC, res.traverseKC, summon[MonadThrow[F]], db)
-
-  type Api <: SqlOperationApi
-  trait SqlOperationApi {
-    export platform.{IntOperation, ResultOperation}
-
-    inline def Select: platform.SelectCompanion       = platform.Operation.Select
-    inline def Delete: platform.DeleteCompanion       = platform.Operation.Delete
-    inline def Insert: platform.InsertCompanion       = platform.Operation.Insert
-    inline def Update: platform.UpdateCompanion       = platform.Operation.Update
-    inline def Operation: platform.OperationCompanion = platform.Operation
-
-    type Operation[A] = platform.Operation[A]
-
-    type Compile = platform.Compile
-    inline def Compile: platform.Compile = platform.Compile
-
-    type SelectOperation[A[_[_]]] = platform.SelectOperation[A]
-
-    type DeleteFrom[A[_[_]]]               = platform.DeleteFrom[A]
-    type DeleteFromUsing[A[_[_]], B[_[_]]] = platform.DeleteFromUsing[A, B]
-    type DeleteOperation[A[_[_]], B[_[_]]] = platform.DeleteOperation[A, B]
-
-    type InsertInto[A[_[_]]]               = platform.InsertInto[A]
-    type InsertOperation[A[_[_]], B[_[_]]] = platform.InsertOperation[A, B]
-
-    type UpdateTable[A[_[_]]]                       = platform.UpdateTable[A]
-    type UpdateTableFrom[A[_[_]], B[_[_]]]          = platform.UpdateTableFrom[A, B]
-    type UpdateTableWhere[A[_[_]]]                  = platform.UpdateTableWhere[A]
-    type UpdateTableFromWhere[A[_[_]], C[_[_]]]     = platform.UpdateTableFromWhere[A, C]
-    type UpdateOperation[A[_[_]], B[_[_]], C[_[_]]] = platform.UpdateOperation[A, B, C]
-  }
 }

@@ -6,4 +6,7 @@ trait MySql57JdbcPlatform  extends MySqlJdbcPlatform, MySql57QueryPlatform
 object MySql57JdbcPlatform extends MySql57JdbcPlatform {
   override type Api = MySqlApi
   object Api extends MySqlApi
+
+  override type Impl = DefaultCompleteImpl
+  object Impl extends DefaultCompleteImpl
 }

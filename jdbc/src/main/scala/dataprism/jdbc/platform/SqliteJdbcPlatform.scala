@@ -17,10 +17,13 @@ trait SqliteJdbcPlatform extends SqliteQueryPlatform {
 
   override val AnsiTypes: AnsiTypes[JdbcCodec] = SqliteJdbcTypes
 
-  type Compile = SqlCompile
-  object Compile extends SqlCompile
+  type Compile = SqlCompileImpl
+  object Compile extends SqlCompileImpl
 }
 object SqliteJdbcPlatform extends SqliteJdbcPlatform {
   override type Api = SqliteApi
   object Api extends SqliteApi
+
+  override type Impl = DefaultCompleteImpl
+  object Impl extends DefaultCompleteImpl
 }

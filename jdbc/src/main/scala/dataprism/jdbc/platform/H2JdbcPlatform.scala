@@ -23,10 +23,13 @@ trait H2JdbcPlatform extends H2QueryPlatform {
 
   override val AnsiTypes: AnsiTypes[JdbcCodec] = H2JdbcTypes
 
-  type Compile = SqlCompile
-  object Compile extends SqlCompile
+  type Compile = SqlCompileImpl
+  object Compile extends SqlCompileImpl
 }
 object H2JdbcPlatform extends H2JdbcPlatform {
   override type Api = H2Api
   object Api extends H2Api
+
+  override type Impl = DefaultCompleteImpl
+  object Impl extends DefaultCompleteImpl
 }
