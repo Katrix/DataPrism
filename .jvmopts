@@ -1,2 +1,3 @@
 -Xms2G
 -Xmx4G
+-Xss8M

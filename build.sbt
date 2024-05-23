@@ -34,9 +34,10 @@ lazy val common = project.settings(
   name                                         := "dataprism-common",
   libraryDependencies += "net.katsstuff"       %% "perspective"            % "0.2.0+17-d7d68444-SNAPSHOT",
   libraryDependencies += "net.katsstuff"       %% "perspective-derivation" % "0.2.0+17-d7d68444-SNAPSHOT",
-  libraryDependencies += "com.disneystreaming" %% "weaver-cats"            % "0.8.4" % Test,
-  libraryDependencies += "com.disneystreaming" %% "weaver-scalacheck"      % "0.8.4" % Test,
-  libraryDependencies += "io.chrisdavenport"   %% "cats-scalacheck"        % "0.3.2" % Test,
+  libraryDependencies += "com.disneystreaming" %% "weaver-cats"            % "0.8.4"  % Test,
+  libraryDependencies += "com.disneystreaming" %% "weaver-scalacheck"      % "0.8.4"  % Test,
+  libraryDependencies += "io.chrisdavenport"   %% "cats-scalacheck"        % "0.3.2"  % Test,
+  libraryDependencies += "org.typelevel"       %% "spire"                  % "0.18.0" % Test,
   testFrameworks += new TestFramework("weaver.framework.CatsEffect")
 )
 
@@ -139,7 +140,7 @@ lazy val docs = project
       "-revision",
       "main",
       "-Yapi-subdirectory",
-      //"api",
+      // "api",
       "-Ygenerate-inkuire",
       "-snippet-compiler:compile"
     )

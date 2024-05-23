@@ -307,12 +307,12 @@ trait SqlQueryPlatformDbValue extends SqlQueryPlatformDbValueBase { platform: Sq
       SqlDbValue.Function(SqlExpr.FunctionName.Exp, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
 
     def sign[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Exp, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
+      SqlDbValue.Function(SqlExpr.FunctionName.Sign, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
 
-    def pi[A](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
+    def pi[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
       SqlDbValue.Function(SqlExpr.FunctionName.Pi, Nil, tpe.castTypeType).cast(tpe)
 
-    def random[A](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
+    def random[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
       SqlDbValue.Function(SqlExpr.FunctionName.Random, Nil, tpe.castTypeType).cast(tpe)
 
   trait SqlDbValueBaseImpl[A] extends SqlDbValueBase[A] {
@@ -458,8 +458,8 @@ trait SqlQueryPlatformDbValue extends SqlQueryPlatformDbValueBase { platform: Sq
       case SqlDbValue.BinOp(lhs, rhs, op) => lhs.ast.flatMap(l => rhs.ast.map(r => SqlExpr.BinOp(l, r, op.ast)))
 
       case SqlDbValue.JoinNullable(value) => value.ast
-      case SqlDbValue.Function(f, values, _) =>
-        values.toList.traverse(_.ast).map(exprs => SqlExpr.FunctionCall(f, exprs))
+      case SqlDbValue.Function(f, values, tpe) =>
+        values.toList.traverse(_.ast).map(exprs => SqlExpr.FunctionCall(f, exprs, tpe.name))
       case SqlDbValue.Cast(value, typeName, _) => value.ast.map(v => SqlExpr.Cast(v, typeName))
 
       case SqlDbValue.GetNullable(value, _) => value.ast

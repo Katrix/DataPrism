@@ -25,7 +25,7 @@ abstract class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecT
       case SqlExpr.BinaryOperation.BitwiseXOr => sql"(${renderExpr(lhs)} ^ ${renderExpr(rhs)})"
       case _                                  => super.renderBinaryOp(lhs, rhs, op)
 
-  override protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]]): SqlStr[Codec] =
+  override protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]], tpe: String): SqlStr[Codec] =
     inline def rendered                         = args.map(renderExpr).intercalate(sql", ")
     inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
 
@@ -33,7 +33,7 @@ abstract class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecT
       case SqlExpr.FunctionName.Random                       => normal("rand")
       case SqlExpr.FunctionName.Greatest if args.length == 1 => renderExpr(args.head)
       case SqlExpr.FunctionName.Least if args.length == 1    => renderExpr(args.head)
-      case _                                                 => super.renderFunctionCall(call, args)
+      case _                                                 => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderRow(row: Seq[SqlExpr[Codec]]): SqlStr[Codec] = sql"ROW${super.renderRow(row)}"
 

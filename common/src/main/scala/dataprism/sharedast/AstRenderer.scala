@@ -69,7 +69,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
 
       case SqlExpr.BinaryOperation.Custom(op) => normal(op)
 
-  protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]]): SqlStr[Codec] =
+  protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]], tpe: String): SqlStr[Codec] =
     val rendered                                = args.map(renderExpr).intercalate(sql", ")
     inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
 
@@ -93,10 +93,11 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.Greatest => normal("greatest")
       case SqlExpr.FunctionName.Least    => normal("least")
 
-      case SqlExpr.FunctionName.Ln      => normal("ln")
-      case SqlExpr.FunctionName.Log     => normal("log")
-      case SqlExpr.FunctionName.Log10   => normal("log10")
-      case SqlExpr.FunctionName.Log2    => sql"log(2, $rendered)"
+      case SqlExpr.FunctionName.Ln    => normal("ln")
+      case SqlExpr.FunctionName.Log   => normal("log")
+      case SqlExpr.FunctionName.Log10 => normal("log10")
+      case SqlExpr.FunctionName.Log2 =>
+        renderFunctionCall(SqlExpr.FunctionName.Log, SqlExpr.Custom(Nil, _ => sql"2") +: args, tpe)
       case SqlExpr.FunctionName.Sqrt    => normal("sqrt")
       case SqlExpr.FunctionName.Pow     => normal("power")
       case SqlExpr.FunctionName.Exp     => normal("exp")
@@ -107,6 +108,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.Degrees => normal("degrees")
       case SqlExpr.FunctionName.Radians => normal("radians")
 
+      case SqlExpr.FunctionName.Sign   => normal("sign")
       case SqlExpr.FunctionName.Pi     => normal("pi")
       case SqlExpr.FunctionName.Random => normal("random")
 
@@ -139,8 +141,9 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
           SqlExpr.False()
         case _ => SqlExpr.BinOp(slhs, srhs, op)
 
-    case SqlExpr.FunctionCall(functionCall, args) => SqlExpr.FunctionCall(functionCall, args.map(simplifyExpr))
-    case SqlExpr.PreparedArgument(name, arg)      => SqlExpr.PreparedArgument(name, arg)
+    case SqlExpr.FunctionCall(functionCall, args, tpe) =>
+      SqlExpr.FunctionCall(functionCall, args.map(simplifyExpr), tpe)
+    case SqlExpr.PreparedArgument(name, arg) => SqlExpr.PreparedArgument(name, arg)
 
     case SqlExpr.Null()                 => SqlExpr.Null()
     case SqlExpr.IsNull(SqlExpr.Null()) => SqlExpr.True()
@@ -221,19 +224,20 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     case _                      => true
 
   protected def exprIsImmutable(expr: SqlExpr[Codec]): Boolean = expr match
-    case SqlExpr.QueryRef(_, _)                   => true
-    case SqlExpr.UnaryOp(expr, _)                 => exprIsImmutable(expr)
-    case SqlExpr.BinOp(lhs, rhs, _)               => exprIsImmutable(lhs) && exprIsImmutable(rhs)
-    case SqlExpr.FunctionCall(functionCall, args) => args.forall(exprIsImmutable) && functionIsImmutable(functionCall)
-    case SqlExpr.PreparedArgument(_, _)           => false // Disables optimizing these away, which could go badly
-    case SqlExpr.Null()                           => true
-    case SqlExpr.IsNull(expr)                     => exprIsImmutable(expr)
-    case SqlExpr.IsNotNull(expr)                  => exprIsImmutable(expr)
-    case SqlExpr.InValues(expr, values)           => exprIsImmutable(expr) && values.forall(exprIsImmutable)
-    case SqlExpr.NotInValues(expr, values)        => exprIsImmutable(expr) && values.forall(exprIsImmutable)
-    case SqlExpr.InQuery(_, _)                    => false
-    case SqlExpr.NotInQuery(_, _)                 => false
-    case SqlExpr.Cast(expr, _)                    => exprIsImmutable(expr)
+    case SqlExpr.QueryRef(_, _)     => true
+    case SqlExpr.UnaryOp(expr, _)   => exprIsImmutable(expr)
+    case SqlExpr.BinOp(lhs, rhs, _) => exprIsImmutable(lhs) && exprIsImmutable(rhs)
+    case SqlExpr.FunctionCall(functionCall, args, _) =>
+      args.forall(exprIsImmutable) && functionIsImmutable(functionCall)
+    case SqlExpr.PreparedArgument(_, _)    => false // Disables optimizing these away, which could go badly
+    case SqlExpr.Null()                    => true
+    case SqlExpr.IsNull(expr)              => exprIsImmutable(expr)
+    case SqlExpr.IsNotNull(expr)           => exprIsImmutable(expr)
+    case SqlExpr.InValues(expr, values)    => exprIsImmutable(expr) && values.forall(exprIsImmutable)
+    case SqlExpr.NotInValues(expr, values) => exprIsImmutable(expr) && values.forall(exprIsImmutable)
+    case SqlExpr.InQuery(_, _)             => false
+    case SqlExpr.NotInQuery(_, _)          => false
+    case SqlExpr.Cast(expr, _)             => exprIsImmutable(expr)
     case SqlExpr.ValueCase(matchOn, cases, orElse) =>
       exprIsImmutable(matchOn) && cases.forall(t => exprIsImmutable(t._1) && exprIsImmutable(t._2)) && exprIsImmutable(
         orElse
@@ -255,8 +259,8 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     case SqlExpr.UnaryOp(expr, op)   => renderUnaryOp(expr, op)
     case SqlExpr.BinOp(lhs, rhs, op) => renderBinaryOp(lhs, rhs, op)
 
-    case SqlExpr.FunctionCall(functionCall, args) => renderFunctionCall(functionCall, args)
-    case arg @ SqlExpr.PreparedArgument(_, _)     => renderPreparedArgument(arg)
+    case SqlExpr.FunctionCall(functionCall, args, tpe) => renderFunctionCall(functionCall, args, tpe)
+    case arg @ SqlExpr.PreparedArgument(_, _)          => renderPreparedArgument(arg)
 
     case SqlExpr.Null()          => sql"NULL"
     case SqlExpr.IsNull(expr)    => sql"${renderExpr(expr)} IS NULL"
