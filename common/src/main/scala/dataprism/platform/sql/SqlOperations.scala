@@ -8,7 +8,7 @@ import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait SqlQueryPlatformOperation extends SqlQueryPlatformOperationBase { platform: SqlQueryPlatform =>
+trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
 
   class SqlSelectCompanionImpl extends SqlSelectCompanion:
     def apply[Res[_[_]]](query: Query[Res]): SelectOperation[Res] = new SqlSelectOperationImpl(query).lift

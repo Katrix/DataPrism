@@ -1,12 +1,12 @@
-package dataprism.platform.implementations
+package dataprism.platform.sql.implementations
 
 import cats.syntax.all.*
-import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform}
+import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform { platform =>
+trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -42,7 +42,7 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOper
   ): (Table, From) => Res = f
 
   type Api <: PostgresApi
-  trait PostgresApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
+  trait PostgresApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlOperationApi, SqlQueryApi {
     export platform.{
       given DeleteReturningCapability,
       given DeleteUsingCapability,
@@ -65,8 +65,8 @@ trait PostgresQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOper
     override def castTypeName: String  = t.name
     override def castTypeType: Type[A] = t
 
-  type DbMath = SqlDbMath
-  object DbMath extends SqlDbMath
+  type DbMath = SimpleSqlDbMath
+  object DbMath extends SimpleSqlDbMath
 
   type DbValue[A] = SqlDbValue[A]
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = Lift.subtype

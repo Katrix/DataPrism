@@ -1,10 +1,10 @@
 package dataprism.platform.sql
 
-import dataprism.sharedast.SelectAst
-
 import scala.annotation.targetName
 
-trait DefaultCompleteSqlQueryPlatform extends SqlQueryPlatform {
+import dataprism.sharedast.{SelectAst, SqlExpr}
+
+trait DefaultCompleteSql extends SqlQueryPlatform {
 
   override type UnaryOp[V, R] = SqlUnaryOp[V, R]
   extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R] = op
@@ -18,11 +18,12 @@ trait DefaultCompleteSqlQueryPlatform extends SqlQueryPlatform {
   override type AnyDbValue = DbValue[Any]
 
   type Impl <: DefaultCompleteImpl
-  trait DefaultCompleteImpl extends SqlBaseImpl, SqlDbValueImpl:
-    override def asc[A](v: DbValue[A]): Ord = Ord.Asc(v.unsafeAsAnyDbVal)
-    override def desc[A](v: DbValue[A]): Ord = Ord.Desc(v.unsafeAsAnyDbVal)
+  trait DefaultCompleteImpl extends SqlBaseImpl, SqlDbValueImpl, SqlFunctionImpl:
+    override def asc[A](v: DbValue[A]): Ord                       = Ord.Asc(v.unsafeAsAnyDbVal)
+    override def desc[A](v: DbValue[A]): Ord                      = Ord.Desc(v.unsafeAsAnyDbVal)
     override def unsafeAsAnyDbVal[A](v: DbValue[A]): DbValue[Any] = v.asInstanceOf[DbValue[Any]]
-
+    override def function[A](name: SqlExpr.FunctionName, args: Seq[DbValue[Any]], tpe: Type[A]): DbValue[A] =
+      SqlDbValue.Function(name, args, tpe).lift
 
   sealed trait OrdSeq extends SqlOrdSeqBase
   enum Ord extends OrdSeq:
@@ -30,7 +31,7 @@ trait DefaultCompleteSqlQueryPlatform extends SqlQueryPlatform {
     case Desc(value: AnyDbValue)
 
     override def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]] = this match
-      case Ord.Asc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
+      case Ord.Asc(value)  => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Asc, None)))
       case Ord.Desc(value) => value.ast.map(expr => Seq(SelectAst.OrderExpr(expr, SelectAst.OrderDir.Desc, None)))
 
     override def andThen(ord: Ord): OrdSeq = MultiOrdSeq(this, ord)
@@ -52,9 +53,9 @@ trait DefaultCompleteSqlQueryPlatform extends SqlQueryPlatform {
     @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A] =
       query match
         case baseQuery: SqlQuery.SqlQueryFromStage[A] => baseQuery.valueSource
-        case _ => SqlValueSource.FromQuery(query)
+        case _                                        => SqlValueSource.FromQuery(query)
 
-  type Query[A[_[_]]] = SqlQuery[A]
+  type Query[A[_[_]]]        = SqlQuery[A]
   type QueryGrouped[A[_[_]]] = SqlQueryGrouped[A]
 
   val Query: QueryCompanion = new SqlQueryCompanionImpl {}

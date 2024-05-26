@@ -4,7 +4,7 @@ import scala.annotation.targetName
 
 import cats.data.State
 import dataprism.platform.base.MapRes
-import dataprism.platform.implementations.PostgresQueryPlatform
+import dataprism.platform.sql.implementations.PostgresPlatform
 import dataprism.skunk.sql.{PostgresSkunkAstRenderer, SkunkAnsiTypes}
 import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}
 import perspective.*
@@ -12,7 +12,7 @@ import skunk.data.Arr
 import skunk.util.Origin
 import skunk.{Codec, Decoder, data}
 
-trait PostgresSkunkPlatform extends PostgresQueryPlatform {
+trait PostgresSkunkPlatform extends PostgresPlatform {
 
   type Api <: PostgresSkunkApi
   trait PostgresSkunkApi extends PostgresApi

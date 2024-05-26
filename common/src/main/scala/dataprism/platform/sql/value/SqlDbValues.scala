@@ -12,7 +12,7 @@ import dataprism.sharedast.SqlExpr
 import dataprism.sql.*
 import perspective.*
 
-trait SqlQueryPlatformDbValue extends SqlQueryPlatformDbValueBase { platform: SqlQueryPlatform =>
+trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
   type Impl <: SqlDbValueImpl & SqlBaseImpl
   trait SqlDbValueImpl {
@@ -266,54 +266,6 @@ trait SqlQueryPlatformDbValue extends SqlQueryPlatformDbValueBase { platform: Sq
   override given sqlNumericBigDecimal: SqlFractional[BigDecimal] = SqlFractional.defaultInstance(identity, identity)
   override given sqlNumericOptBigDecimal: SqlFractional[Option[BigDecimal]] =
     SqlFractional.defaultInstance(identity, identity)
-
-  type DbMath <: SqlDbMath
-  val DbMath: DbMath
-  trait SqlDbMath:
-    def pow[A: SqlNumeric](a: DbValue[A], b: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Pow, Seq(a.unsafeAsAnyDbVal, b.unsafeAsAnyDbVal), b.tpe).lift
-
-    def sqrt[A: SqlFractional](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Sqrt, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def abs[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Abs, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def ceil[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Ceiling, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def floor[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Floor, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def toDegrees[A: SqlFractional](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Degrees, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def toRadians[A: SqlFractional](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Radians, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def log[A: SqlFractional](a: DbValue[A], b: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Log, Seq(a.unsafeAsAnyDbVal, b.unsafeAsAnyDbVal), b.tpe).lift
-
-    def ln[A: SqlFractional](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Ln, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def log10[A: SqlFractional](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Log10, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def log2[A: SqlFractional](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Log2, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def exp[A: SqlFractional](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Exp, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def sign[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Sign, Seq(a.unsafeAsAnyDbVal), a.tpe).lift
-
-    def pi[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Pi, Nil, tpe.castTypeType).cast(tpe)
-
-    def random[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Random, Nil, tpe.castTypeType).cast(tpe)
 
   trait SqlDbValueBaseImpl[A] extends SqlDbValueBase[A] {
 
@@ -611,10 +563,8 @@ trait SqlQueryPlatformDbValue extends SqlQueryPlatformDbValueBase { platform: Sq
   given booleanSqlLogic: SqlLogic[Boolean]            = SqlLogic.defaultInstance
   given booleanOptSqlLogic: SqlLogic[Option[Boolean]] = SqlLogic.defaultInstance
 
-  // TODO: From this point onwards, move definitions to Base
-
   opaque type Many[A] = DbValue[Any] // Scala compiler bug? Stack overflow
-  object Many {
+  object Many extends ManyCompanion {
     extension [A](many: Many[A])
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long] =
@@ -675,25 +625,6 @@ trait SqlQueryPlatformDbValue extends SqlQueryPlatformDbValueBase { platform: Sq
         )
         .otherwise(DbValue.nullV(res.tpe))
 
-  val Case: CaseCompanion
-  type CaseCompanion <: SqlCaseCompanion
-  trait SqlCaseCompanion {
-    def apply[A](v: DbValue[A]): ValueCase0[A]
-    def when[A](whenCond: DbValue[Boolean])(thenV: DbValue[A]): ConditionCase[A]
-  }
-
-  trait ValueCase0[A] {
-    def when[B](whenV: DbValue[A])(thenV: DbValue[B]): ValueCase1[A, B]
-  }
-  trait ValueCase1[A, B] {
-    def when(whenV: DbValue[A])(thenV: DbValue[B]): ValueCase1[A, B]
-    def otherwise(elseV: DbValue[B]): DbValue[B]
-  }
-  trait ConditionCase[A] {
-    def when(whenCond: DbValue[Boolean])(thenV: DbValue[A]): ConditionCase[A]
-    def otherwise(elseV: DbValue[A]): DbValue[A]
-  }
-
   trait DefaultSqlCaseCompanion extends SqlCaseCompanion {
     override def apply[A](v: DbValue[A]): ValueCase0[A] = DefaultSqlCaseCompanion.DefaultValueCase0(v)
 
@@ -722,69 +653,11 @@ trait SqlQueryPlatformDbValue extends SqlQueryPlatformDbValueBase { platform: Sq
     }
   }
 
-  type Api <: SqlDbValueApi & QueryApi
-
-  trait SqlDbValueApi {
-    export platform.{
-      ConditionCase,
-      NullabilityOf,
-      SqlFractional,
-      SqlIntegral,
-      SqlLogic,
-      SqlNumeric,
-      SqlOrdered,
-      ValueCase0,
-      ValueCase1
-    }
-
-    inline def Nullability: platform.Nullability.type = platform.Nullability
-
-    type AnyDbValue         = platform.AnyDbValue
-    type BinOp[LHS, RHS, R] = platform.BinOp[LHS, RHS, R]
-    type UnaryOp[V, R]      = platform.UnaryOp[V, R]
-    type CastType[A]        = platform.CastType[A]
-    type Codec[A]           = platform.Codec[A]
-    type Type[A]            = platform.Type[A]
-
-    inline def DbMath: platform.DbMath            = platform.DbMath
-    inline def DbValue: platform.DbValueCompanion = platform.DbValue
-    inline def Many: platform.Many.type           = platform.Many
-
-    // Type inference seems worse with export, so we do this instead. Also not sure how name clashes will work with export
-
-    inline def Case: platform.CaseCompanion = platform.Case
-
-    extension [A](v: A)
-      @targetName("valueAs") inline def as(tpe: Type[A]): DbValue[A] = SqlDbValue.Placeholder(Seq(v), tpe).lift
-      @targetName("valueAsNullable") inline def asNullable(
-          tpe: Type[A]
-      )(using NotGiven[A <:< Option[_]]): DbValue[Option[A]] = platform.asNullable(v)(tpe)
-
-    extension [T](t: T)(using mr: MapRes[Many, T])
-      inline def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B] = platform.mapManyN(t)(f)
-
-    extension [A](optVal: DbValue[Option[A]])(using ev: NotGiven[A <:< Option[_]])
-      @targetName("dbValOptgetUnsafe") inline def unsafeGet: DbValue[A] = platform.unsafeGet(optVal)
-
-      @targetName("dbValOptMap") inline def map[B](f: DbValue[A] => DbValue[B]): DbValue[Option[B]] =
-        platform.map(optVal)(f)
-
-      @targetName("dbValOptFilter") inline def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[Option[A]] =
-        platform.filter(optVal)(f)
-
-      @targetName("dbValOptFlatMap") inline def flatMap[B](f: DbValue[A] => DbValue[Option[B]]): DbValue[Option[B]] =
-        platform.flatMap(optVal)(f)
-
-      @targetName("dbValOptIsEmpty") inline def isEmpty: DbValue[Boolean]     = platform.isEmpty(optVal)
-      @targetName("dbValOptIsDefined") inline def isDefined: DbValue[Boolean] = platform.isDefined(optVal)
-
-      @targetName("dbValOptOrElse") inline def orElse(other: DbValue[Option[A]]): DbValue[Option[A]] =
-        platform.orElse(optVal)(other)
-
-      @targetName("dbValOptGetOrElse") inline def getOrElse(other: DbValue[A]): DbValue[A] =
-        platform.getOrElse(optVal)(other)
-
-    extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Option], T])
-      inline def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[Option[B]] = platform.mapNullableN(t)(f)
+  type Api <: SqlDbValueImplApi & SqlDbValueApi & QueryApi
+  trait SqlDbValueImplApi {
+    inline def SqlOrdered: platform.SqlOrdered.type       = platform.SqlOrdered
+    inline def SqlNumeric: platform.SqlNumeric.type       = platform.SqlNumeric
+    inline def SqlIntegral: platform.SqlIntegral.type     = platform.SqlIntegral
+    inline def SqlFractional: platform.SqlFractional.type = platform.SqlFractional
   }
 }

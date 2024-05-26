@@ -1,6 +1,6 @@
 package dataprism.platform.sql
 
-trait DefaultOperationSqlQueryPlatform extends SqlQueryPlatformOperation { platform: SqlQueryPlatform =>
+trait DefaultSqlOperations extends SqlOperations { platform: SqlQueryPlatform =>
 
   override type SelectOperation[A[_[_]]] = SqlSelectOperation[A]
   override type SelectCompanion = SqlSelectCompanion

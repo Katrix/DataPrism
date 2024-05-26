@@ -8,7 +8,7 @@ import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait SqlQueryPlatformValueSourceBase extends SqlQueryPlatformBase { platform =>
+trait SqlValueSourcesBase extends SqlQueryPlatformBase { platform =>
 
   case class ValueSourceAstMetaData[A[_[_]]](ast: SelectAst.From[Codec], values: A[DbValue])
 

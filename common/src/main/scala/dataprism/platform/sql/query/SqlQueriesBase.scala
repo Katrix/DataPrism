@@ -12,7 +12,7 @@ import perspective.derivation.ProductKPar
 import scala.annotation.targetName
 
 //noinspection ScalaUnusedSymbol
-trait SqlQueryPlatformQueryBase extends SqlQueryPlatformBase, SqlQueryPlatformDbValueBase { platform =>
+trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
 
   case class QueryAstMetadata[A[_[_]]](ast: SelectAst[Codec], aliases: A[Const[String]], values: A[DbValue])
 
@@ -122,7 +122,7 @@ trait SqlQueryPlatformQueryBase extends SqlQueryPlatformBase, SqlQueryPlatformDb
 
     @targetName("queryAsDbValue") def asDbValue: DbValue[A]
 
-  type Api <: SqlQueryApi & QueryApi
+  type Api <: SqlQueryApi & SqlDbValueApi & QueryApi
   trait SqlQueryApi {
     export platform.{asDbValue, asMany}
   }

@@ -48,7 +48,10 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
         .values((integer.forgetNNA, integer.forgetNNA))((5, 3), (3, 3), (5, 1), (2, 5))
         .nested
         .groupMap(_._1)((v, t) => (v, t._2.sum))
-        .having(_._2.map(_ > 3L.as(bigint)).getOrElse(DbValue.falseV))
+        .having { t =>
+          val snd = t._2
+          snd.map(_ > 3L.as(bigint)).getOrElse(DbValue.falseV)
+        }
         .orderBy(_._1.asc)
     ).run.map: r =>
       expect.same(Set((2, Some(5L)), (5, Some(4L))), r.toSet)

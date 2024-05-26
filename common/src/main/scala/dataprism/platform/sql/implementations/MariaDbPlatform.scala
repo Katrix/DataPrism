@@ -1,8 +1,8 @@
-package dataprism.platform.implementations
+package dataprism.platform.sql.implementations
 
 import dataprism.sharedast.MariaDbAstRenderer
 
-trait MariaDbQueryPlatform extends MySqlQueryPlatform {
+trait MariaDbPlatform extends MySqlPlatform {
   given IntersectAllCapability with {}
   given ExceptAllCapability with    {}
 

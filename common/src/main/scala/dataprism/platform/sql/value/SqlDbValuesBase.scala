@@ -8,7 +8,7 @@ import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.SqlStr
 import perspective.*
 
-trait SqlQueryPlatformDbValueBase extends SqlQueryPlatformBase { platform =>
+trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
   trait SqlUnaryOpBase[V, R] {
     def name: String
@@ -145,6 +145,9 @@ trait SqlQueryPlatformDbValueBase extends SqlQueryPlatformBase { platform =>
   given sqlNumericBigDecimal: SqlFractional[BigDecimal]
   given sqlNumericOptBigDecimal: SqlFractional[Option[BigDecimal]]
 
+  type DbMath
+  val DbMath: DbMath
+
   type CastType[A]
   extension [A](t: CastType[A])
     def castTypeName: String
@@ -234,5 +237,128 @@ trait SqlQueryPlatformDbValueBase extends SqlQueryPlatformBase { platform =>
       @targetName("not") def unary_! : DbValue[A]
 
   type SqlLogic[A] <: SqlLogicBase[A]
+
+  type Many[A]
+  val Many: ManyCompanion
+  
+  trait ManyCompanion {
+    extension [A](many: Many[A])
+      // TODO: Check that the return type is indeed Long on all platforms
+      def count: DbValue[Long]
+
+      inline def unsafeAsDbValue: DbValue[A]
+
+      def map[B](f: DbValue[A] => DbValue[B]): Many[B]
+  }
+
+  extension [T](t: T)(using mr: MapRes[Many, T])
+    def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B]
+
+  extension [A](optVal: DbValue[Option[A]])(using ev: NotGiven[A <:< Option[_]])
+    @targetName("dbValOptgetUnsafe") def unsafeGet: DbValue[A]
+
+    @targetName("dbValOptMap") def map[B](f: DbValue[A] => DbValue[B]): DbValue[Option[B]]
+
+    @targetName("dbValOptFilter") def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[Option[A]]
+
+    @targetName("dbValOptFlatMap") def flatMap[B](f: DbValue[A] => DbValue[Option[B]]): DbValue[Option[B]]
+
+    @targetName("dbValOptIsEmpty") def isEmpty: DbValue[Boolean]
+    @targetName("dbValOptIsDefined") def isDefined: DbValue[Boolean]
+
+    @targetName("dbValOptOrElse") def orElse(other: DbValue[Option[A]]): DbValue[Option[A]]
+
+    @targetName("dbValOptGetOrElse") def getOrElse(other: DbValue[A]): DbValue[A]
+
+  extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Option], T])
+    def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[Option[B]]
+
+  val Case: CaseCompanion
+  type CaseCompanion <: SqlCaseCompanion
+
+  trait SqlCaseCompanion {
+    def apply[A](v: DbValue[A]): ValueCase0[A]
+    def when[A](whenCond: DbValue[Boolean])(thenV: DbValue[A]): ConditionCase[A]
+  }
+
+  trait ValueCase0[A] {
+    def when[B](whenV: DbValue[A])(thenV: DbValue[B]): ValueCase1[A, B]
+  }
+  trait ValueCase1[A, B] {
+    def when(whenV: DbValue[A])(thenV: DbValue[B]): ValueCase1[A, B]
+    def otherwise(elseV: DbValue[B]): DbValue[B]
+  }
+  trait ConditionCase[A] {
+    def when(whenCond: DbValue[Boolean])(thenV: DbValue[A]): ConditionCase[A]
+    def otherwise(elseV: DbValue[A]): DbValue[A]
+  }
+
+  type Api <: SqlDbValueApi & QueryApi
+
+  trait SqlDbValueApi {
+    export platform.{
+      ConditionCase,
+      NullabilityOf,
+      SqlFractional,
+      SqlIntegral,
+      SqlLogic,
+      SqlNumeric,
+      SqlOrdered,
+      ValueCase0,
+      ValueCase1
+    }
+
+    inline def Nullability: platform.Nullability.type = platform.Nullability
+
+    type AnyDbValue         = platform.AnyDbValue
+    type BinOp[LHS, RHS, R] = platform.BinOp[LHS, RHS, R]
+    type UnaryOp[V, R]      = platform.UnaryOp[V, R]
+    type CastType[A]        = platform.CastType[A]
+    type Codec[A]           = platform.Codec[A]
+    type Type[A]            = platform.Type[A]
+
+    inline def DbMath: platform.DbMath = platform.DbMath
+
+    inline def DbValue: platform.DbValueCompanion = platform.DbValue
+
+    inline def Many: platform.Many.type = platform.Many
+
+    // Type inference seems worse with export, so we do this instead. Also not sure how name clashes will work with export
+
+    inline def Case: platform.CaseCompanion = platform.Case
+
+    extension [A](v: A)
+      @targetName("valueAs") inline def as(tpe: Type[A]): DbValue[A] = platform.as(v)(tpe)
+      @targetName("valueAsNullable") inline def asNullable(tpe: Type[A])(
+          using NotGiven[A <:< Option[_]]
+      ): DbValue[Option[A]] = platform.asNullable(v)(tpe)
+
+    extension [T](t: T)(using mr: MapRes[Many, T])
+      inline def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B] = platform.mapManyN(t)(f)
+
+    extension [A](optVal: DbValue[Option[A]])(using ev: NotGiven[A <:< Option[_]])
+      @targetName("dbValOptgetUnsafe") inline def unsafeGet: DbValue[A] = platform.unsafeGet(optVal)
+
+      @targetName("dbValOptMap") inline def map[B](f: DbValue[A] => DbValue[B]): DbValue[Option[B]] =
+        platform.map(optVal)(f)
+
+      @targetName("dbValOptFilter") inline def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[Option[A]] =
+        platform.filter(optVal)(f)
+
+      @targetName("dbValOptFlatMap") inline def flatMap[B](f: DbValue[A] => DbValue[Option[B]]): DbValue[Option[B]] =
+        platform.flatMap(optVal)(f)
+
+      @targetName("dbValOptIsEmpty") inline def isEmpty: DbValue[Boolean]     = platform.isEmpty(optVal)
+      @targetName("dbValOptIsDefined") inline def isDefined: DbValue[Boolean] = platform.isDefined(optVal)
+
+      @targetName("dbValOptOrElse") inline def orElse(other: DbValue[Option[A]]): DbValue[Option[A]] =
+        platform.orElse(optVal)(other)
+
+      @targetName("dbValOptGetOrElse") inline def getOrElse(other: DbValue[A]): DbValue[A] =
+        platform.getOrElse(optVal)(other)
+
+    extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Option], T])
+      inline def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[Option[B]] = platform.mapNullableN(t)(f)
+  }
 
 }

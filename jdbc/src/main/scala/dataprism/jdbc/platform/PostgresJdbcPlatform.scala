@@ -1,12 +1,12 @@
 package dataprism.jdbc.platform
 
 import dataprism.jdbc.sql.{JdbcCodec, PostgresJdbcTypes}
-import dataprism.platform.implementations.PostgresQueryPlatform
+import dataprism.platform.sql.implementations.PostgresPlatform
 import dataprism.sql.AnsiTypes
 
 import scala.annotation.targetName
 
-trait PostgresJdbcPlatform extends PostgresQueryPlatform {
+trait PostgresJdbcPlatform extends PostgresPlatform {
 
   type Api <: PostgresApi
 

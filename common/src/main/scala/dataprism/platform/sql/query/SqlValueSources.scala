@@ -6,7 +6,7 @@ import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait SqlQueryPlatformValueSource extends SqlQueryPlatformValueSourceBase { platform: SqlQueryPlatform =>
+trait SqlValueSources extends SqlValueSourcesBase { platform: SqlQueryPlatform =>
 
   enum SqlValueSource[A[_[_]]] extends SqlValueSourceBase[A] {
     case FromQuery(q: Query[A])

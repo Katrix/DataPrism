@@ -7,7 +7,7 @@ import dataprism.platform.base.MapRes
 import dataprism.sql.*
 import perspective.*
 
-trait SqlQueryPlatformOperationBase extends SqlQueryPlatformBase, SqlQueryPlatformQueryBase { platform =>
+trait SqlOperationsBase extends SqlQueryPlatformBase, SqlQueriesBase { platform =>
 
   sealed trait Operation[A]:
     type Types
@@ -255,7 +255,7 @@ trait SqlQueryPlatformOperationBase extends SqlQueryPlatformBase, SqlQueryPlatfo
     ): res.K[Id] => F[B] =
       operationK(res.toK(types))(f)(using res.applyKC, res.traverseKC, summon[MonadThrow[F]], db)
 
-  type Api <: SqlOperationApi & SqlQueryApi & QueryApi
+  type Api <: SqlOperationApi & SqlQueryApi & SqlDbValueApi & QueryApi
   trait SqlOperationApi {
     export platform.{IntOperation, ResultOperation}
 

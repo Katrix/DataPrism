@@ -1,9 +1,9 @@
-package dataprism.platform.implementations
+package dataprism.platform.sql.implementations
 
-import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform}
+import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.H2AstRenderer
 
-trait H2QueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform {
+trait H2Platform extends DefaultCompleteSql, DefaultSqlOperations {
   platform =>
 
   override type CastType[A] = Type[A]
@@ -36,14 +36,13 @@ trait H2QueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperationS
 
   type Api <: H2Api
 
-  trait H2Api extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi
+  trait H2Api extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlOperationApi, SqlQueryApi
 
   lazy val sqlRenderer: H2AstRenderer[Codec] =
     new H2AstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
-  type DbMath = SqlDbMath
-
-  object DbMath extends SqlDbMath
+  type DbMath = SimpleSqlDbMath
+  object DbMath extends SimpleSqlDbMath
 
   type DbValue[A] = SqlDbValue[A]
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = Lift.subtype

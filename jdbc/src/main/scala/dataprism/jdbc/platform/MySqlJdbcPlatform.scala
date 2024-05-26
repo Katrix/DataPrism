@@ -3,10 +3,10 @@ package dataprism.jdbc.platform
 import scala.annotation.targetName
 
 import dataprism.jdbc.sql.{JdbcCodec, MySqlJdbcTypeCastable, MySqlJdbcTypes}
-import dataprism.platform.implementations.MySqlQueryPlatform
+import dataprism.platform.sql.implementations.MySqlPlatform
 import dataprism.sql.AnsiTypes
 
-trait MySqlJdbcPlatform extends MySqlQueryPlatform {
+trait MySqlJdbcPlatform extends MySqlPlatform {
   override type Codec[A]    = JdbcCodec[A]
   override type CastType[A] = MySqlJdbcTypeCastable[A]
 

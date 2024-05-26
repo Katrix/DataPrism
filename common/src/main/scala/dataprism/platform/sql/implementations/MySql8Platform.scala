@@ -1,8 +1,8 @@
-package dataprism.platform.implementations
+package dataprism.platform.sql.implementations
 
 import dataprism.sharedast.MySql8AstRenderer
 
-trait MySql8QueryPlatform extends MySqlQueryPlatform {
+trait MySql8Platform extends MySqlPlatform {
   given LateralJoinCapability with {}
 
   given IntersectAllCapability with {}

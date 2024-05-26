@@ -3,10 +3,10 @@ package dataprism.jdbc.platform
 import scala.annotation.targetName
 
 import dataprism.jdbc.sql.{JdbcCodec, SqliteJdbcTypes}
-import dataprism.platform.implementations.SqliteQueryPlatform
+import dataprism.platform.sql.implementations.SqlitePlatform
 import dataprism.sql.AnsiTypes
 
-trait SqliteJdbcPlatform extends SqliteQueryPlatform {
+trait SqliteJdbcPlatform extends SqlitePlatform {
 
   type Api <: SqliteApi
 

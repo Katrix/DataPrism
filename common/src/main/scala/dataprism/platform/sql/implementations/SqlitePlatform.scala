@@ -1,9 +1,9 @@
-package dataprism.platform.implementations
+package dataprism.platform.sql.implementations
 
-import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform}
+import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{SqlExpr, SqliteAstRenderer}
 
-trait SqliteQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform { platform =>
+trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations { platform =>
 
   override type CastType[A] = Type[A]
 
@@ -45,7 +45,7 @@ trait SqliteQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperat
   ): (Table, From) => Res = (a, _) => f(a)
 
   type Api <: SqliteApi
-  trait SqliteApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
+  trait SqliteApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlOperationApi, SqlQueryApi {
     export platform.{
       given DeleteReturningCapability,
       given InsertOnConflictCapability,
@@ -58,8 +58,8 @@ trait SqliteQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperat
   lazy val sqlRenderer: SqliteAstRenderer[Codec] =
     new SqliteAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
-  type DbMath = SqlDbMath
-  object DbMath extends SqlDbMath
+  type DbMath = SimpleSqlDbMath
+  object DbMath extends SimpleSqlDbMath
 
   type DbValue[A] = SqlDbValue[A]
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = Lift.subtype

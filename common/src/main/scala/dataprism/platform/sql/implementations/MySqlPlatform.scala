@@ -1,8 +1,8 @@
-package dataprism.platform.implementations
+package dataprism.platform.sql.implementations
 
-import dataprism.platform.sql.{DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform}
+import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 
-trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperationSqlQueryPlatform { platform =>
+trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -29,12 +29,12 @@ trait MySqlQueryPlatform extends DefaultCompleteSqlQueryPlatform, DefaultOperati
   ): (Table, From) => Res = f
 
   type Api <: MySqlApi
-  trait MySqlApi extends QueryApi with SqlDbValueApi with SqlOperationApi with SqlQueryApi {
+  trait MySqlApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlOperationApi, SqlQueryApi {
     export platform.{given DeleteUsingCapability, given LateralJoinCapability}
   }
 
-  type DbMath = SqlDbMath
-  object DbMath extends SqlDbMath
+  type DbMath = SimpleSqlDbMath
+  object DbMath extends SimpleSqlDbMath
 
   type DbValue[A] = SqlDbValue[A]
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = Lift.subtype

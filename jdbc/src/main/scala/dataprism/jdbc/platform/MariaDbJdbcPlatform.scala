@@ -1,9 +1,9 @@
 package dataprism.jdbc.platform
 
 import dataprism.jdbc.platform
-import dataprism.platform.implementations.MariaDbQueryPlatform
+import dataprism.platform.sql.implementations.MariaDbPlatform
 
-trait MariaDbJdbcPlatform  extends MySqlJdbcPlatform, MariaDbQueryPlatform
+trait MariaDbJdbcPlatform  extends MySqlJdbcPlatform, MariaDbPlatform
 object MariaDbJdbcPlatform extends MariaDbJdbcPlatform {
   override type Api = MySqlApi
   object Api extends MySqlApi

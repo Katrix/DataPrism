@@ -12,7 +12,7 @@ import perspective.*
 import perspective.derivation.ProductKPar
 
 //noinspection ScalaUnusedSymbol
-trait SqlQueryPlatformQuery extends SqlQueryPlatformQueryBase { platform: SqlQueryPlatform =>
+trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
   trait SqlQueryGrouped[A[_[_]]] extends QueryGroupedBase[A] with SqlQuery[A]
 
