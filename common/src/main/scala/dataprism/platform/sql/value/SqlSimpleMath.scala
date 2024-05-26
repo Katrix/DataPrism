@@ -1,4 +1,4 @@
-package dataprism.platform.sql
+package dataprism.platform.sql.value
 
 import dataprism.sharedast.SqlExpr
 

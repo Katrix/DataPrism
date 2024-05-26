@@ -1,9 +1,9 @@
-package dataprism.platform.sql
+package dataprism.platform.sql.value
 
 import scala.annotation.targetName
 import scala.util.NotGiven
-
-import dataprism.platform.base.MapRes
+import dataprism.platform.MapRes
+import dataprism.platform.sql.SqlQueryPlatformBase
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.SqlStr
 import perspective.*

@@ -1,13 +1,12 @@
-package dataprism.platform.sql
+package dataprism.platform.sql.value
 
 import java.sql.{Date, Time, Timestamp}
-
 import scala.annotation.targetName
 import scala.util.NotGiven
-
 import cats.data.State
 import cats.syntax.all.*
-import dataprism.platform.base.MapRes
+import dataprism.platform.MapRes
+import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sharedast.SqlExpr
 import dataprism.sql.*
 import perspective.*

@@ -3,7 +3,7 @@ package dataprism.skunk.platform
 import scala.annotation.targetName
 
 import cats.data.State
-import dataprism.platform.base.MapRes
+import dataprism.platform.MapRes
 import dataprism.platform.sql.implementations.PostgresPlatform
 import dataprism.skunk.sql.{PostgresSkunkAstRenderer, SkunkAnsiTypes}
 import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}

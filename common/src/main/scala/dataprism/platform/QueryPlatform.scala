@@ -1,4 +1,4 @@
-package dataprism.platform.base
+package dataprism.platform
 
 import scala.annotation.targetName
 

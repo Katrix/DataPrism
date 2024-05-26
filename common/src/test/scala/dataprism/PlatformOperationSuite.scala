@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 import cats.kernel.Eq
 import cats.syntax.all.*
 import cats.{MonadThrow, Monoid}
-import dataprism.platform.base.MapRes
+import dataprism.platform.MapRes
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.*
 import perspective.{DistributiveKC, Id}

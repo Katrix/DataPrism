@@ -4,7 +4,7 @@ import scala.annotation.targetName
 import scala.util.NotGiven
 
 import cats.data.State
-import dataprism.platform.base.{MapRes, QueryPlatform}
+import dataprism.platform.{MapRes, QueryPlatform}
 import dataprism.sharedast.AstRenderer
 import dataprism.sql.*
 import perspective.*

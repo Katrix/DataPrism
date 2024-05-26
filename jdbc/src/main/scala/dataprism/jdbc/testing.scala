@@ -6,7 +6,7 @@ import scala.concurrent.Future
 import dataprism.KMacros
 import dataprism.jdbc.platform.PostgresJdbcPlatform
 import dataprism.jdbc.sql.{JdbcCodec, JdbcColumns, PostgresJdbcTypes, jdbcType}
-import dataprism.platform.base.MapRes
+import dataprism.platform.MapRes
 import dataprism.sql.*
 import perspective.*
 

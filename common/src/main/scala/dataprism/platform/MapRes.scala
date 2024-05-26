@@ -1,4 +1,4 @@
-package dataprism.platform.base
+package dataprism.platform
 
 import cats.Applicative
 import cats.syntax.all.*

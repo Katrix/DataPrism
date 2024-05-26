@@ -3,7 +3,7 @@ package dataprism.platform.sql
 import cats.data.{NonEmptyList, NonEmptySeq}
 import cats.syntax.all.*
 import cats.{Applicative, Functor, MonadThrow}
-import dataprism.platform.base.MapRes
+import dataprism.platform.MapRes
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*

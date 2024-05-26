@@ -1,11 +1,11 @@
-package dataprism.platform.sql
+package dataprism.platform.sql.query
 
 import scala.annotation.targetName
-
 import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
-import dataprism.platform.base.MapRes
+import dataprism.platform.MapRes
+import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*

@@ -1,7 +1,8 @@
-package dataprism.platform.sql
+package dataprism.platform.sql.query
 
 import cats.data.State
 import cats.syntax.all.*
+import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
