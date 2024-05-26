@@ -1,12 +1,13 @@
 package dataprism.platform.sql.implementations
 
 import cats.syntax.all.*
+import dataprism.platform.sql.value.SqlBitwiseOps
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations { platform =>
+trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -41,17 +42,16 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations { platfo
       f: MapUpdateReturning[Table, From, Res]
   ): (Table, From) => Res = f
 
+  given bitwiseByte: SqlBitwise[Byte] = SqlBitwise.defaultInstance
+  given bitwiseOptByte: SqlBitwise[Option[Byte]] = SqlBitwise.defaultInstance
+  given bitwiseShort: SqlBitwise[Short] = SqlBitwise.defaultInstance
+  given bitwiseOptShort: SqlBitwise[Option[Short]] = SqlBitwise.defaultInstance
+  given bitwiseInt: SqlBitwise[Int] = SqlBitwise.defaultInstance
+  given bitwiseOptInt: SqlBitwise[Option[Int]] = SqlBitwise.defaultInstance
+
   type Api <: PostgresApi
-  trait PostgresApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlOperationApi, SqlQueryApi {
-    export platform.{
-      given DeleteReturningCapability,
-      given DeleteUsingCapability,
-      given InsertOnConflictCapability,
-      given InsertReturningCapability,
-      given LateralJoinCapability,
-      given UpdateFromCapability,
-      given UpdateReturningCapability
-    }
+  trait PostgresApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlOperationApi, SqlQueryApi {
+    export platform.given 
   }
 
   lazy val sqlRenderer: PostgresAstRenderer[Codec] =

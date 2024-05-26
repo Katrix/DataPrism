@@ -8,5 +8,4 @@ object MariaDbDbValueSuite extends MariaDbFunSuite, PlatformDbValueSuite[JdbcCod
   override def maxParallelism: Int = 10
 
   override def leastGreatestBubbleNulls: Boolean = true
-  
 }

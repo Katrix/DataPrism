@@ -13,9 +13,9 @@ class PostgresSkunkAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTy
 
   private def assignArgumentIndicesExpr(expr: SqlExpr[Codec]): State[Int, SqlExpr[Codec]] = expr match
     case SqlExpr.QueryRef(_, _)    => State.pure(expr)
-    case SqlExpr.UnaryOp(expr, op) => assignArgumentIndicesExpr(expr).map(SqlExpr.UnaryOp(_, op))
-    case SqlExpr.BinOp(lhs, rhs, op) =>
-      assignArgumentIndicesExpr(lhs).map2(assignArgumentIndicesExpr(rhs))((l, r) => SqlExpr.BinOp(l, r, op))
+    case SqlExpr.UnaryOp(expr, op, tpe) => assignArgumentIndicesExpr(expr).map(SqlExpr.UnaryOp(_, op, tpe))
+    case SqlExpr.BinOp(lhs, rhs, op, tpe) =>
+      assignArgumentIndicesExpr(lhs).map2(assignArgumentIndicesExpr(rhs))((l, r) => SqlExpr.BinOp(l, r, op, tpe))
     case SqlExpr.FunctionCall(functionCall, args, tpe) =>
       args.traverse(assignArgumentIndicesExpr).map(SqlExpr.FunctionCall(functionCall, _, tpe))
     case SqlExpr.PreparedArgument(_, arg) => State(i => (i + 1, SqlExpr.PreparedArgument(Some(i.toString), arg)))

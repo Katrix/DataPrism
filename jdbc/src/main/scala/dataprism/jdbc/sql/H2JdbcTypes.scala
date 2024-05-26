@@ -10,6 +10,7 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
   private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
   val uuid: TypeOf[UUID] = tc(JdbcCodec.byClass[UUID]("UUID", 2950))
+  val tinyint: TypeOf[Byte] = tc(JdbcCodec.withWasNullCheck("TINYINT", Types.TINYINT, _.getByte(_), _.setByte(_, _)))
 
   object javaTime:
     val date: TypeOf[LocalDate] = tc(JdbcCodec.byClass[LocalDate]("DATE", Types.DATE))
@@ -23,4 +24,4 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
       tc(JdbcCodec.byClass[OffsetDateTime]("TIMESTAMP WITH TIMEZONE", Types.TIMESTAMP_WITH_TIMEZONE))
 
 
-object H2JdbcTypes extends JdbcAnsiTypes
+object H2JdbcTypes extends H2JdbcTypes

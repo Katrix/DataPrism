@@ -12,11 +12,12 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
   override protected def renderBinaryOp(
       lhs: SqlExpr[Codec],
       rhs: SqlExpr[Codec],
-      op: SqlExpr.BinaryOperation
+      op: SqlExpr.BinaryOperation,
+      tpe: String
   ): SqlStr[Codec] =
     op match
       case SqlExpr.BinaryOperation.Concat => sql"(${renderExpr(lhs)} || ${renderExpr(rhs)})"
-      case _                              => super.renderBinaryOp(lhs, rhs, op)
+      case _                              => super.renderBinaryOp(lhs, rhs, op, tpe)
 
   override protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]], tpe: String): SqlStr[Codec] =
     inline def rendered                         = args.map(renderExpr).intercalate(sql", ")

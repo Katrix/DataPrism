@@ -9,70 +9,18 @@ import cats.syntax.all.*
 import cats.{Apply, Show}
 import dataprism.PlatformFunSuite.DbToTest
 import dataprism.platform.sql.SqlQueryPlatform
+import dataprism.platform.sql.value.SqlBitwiseOps
 import dataprism.sql.NullabilityTypeChoice
-import org.scalacheck.Gen
 import org.scalacheck.cats.implicits.*
+import org.scalacheck.{Arbitrary, Gen}
 import perspective.Id
 import weaver.{Expectations, Log, SourceLocation}
 
 trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
-    extends PlatformFunSuite[Codec0, Platform]:
+    extends PlatformFunSuite[Codec0, Platform],
+      WithOptionalMath:
   import platform.Api.*
   import platform.{AnsiTypes, name}
-
-  given [A](using Frac: Fractional[A]): Fractional[Option[A]] with {
-    override def div(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Frac.div(a, b))
-
-    override def plus(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Frac.plus(a, b))
-
-    override def minus(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Frac.minus(a, b))
-
-    override def times(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Frac.times(a, b))
-
-    override def negate(x: Option[A]): Option[A] = x.map(Frac.negate)
-
-    override def fromInt(x: Int): Option[A] = Some(Frac.fromInt(x))
-
-    override def parseString(str: String): Option[Option[A]] = Some(Frac.parseString(str))
-
-    override def toInt(x: Option[A]): Int = x.fold(0)(Frac.toInt)
-
-    override def toLong(x: Option[A]): Long = x.fold(0L)(Frac.toLong)
-
-    override def toFloat(x: Option[A]): Float = x.fold(0F)(Frac.toFloat)
-
-    override def toDouble(x: Option[A]): Double = x.fold(0D)(Frac.toDouble)
-
-    override def compare(x: Option[A], y: Option[A]): Int = x.zip(y).map((a, b) => Frac.compare(a, b)).getOrElse(0)
-  }
-
-  given [A](using Integ: Integral[A]): Integral[Option[A]] with {
-    override def quot(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Integ.quot(a, b))
-
-    override def rem(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Integ.rem(a, b))
-
-    override def plus(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Integ.plus(a, b))
-
-    override def minus(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Integ.minus(a, b))
-
-    override def times(x: Option[A], y: Option[A]): Option[A] = x.zip(y).map((a, b) => Integ.times(a, b))
-
-    override def negate(x: Option[A]): Option[A] = x.map(Integ.negate)
-
-    override def fromInt(x: Int): Option[A] = Some(Integ.fromInt(x))
-
-    override def parseString(str: String): Option[Option[A]] = Some(Integ.parseString(str))
-
-    override def toInt(x: Option[A]): Int = x.fold(0)(Integ.toInt)
-
-    override def toLong(x: Option[A]): Long = x.fold(0L)(Integ.toLong)
-
-    override def toFloat(x: Option[A]): Float = x.fold(0F)(Integ.toFloat)
-
-    override def toDouble(x: Option[A]): Double = x.fold(0D)(Integ.toDouble)
-
-    override def compare(x: Option[A], y: Option[A]): Int = x.zip(y).map((a, b) => Integ.compare(a, b)).getOrElse(0)
-  }
 
   def typeTest[A](name: String, tpe: Type[A])(run: DbType ?=> IO[Expectations])(using SourceLocation): Unit =
     dbTest(s"$name - ${tpe.name}(${if tpe.codec == tpe.choice.notNull.codec then "NOT NULL" else "NULL"})")(run)
@@ -81,7 +29,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       using SourceLocation
   ): Unit =
     dbLogTest(s"$name - ${tpe.name}(${if tpe.codec == tpe.choice.notNull.codec then "NOT NULL" else "NULL"})")(run)
-    
+
   val configuredForall: PartiallyAppliedForall = forall
 
   def testEquality[A, N[_]: Apply](
@@ -435,6 +383,45 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       ).runOne[F]
         .map: r =>
           expect.same(if b1 then i1 else if b2 then i2 else if b3 then i3 else i4, r)
+
+  def testBitwiseOps[A, N[_]](
+      bitwisePlatform: Platform & SqlBitwiseOps,
+      tpe: Type[N[A]],
+      gen: Gen[N[A]],
+      toInt: A => Int
+  )(
+      using show: Show[N[A]],
+      bw: bitwisePlatform.Api.SqlBitwise[N[A]],
+      N: bitwisePlatform.Nullability.Aux[N[A], A, N],
+      bool: algebra.lattice.Bool[A]
+  ): Unit = typeTest("BitwiseOps", tpe):
+    import bitwisePlatform.Api.*
+    configuredForall((gen, gen).tupled): (a: N[A], b: N[A]) =>
+      val av = a.as(tpe)
+      val bv = b.as(tpe)
+
+      Select(
+        Query.of(
+          (
+            av & bv,
+            av | bv,
+            av ^ bv,
+            ~av,
+            ~bv
+          )
+        )
+      ).runOne[F]
+        .map: (and, or, xor, aNot, bNot) =>
+          val ao = N.wrapOption(a)
+          val bo = N.wrapOption(b)
+
+          expect.all(
+            N.wrapOption(and) == (ao, bo).mapN(bool.and),
+            N.wrapOption(or) == (ao, bo).mapN(bool.or),
+            N.wrapOption(xor) == (ao, bo).mapN(bool.xor),
+            N.wrapOption(aNot) == ao.map(bool.complement),
+            N.wrapOption(bNot) == bo.map(bool.complement)
+          )
 
   private val intGen = Gen.choose(-10000, 10000)
 

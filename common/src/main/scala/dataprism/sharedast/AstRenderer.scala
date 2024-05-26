@@ -18,14 +18,19 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       if str.startsWith("\"") && str.endsWith("\"") then sql
       else SqlStr.const(quote(str))
 
-  protected def renderUnaryOp(expr: SqlExpr[Codec], op: SqlExpr.UnaryOperation): SqlStr[Codec] =
+  protected def renderUnaryOp(expr: SqlExpr[Codec], op: SqlExpr.UnaryOperation, tpe: String): SqlStr[Codec] =
     val rendered = renderExpr(expr)
     op match
       case SqlExpr.UnaryOperation.Not        => sql"(NOT $rendered)"
       case SqlExpr.UnaryOperation.Negation   => sql"(-$rendered)"
       case SqlExpr.UnaryOperation.BitwiseNot => sql"(~$rendered)"
 
-  protected def renderBinaryOp(lhs: SqlExpr[Codec], rhs: SqlExpr[Codec], op: SqlExpr.BinaryOperation): SqlStr[Codec] =
+  protected def renderBinaryOp(
+      lhs: SqlExpr[Codec],
+      rhs: SqlExpr[Codec],
+      op: SqlExpr.BinaryOperation,
+      tpe: String
+  ): SqlStr[Codec] =
     val lhsr                                     = renderExpr(lhs)
     val rhsr                                     = renderExpr(rhs)
     inline def normal(op: String): SqlStr[Codec] = sql"($lhsr ${SqlStr.const(op)} $rhsr)"
@@ -59,9 +64,10 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
         renderExpr(
           SqlExpr.BinOp(
             SqlExpr
-              .UnaryOp(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BitwiseAnd), SqlExpr.UnaryOperation.BitwiseNot),
-            SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BitwiseOr),
-            SqlExpr.BinaryOperation.BitwiseAnd
+              .UnaryOp(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BitwiseAnd, tpe), SqlExpr.UnaryOperation.BitwiseNot, tpe),
+            SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BitwiseOr, tpe),
+            SqlExpr.BinaryOperation.BitwiseAnd,
+            tpe
           )
         )
       case SqlExpr.BinaryOperation.RightShift => normal(">>")
@@ -120,14 +126,14 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
   protected def simplifyExpr(expr: SqlExpr[Codec]): SqlExpr[Codec] = expr match
     case SqlExpr.QueryRef(query, column) => SqlExpr.QueryRef(query, column)
 
-    case SqlExpr.UnaryOp(expr, op) =>
+    case SqlExpr.UnaryOp(expr, op, tpe) =>
       val se = simplifyExpr(expr)
       (op, se) match
         case (UnaryOperation.Not, SqlExpr.True())  => SqlExpr.False()
         case (UnaryOperation.Not, SqlExpr.False()) => SqlExpr.True()
-        case _                                     => SqlExpr.UnaryOp(se, op)
+        case _                                     => SqlExpr.UnaryOp(se, op, tpe)
 
-    case SqlExpr.BinOp(lhs, rhs, op) =>
+    case SqlExpr.BinOp(lhs, rhs, op, tpe) =>
       val slhs = simplifyExpr(lhs)
       val srhs = simplifyExpr(rhs)
 
@@ -139,7 +145,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
         case (BinaryOperation.Eq, _) if slhs == srhs && exprIsImmutable(slhs) && exprIsImmutable(srhs) => SqlExpr.True()
         case (BinaryOperation.Neq, _) if slhs == srhs && exprIsImmutable(slhs) && exprIsImmutable(srhs) =>
           SqlExpr.False()
-        case _ => SqlExpr.BinOp(slhs, srhs, op)
+        case _ => SqlExpr.BinOp(slhs, srhs, op, tpe)
 
     case SqlExpr.FunctionCall(functionCall, args, tpe) =>
       SqlExpr.FunctionCall(functionCall, args.map(simplifyExpr), tpe)
@@ -224,9 +230,9 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     case _                      => true
 
   protected def exprIsImmutable(expr: SqlExpr[Codec]): Boolean = expr match
-    case SqlExpr.QueryRef(_, _)     => true
-    case SqlExpr.UnaryOp(expr, _)   => exprIsImmutable(expr)
-    case SqlExpr.BinOp(lhs, rhs, _) => exprIsImmutable(lhs) && exprIsImmutable(rhs)
+    case SqlExpr.QueryRef(_, _)        => true
+    case SqlExpr.UnaryOp(expr, _, _)   => exprIsImmutable(expr)
+    case SqlExpr.BinOp(lhs, rhs, _, _) => exprIsImmutable(lhs) && exprIsImmutable(rhs)
     case SqlExpr.FunctionCall(functionCall, args, _) =>
       args.forall(exprIsImmutable) && functionIsImmutable(functionCall)
     case SqlExpr.PreparedArgument(_, _)    => false // Disables optimizing these away, which could go badly
@@ -256,8 +262,8 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
   protected def renderExpr(expr: SqlExpr[Codec]): SqlStr[Codec] = simplifyExpr(expr) match
     case SqlExpr.QueryRef(query, column) => SqlStr.const(s"${quote(query)}.${quote(column)}")
 
-    case SqlExpr.UnaryOp(expr, op)   => renderUnaryOp(expr, op)
-    case SqlExpr.BinOp(lhs, rhs, op) => renderBinaryOp(lhs, rhs, op)
+    case SqlExpr.UnaryOp(expr, op, tpe)   => renderUnaryOp(expr, op, tpe)
+    case SqlExpr.BinOp(lhs, rhs, op, tpe) => renderBinaryOp(lhs, rhs, op, tpe)
 
     case SqlExpr.FunctionCall(functionCall, args, tpe) => renderFunctionCall(functionCall, args, tpe)
     case arg @ SqlExpr.PreparedArgument(_, _)          => renderPreparedArgument(arg)

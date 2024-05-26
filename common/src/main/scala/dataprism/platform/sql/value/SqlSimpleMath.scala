@@ -52,10 +52,4 @@ trait SqlSimpleMath extends SqlDbValuesBase {
 
     def random[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[?]]): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Random, Nil, tpe.castTypeType).cast(tpe)
-  
-  type Impl <: SqlFunctionImpl & SqlBaseImpl
-  
-  trait SqlFunctionImpl {
-    def function[A](name: SqlExpr.FunctionName, args: Seq[AnyDbValue], tpe: Type[A]): DbValue[A]
-  }
 }

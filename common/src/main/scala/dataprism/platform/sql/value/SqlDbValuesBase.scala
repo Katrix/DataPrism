@@ -2,6 +2,7 @@ package dataprism.platform.sql.value
 
 import scala.annotation.targetName
 import scala.util.NotGiven
+
 import dataprism.platform.MapRes
 import dataprism.platform.sql.SqlQueryPlatformBase
 import dataprism.sharedast.{SelectAst, SqlExpr}
@@ -10,18 +11,18 @@ import perspective.*
 
 trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
-  trait SqlUnaryOpBase[V, R] {
+  trait UnaryOp[V, R] {
     def name: String
 
     def ast: SqlExpr.UnaryOperation
 
     def tpe(v: DbValue[V]): Type[R]
 
-    def nullable(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]]
+    def nullable(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]] =
+      Impl.nullableUnaryOp(this)
   }
-  type UnaryOp[V, R] <: SqlUnaryOpBase[V, R]
 
-  trait SqlBinOpBase[LHS, RHS, R] {
+  trait BinOp[LHS, RHS, R] {
     def name: String
 
     def ast: SqlExpr.BinaryOperation
@@ -32,9 +33,8 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
         using NotGiven[LHS <:< Option[?]],
         NotGiven[RHS <:< Option[?]],
         NotGiven[R <:< Option[?]]
-    ): BinOp[Option[LHS], Option[RHS], Option[R]]
+    ): BinOp[Option[LHS], Option[RHS], Option[R]] = Impl.nullableBinOp(this)
   }
-  type BinOp[LHS, RHS, R] <: SqlBinOpBase[LHS, RHS, R]
 
   type NullabilityOf[A] <: Nullability[A] = A match {
     case Option[b] => Nullability.Aux[A, b, Option]
@@ -240,7 +240,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
   type Many[A]
   val Many: ManyCompanion
-  
+
   trait ManyCompanion {
     extension [A](many: Many[A])
       // TODO: Check that the return type is indeed Long on all platforms
@@ -251,8 +251,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
       def map[B](f: DbValue[A] => DbValue[B]): Many[B]
   }
 
-  extension [T](t: T)(using mr: MapRes[Many, T])
-    def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B]
+  extension [T](t: T)(using mr: MapRes[Many, T]) def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B]
 
   extension [A](optVal: DbValue[Option[A]])(using ev: NotGiven[A <:< Option[?]])
     @targetName("dbValOptgetUnsafe") def unsafeGet: DbValue[A]
@@ -291,6 +290,22 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
   trait ConditionCase[A] {
     def when(whenCond: DbValue[Boolean])(thenV: DbValue[A]): ConditionCase[A]
     def otherwise(elseV: DbValue[A]): DbValue[A]
+  }
+
+  type Impl <: SqlValuesBaseImpl & SqlBaseImpl
+  trait SqlValuesBaseImpl {
+    def function[A](name: SqlExpr.FunctionName, args: Seq[AnyDbValue], tpe: Type[A]): DbValue[A]
+    def unaryOp[V, R](value: DbValue[V], unaryOp: UnaryOp[V, R]): DbValue[R]
+    def binaryOp[LHS, RHS, R](lhs: DbValue[LHS], rhs: DbValue[RHS], binaryOp: BinOp[LHS, RHS, R]): DbValue[R]
+
+    def nullableUnaryOp[V, R](
+        op: UnaryOp[V, R]
+    )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]]
+    def nullableBinOp[LHS, RHS, R](op: BinOp[LHS, RHS, R])(
+        using NotGiven[LHS <:< Option[?]],
+        NotGiven[RHS <:< Option[?]],
+        NotGiven[R <:< Option[?]]
+    ): BinOp[Option[LHS], Option[RHS], Option[R]]
   }
 
   type Api <: SqlDbValueApi & QueryApi

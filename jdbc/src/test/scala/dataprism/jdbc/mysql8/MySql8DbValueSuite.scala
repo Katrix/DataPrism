@@ -8,5 +8,4 @@ object MySql8DbValueSuite extends MySql8FunSuite, PlatformDbValueSuite[JdbcCodec
   override def maxParallelism: Int = 10
 
   override def leastGreatestBubbleNulls: Boolean = true
-  
 }

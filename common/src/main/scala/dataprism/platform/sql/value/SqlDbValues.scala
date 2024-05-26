@@ -1,8 +1,10 @@
 package dataprism.platform.sql.value
 
 import java.sql.{Date, Time, Timestamp}
+
 import scala.annotation.targetName
 import scala.util.NotGiven
+
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.platform.MapRes
@@ -14,16 +16,35 @@ import perspective.*
 trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
   type Impl <: SqlDbValueImpl & SqlBaseImpl
-  trait SqlDbValueImpl {
+  trait SqlDbValueImpl extends SqlValuesBaseImpl {
     def asc[A](v: DbValue[A]): Ord
     def desc[A](v: DbValue[A]): Ord
     def unsafeAsAnyDbVal[A](v: DbValue[A]): AnyDbValue
+
+    override def function[A](name: SqlExpr.FunctionName, args: Seq[AnyDbValue], tpe: Type[A]): DbValue[A] =
+      SqlDbValue.Function(name, args, tpe).lift
+    override def unaryOp[V, R](value: DbValue[V], unaryOp: UnaryOp[V, R]): DbValue[R] =
+      SqlDbValue.UnaryOp(value, unaryOp).lift
+    override def binaryOp[LHS, RHS, R](lhs: DbValue[LHS], rhs: DbValue[RHS], binaryOp: BinOp[LHS, RHS, R]): DbValue[R] =
+      SqlDbValue.BinOp(lhs, rhs, binaryOp).lift
+
+    override def nullableUnaryOp[V, R](
+        op: UnaryOp[V, R]
+    )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]] =
+      FundamentalUnaryOp.NullableOp(op)
+
+    override def nullableBinOp[LHS, RHS, R](op: BinOp[LHS, RHS, R])(
+        using NotGiven[LHS <:< Option[?]],
+        NotGiven[RHS <:< Option[?]],
+        NotGiven[R <:< Option[?]]
+    ): BinOp[Option[LHS], Option[RHS], Option[R]] = FundamentalBinOp.NullableOp(op)
   }
 
-  enum SqlUnaryOp[V, R](val name: String, op: SqlExpr.UnaryOperation) extends SqlUnaryOpBase[V, R] {
-    case Not[A](logic: SqlLogic[A])              extends SqlUnaryOp[A, A]("not", SqlExpr.UnaryOperation.Not)
-    case Negative[A](numeric: SqlNumeric[A])     extends SqlUnaryOp[A, A]("negation", SqlExpr.UnaryOperation.Negation)
-    case NullableOp[V1, R1](op: UnaryOp[V1, R1]) extends SqlUnaryOp[Option[V1], Option[R1]](op.name, op.ast)
+  enum FundamentalUnaryOp[V, R](val name: String, op: SqlExpr.UnaryOperation) extends UnaryOp[V, R] {
+    case Not[A](logic: SqlLogic[A]) extends FundamentalUnaryOp[A, A]("not", SqlExpr.UnaryOperation.Not)
+    case Negative[A](numeric: SqlNumeric[A])
+        extends FundamentalUnaryOp[A, A]("negation", SqlExpr.UnaryOperation.Negation)
+    case NullableOp[V1, R1](op: UnaryOp[V1, R1]) extends FundamentalUnaryOp[Option[V1], Option[R1]](op.name, op.ast)
 
     override def ast: SqlExpr.UnaryOperation = op
 
@@ -35,33 +56,31 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
         given ev2: (Type[Option[r1]] =:= Type[R])       = <:<.refl
 
         ev2(nop.op.tpe(ev1(v).unsafeGet).typedChoice.nullable)
-
-    override def nullable(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]] =
-      SqlUnaryOp.NullableOp(this.liftSqlUnaryOp).liftSqlUnaryOp
   }
 
-  extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R]
+  enum FundamentalBinOp[LHS, RHS, R](val name: String, op: SqlExpr.BinaryOperation) extends BinOp[LHS, RHS, R] {
+    case Eq[A]()  extends FundamentalBinOp[A, A, Boolean]("eq", SqlExpr.BinaryOperation.Eq)
+    case Neq[A]() extends FundamentalBinOp[A, A, Boolean]("neq", SqlExpr.BinaryOperation.Neq)
 
-  enum SqlBinOp[LHS, RHS, R](val name: String, op: SqlExpr.BinaryOperation) extends SqlBinOpBase[LHS, RHS, R] {
-    case Eq[A]()  extends SqlBinOp[A, A, Boolean]("eq", SqlExpr.BinaryOperation.Eq)
-    case Neq[A]() extends SqlBinOp[A, A, Boolean]("neq", SqlExpr.BinaryOperation.Neq)
+    case LessThan[A]()       extends FundamentalBinOp[A, A, Boolean]("lt", SqlExpr.BinaryOperation.LessThan)
+    case LessOrEqual[A]()    extends FundamentalBinOp[A, A, Boolean]("le", SqlExpr.BinaryOperation.LessOrEq)
+    case GreaterThan[A]()    extends FundamentalBinOp[A, A, Boolean]("gt", SqlExpr.BinaryOperation.GreaterThan)
+    case GreaterOrEqual[A]() extends FundamentalBinOp[A, A, Boolean]("ge", SqlExpr.BinaryOperation.GreaterOrEq)
 
-    case LessThan[A]()       extends SqlBinOp[A, A, Boolean]("lt", SqlExpr.BinaryOperation.LessThan)
-    case LessOrEqual[A]()    extends SqlBinOp[A, A, Boolean]("le", SqlExpr.BinaryOperation.LessOrEq)
-    case GreaterThan[A]()    extends SqlBinOp[A, A, Boolean]("gt", SqlExpr.BinaryOperation.GreaterThan)
-    case GreaterOrEqual[A]() extends SqlBinOp[A, A, Boolean]("ge", SqlExpr.BinaryOperation.GreaterOrEq)
+    case And[A](logic: SqlLogic[A]) extends FundamentalBinOp[A, A, A]("and", SqlExpr.BinaryOperation.BoolAnd)
+    case Or[A](logic: SqlLogic[A])  extends FundamentalBinOp[A, A, A]("or", SqlExpr.BinaryOperation.BoolOr)
 
-    case And[A](logic: SqlLogic[A]) extends SqlBinOp[A, A, A]("and", SqlExpr.BinaryOperation.BoolAnd)
-    case Or[A](logic: SqlLogic[A])  extends SqlBinOp[A, A, A]("or", SqlExpr.BinaryOperation.BoolOr)
-
-    case Plus[A](numeric: SqlNumeric[A])     extends SqlBinOp[A, A, A]("plus", SqlExpr.BinaryOperation.Plus)
-    case Minus[A](numeric: SqlNumeric[A])    extends SqlBinOp[A, A, A]("minus", SqlExpr.BinaryOperation.Minus)
-    case Multiply[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, A]("times", SqlExpr.BinaryOperation.Multiply)
-    case Divide[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, Nullable[A]]("divide", SqlExpr.BinaryOperation.Divide)
-    case Remainder[A](numeric: SqlNumeric[A]) extends SqlBinOp[A, A, A]("remainder", SqlExpr.BinaryOperation.Remainder)
+    case Plus[A](numeric: SqlNumeric[A])  extends FundamentalBinOp[A, A, A]("plus", SqlExpr.BinaryOperation.Plus)
+    case Minus[A](numeric: SqlNumeric[A]) extends FundamentalBinOp[A, A, A]("minus", SqlExpr.BinaryOperation.Minus)
+    case Multiply[A](numeric: SqlNumeric[A])
+        extends FundamentalBinOp[A, A, A]("times", SqlExpr.BinaryOperation.Multiply)
+    case Divide[A](numeric: SqlNumeric[A])
+        extends FundamentalBinOp[A, A, Nullable[A]]("divide", SqlExpr.BinaryOperation.Divide)
+    case Remainder[A](numeric: SqlNumeric[A])
+        extends FundamentalBinOp[A, A, A]("remainder", SqlExpr.BinaryOperation.Remainder)
 
     case NullableOp[LHS1, RHS1, R1](binop: BinOp[LHS1, RHS1, R1])
-        extends SqlBinOp[Option[LHS1], Option[RHS1], Option[R1]](binop.name, binop.ast)
+        extends FundamentalBinOp[Option[LHS1], Option[RHS1], Option[R1]](binop.name, binop.ast)
 
     override def ast: SqlExpr.BinaryOperation = op
 
@@ -90,16 +109,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
         ev3(nop.binop.tpe(ev1(lhs).unsafeGet, ev2(rhs).unsafeGet).typedChoice.nullable)
     end tpe
-
-    override def nullable(
-        using NotGiven[LHS <:< Option[?]],
-        NotGiven[RHS <:< Option[?]],
-        NotGiven[R <:< Option[?]]
-    ): BinOp[Option[LHS], Option[RHS], Option[R]] =
-      NullableOp(this.liftSqlBinOp).liftSqlBinOp
   }
-
-  extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R]
 
   trait SqlOrdered[A](using n0: NullabilityOf[A]) extends SqlOrderedBase[A]:
     override def greatest(head: DbValue[A], tail: DbValue[A]*): DbValue[A] =
@@ -110,13 +120,13 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
     extension (lhs: DbValue[A])
       @targetName("lessThan") override def <(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
-        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessThan().liftSqlBinOp).lift)
+        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.LessThan()).lift)
       @targetName("lessOrEqual") override def <=(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
-        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.LessOrEqual().liftSqlBinOp).lift)
+        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.LessOrEqual()).lift)
       @targetName("greaterOrEqual") override def >=(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
-        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterOrEqual().liftSqlBinOp).lift)
+        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.GreaterOrEqual()).lift)
       @targetName("greatherThan") override def >(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
-        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, SqlBinOp.GreaterThan().liftSqlBinOp).lift)
+        n.wrapDbVal(SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.GreaterThan()).lift)
 
     extension (lhs: Many[A])
       def min: DbValue[Nullable[A]] =
@@ -157,17 +167,17 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
     extension (lhs: DbValue[A])
       @targetName("plus") override def +(rhs: DbValue[A]): DbValue[A] =
-        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Plus(this).liftSqlBinOp).lift
+        SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.Plus(this)).lift
       @targetName("minus") override def -(rhs: DbValue[A]): DbValue[A] =
-        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Minus(this).liftSqlBinOp).lift
+        SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.Minus(this)).lift
       @targetName("times") override def *(rhs: DbValue[A]): DbValue[A] =
-        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Multiply(this).liftSqlBinOp).lift
+        SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.Multiply(this)).lift
       @targetName("divide") override def /(rhs: DbValue[A]): DbValue[Nullable[A]] =
-        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Divide(this).liftSqlBinOp).lift
+        SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.Divide(this)).lift
       @targetName("remainder") override def %(rhs: DbValue[A]): DbValue[A] =
-        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Remainder(this).liftSqlBinOp).lift
+        SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.Remainder(this)).lift
       @targetName("negation") override def unary_- : DbValue[A] =
-        SqlDbValue.UnaryOp(lhs, SqlUnaryOp.Negative(this).liftSqlUnaryOp).lift
+        SqlDbValue.UnaryOp(lhs, FundamentalUnaryOp.Negative(this)).lift
 
     protected def sumType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.SumResultOf[A]]]
     protected def avgType(v: Type[Nullable[A]]): Type[Nullable[SqlNumeric.AvgResultOf[A]]]
@@ -270,11 +280,11 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
     @targetName("dbEquals")
     override def ===(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
-      SqlDbValue.BinOp(n.castDbVal(this.liftDbValue), n.castDbVal(rhs), n.wrapBinOp(SqlBinOp.Eq().liftSqlBinOp)).lift
+      SqlDbValue.BinOp(n.castDbVal(this.liftDbValue), n.castDbVal(rhs), n.wrapBinOp(FundamentalBinOp.Eq())).lift
 
     @targetName("dbNotEquals")
     override def !==(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
-      SqlDbValue.BinOp(n.castDbVal(this.liftDbValue), n.castDbVal(rhs), n.wrapBinOp(SqlBinOp.Neq().liftSqlBinOp)).lift
+      SqlDbValue.BinOp(n.castDbVal(this.liftDbValue), n.castDbVal(rhs), n.wrapBinOp(FundamentalBinOp.Neq())).lift
 
     @targetName("dbValCast") override def cast[B](tpe: CastType[B])(using n: Nullability[A]): DbValue[n.N[B]] =
       SqlDbValue.Cast(this.unsafeAsAnyDbVal, tpe.castTypeName, n.wrapType(tpe.castTypeType)).lift
@@ -405,8 +415,9 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
     override def ast: TagState[SqlExpr[Codec]] = this match
       case SqlDbValue.QueryColumn(queryName, fromName, _) => State.pure(SqlExpr.QueryRef(fromName, queryName))
 
-      case SqlDbValue.UnaryOp(value, op)  => value.ast.map(v => SqlExpr.UnaryOp(v, op.ast))
-      case SqlDbValue.BinOp(lhs, rhs, op) => lhs.ast.flatMap(l => rhs.ast.map(r => SqlExpr.BinOp(l, r, op.ast)))
+      case SqlDbValue.UnaryOp(value, op) => value.ast.map(v => SqlExpr.UnaryOp(v, op.ast, op.tpe(value).name))
+      case SqlDbValue.BinOp(lhs, rhs, op) =>
+        lhs.ast.flatMap(l => rhs.ast.map(r => SqlExpr.BinOp(l, r, op.ast, op.tpe(lhs, rhs).name)))
 
       case SqlDbValue.JoinNullable(value) => value.ast
       case SqlDbValue.Function(f, values, tpe) =>
@@ -549,13 +560,13 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
     extension (lhs: DbValue[A])
       @targetName("and") def &&(rhs: DbValue[A]): DbValue[A] =
-        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.And(this).liftSqlBinOp).lift
+        SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.And(this)).lift
 
       @targetName("or") def ||(rhs: DbValue[A]): DbValue[A] =
-        SqlDbValue.BinOp(lhs, rhs, SqlBinOp.Or(this).liftSqlBinOp).lift
+        SqlDbValue.BinOp(lhs, rhs, FundamentalBinOp.Or(this)).lift
 
       @targetName("not") def unary_! : DbValue[A] =
-        SqlDbValue.UnaryOp(lhs, SqlUnaryOp.Not(this).liftSqlUnaryOp).lift
+        SqlDbValue.UnaryOp(lhs, FundamentalUnaryOp.Not(this)).lift
   object SqlLogic:
     def defaultInstance[A]: SqlLogic[A] = new SqlLogic[A] {}
 

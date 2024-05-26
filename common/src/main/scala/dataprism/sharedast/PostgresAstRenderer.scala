@@ -38,12 +38,13 @@ class PostgresAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeNam
   override protected def renderBinaryOp(
       lhs: SqlExpr[Codec],
       rhs: SqlExpr[Codec],
-      op: SqlExpr.BinaryOperation
+      op: SqlExpr.BinaryOperation,
+      tpe: String
   ): SqlStr[Codec] =
     op match
       case SqlExpr.BinaryOperation.Concat     => sql"(${renderExpr(lhs)} || ${renderExpr(rhs)})"
       case SqlExpr.BinaryOperation.BitwiseXOr => sql"(${renderExpr(lhs)} # ${renderExpr(rhs)})"
-      case _                                  => super.renderBinaryOp(lhs, rhs, op)
+      case _                                  => super.renderBinaryOp(lhs, rhs, op, tpe)
 
   override protected def renderPreparedArgument(arg: SqlExpr.PreparedArgument[Codec]): SqlStr[Codec] =
     SqlStr(s"(?::${arg.arg.codec.name})", Seq(arg.arg))

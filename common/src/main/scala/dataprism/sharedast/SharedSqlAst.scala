@@ -6,9 +6,10 @@ import dataprism.sql.*
 sealed trait SqlExpr[Codec[_]]
 //noinspection ScalaUnusedSymbol
 object SqlExpr {
-  case class QueryRef[Codec[_]](query: String, column: String)                              extends SqlExpr[Codec]
-  case class UnaryOp[Codec[_]](expr: SqlExpr[Codec], op: UnaryOperation)                    extends SqlExpr[Codec]
-  case class BinOp[Codec[_]](lhs: SqlExpr[Codec], rhs: SqlExpr[Codec], op: BinaryOperation) extends SqlExpr[Codec]
+  case class QueryRef[Codec[_]](query: String, column: String)                                 extends SqlExpr[Codec]
+  case class UnaryOp[Codec[_]](expr: SqlExpr[Codec], op: UnaryOperation, expectedType: String) extends SqlExpr[Codec]
+  case class BinOp[Codec[_]](lhs: SqlExpr[Codec], rhs: SqlExpr[Codec], op: BinaryOperation, expectedType: String)
+      extends SqlExpr[Codec]
   case class FunctionCall[Codec[_]](functionCall: FunctionName, args: Seq[SqlExpr[Codec]], expectedType: String)
       extends SqlExpr[Codec]
   case class PreparedArgument[Codec[_]](name: Option[String], arg: SqlArg[Codec])     extends SqlExpr[Codec]

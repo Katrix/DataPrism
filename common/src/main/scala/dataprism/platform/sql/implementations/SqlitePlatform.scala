@@ -1,9 +1,10 @@
 package dataprism.platform.sql.implementations
 
+import dataprism.platform.sql.value.SqlBitwiseOps
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{SqlExpr, SqliteAstRenderer}
 
-trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations { platform =>
+trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps { platform =>
 
   override type CastType[A] = Type[A]
 
@@ -43,18 +44,19 @@ trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations { platform
   override protected def contramapUpdateReturning[Table, From, Res](
       f: MapUpdateReturning[Table, From, Res]
   ): (Table, From) => Res = (a, _) => f(a)
+  
+  given bitwiseByte: SqlBitwise[Byte] = SqlBitwise.defaultInstance
+  given bitwiseOptByte: SqlBitwise[Option[Byte]] = SqlBitwise.defaultInstance
+  given bitwiseShort: SqlBitwise[Short] = SqlBitwise.defaultInstance
+  given bitwiseOptShort: SqlBitwise[Option[Short]] = SqlBitwise.defaultInstance
+  given bitwiseInt: SqlBitwise[Int] = SqlBitwise.defaultInstance
+  given bitwiseOptInt: SqlBitwise[Option[Int]] = SqlBitwise.defaultInstance
 
   type Api <: SqliteApi
-  trait SqliteApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlOperationApi, SqlQueryApi {
-    export platform.{
-      given DeleteReturningCapability,
-      given InsertOnConflictCapability,
-      given InsertReturningCapability,
-      given UpdateFromCapability,
-      given UpdateReturningCapability
-    }
+  trait SqliteApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlOperationApi, SqlQueryApi {
+    export platform.given
   }
-
+  
   lazy val sqlRenderer: SqliteAstRenderer[Codec] =
     new SqliteAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 

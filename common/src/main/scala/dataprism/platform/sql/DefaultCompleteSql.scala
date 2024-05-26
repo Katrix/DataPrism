@@ -6,24 +6,16 @@ import dataprism.sharedast.{SelectAst, SqlExpr}
 
 trait DefaultCompleteSql extends SqlQueryPlatform {
 
-  override type UnaryOp[V, R] = SqlUnaryOp[V, R]
-  extension [V, R](op: SqlUnaryOp[V, R]) def liftSqlUnaryOp: UnaryOp[V, R] = op
-
-  override type BinOp[LHS, RHS, R] = SqlBinOp[LHS, RHS, R]
-  extension [LHS, RHS, R](op: SqlBinOp[LHS, RHS, R]) def liftSqlBinOp: BinOp[LHS, RHS, R] = op
-
   type DbValueCompanion = SqlDbValueCompanion
   val DbValue: DbValueCompanion = new SqlDbValueCompanionImpl {}
 
   override type AnyDbValue = DbValue[Any]
 
   type Impl <: DefaultCompleteImpl
-  trait DefaultCompleteImpl extends SqlBaseImpl, SqlDbValueImpl, SqlFunctionImpl:
+  trait DefaultCompleteImpl extends SqlBaseImpl, SqlDbValueImpl:
     override def asc[A](v: DbValue[A]): Ord                       = Ord.Asc(v.unsafeAsAnyDbVal)
     override def desc[A](v: DbValue[A]): Ord                      = Ord.Desc(v.unsafeAsAnyDbVal)
     override def unsafeAsAnyDbVal[A](v: DbValue[A]): DbValue[Any] = v.asInstanceOf[DbValue[Any]]
-    override def function[A](name: SqlExpr.FunctionName, args: Seq[DbValue[Any]], tpe: Type[A]): DbValue[A] =
-      SqlDbValue.Function(name, args, tpe).lift
 
   sealed trait OrdSeq extends SqlOrdSeqBase
   enum Ord extends OrdSeq:

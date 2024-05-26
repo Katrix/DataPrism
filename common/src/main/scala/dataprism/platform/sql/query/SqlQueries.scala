@@ -485,7 +485,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
       override def selectAstAndValues: TagState[QueryAstMetadata[Ma]] =
         def astAnd(lhs: Option[SqlExpr[Codec]], rhs: Option[SqlExpr[Codec]]): Option[SqlExpr[Codec]] =
           (lhs, rhs) match
-            case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd))
+            case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd, AnsiTypes.boolean.name))
             case (Some(lhs), None)      => Some(lhs)
             case (None, Some(rhs))      => Some(rhs)
             case (None, None)           => None
@@ -754,7 +754,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
                       SelectAst.From.CrossJoin.apply
                     ), // Cross join seem to be more compatible in some cases
                     where = combineOption(whereExtra, from.where)((a, b) =>
-                      SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd)
+                      SqlExpr.BinOp(a, b, SqlExpr.BinaryOperation.BoolAnd, AnsiTypes.boolean.name)
                     )
                   )
 
