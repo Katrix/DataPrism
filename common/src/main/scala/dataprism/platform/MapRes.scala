@@ -76,7 +76,7 @@ object MapRes extends LowPriorityMapRes {
     override /*inline*/ def toK(r: F[A]): K[F]   = r
     override /*inline*/ def fromK(k: K[F]): F[A] = k
 
-    private val instance: ApplyKC[K] with TraverseKC[K] = new ApplyKC[K] with TraverseKC[K] {
+    private val instance: ApplyKC[K] & TraverseKC[K] = new ApplyKC[K] with TraverseKC[K] {
       extension [D[_], C](fa: K[D])
         def map2K[B[_], Z[_]](fb: K[B])(f: [X] => (D[X], B[X]) => Z[X]): K[Z] =
           f(fa, fb)

@@ -300,7 +300,7 @@ object KMacros {
   inline def deriveRepresentableTraverseKC[F[_[_]] <: Product](
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
-  ): RepresentableKC.Aux[F, [A] =>> (Finite[Tuple.Size[m.MirroredElemLabels]], Any)] with TraverseKC[F] =
+  ): RepresentableKC.Aux[F, [A] =>> (Finite[Tuple.Size[m.MirroredElemLabels]], Any)] & TraverseKC[F] =
     new RepresentableKC[F] with TraverseKC[F] {
       type RepresentationK[_] = (Finite[Tuple.Size[m.MirroredElemLabels]], Any)
 
@@ -332,7 +332,7 @@ object KMacros {
   inline def deriveApplyTraverseKC[F[_[_]] <: Product](
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
-  ): ApplyKC[F] with TraverseKC[F] =
+  ): ApplyKC[F] & TraverseKC[F] =
     new ApplyKC[F] with TraverseKC[F] {
       extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
 

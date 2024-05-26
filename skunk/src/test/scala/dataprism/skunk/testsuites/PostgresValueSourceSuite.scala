@@ -4,8 +4,6 @@ import dataprism.PlatformValueSourceSuite
 import dataprism.skunk.platform.PostgresSkunkPlatform
 import skunk.Codec
 
-object PostgresValueSourceSuite
-    extends PostgresFunSuite
-    with PlatformValueSourceSuite[Codec, PostgresSkunkPlatform] {
+object PostgresValueSourceSuite extends PostgresFunSuite, PlatformValueSourceSuite[Codec, PostgresSkunkPlatform] {
   doTestFullJoin()
 }

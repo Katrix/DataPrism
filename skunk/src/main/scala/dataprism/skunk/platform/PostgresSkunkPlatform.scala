@@ -35,7 +35,7 @@ trait PostgresSkunkPlatform extends PostgresPlatform {
             s => elemType.codec.decode(0, List(Some(s))).left.map(_.message),
             elemType.codec.types.head
           )
-          .imap(arr => Seq.tabulate(arr.size)(arr.get(_).get))(seq => Arr(seq: _*)),
+          .imap(arr => Seq.tabulate(arr.size)(arr.get(_).get))(seq => Arr(seq*)),
         _.opt
       )
       .notNull

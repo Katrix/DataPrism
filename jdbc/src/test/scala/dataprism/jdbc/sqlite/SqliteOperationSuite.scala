@@ -4,7 +4,7 @@ import dataprism.PlatformOperationSuite
 import dataprism.jdbc.platform.SqliteJdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-object SqliteOperationSuite extends SqliteFunSuite with PlatformOperationSuite[JdbcCodec, SqliteJdbcPlatform] {
+object SqliteOperationSuite extends SqliteFunSuite, PlatformOperationSuite[JdbcCodec, SqliteJdbcPlatform] {
   doTestDeleteReturning()
 
   doTestInsertReturning()

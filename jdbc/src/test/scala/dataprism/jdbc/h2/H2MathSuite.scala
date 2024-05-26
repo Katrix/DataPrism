@@ -5,7 +5,7 @@ import dataprism.jdbc.sql
 import dataprism.jdbc.sql.{JdbcAnsiTypes, JdbcCodec}
 import dataprism.{PlatformSaneMathSuite, jdbc}
 
-object H2MathSuite extends H2FunSuite with PlatformSaneMathSuite[JdbcCodec, H2JdbcPlatform] {
+object H2MathSuite extends H2FunSuite, PlatformSaneMathSuite[JdbcCodec, H2JdbcPlatform] {
   override protected def longCastType: JdbcAnsiTypes.TypeOf[Long]     = JdbcAnsiTypes.bigint
   override protected def doubleCastType: JdbcAnsiTypes.TypeOf[Double] = JdbcAnsiTypes.doublePrecision
 }

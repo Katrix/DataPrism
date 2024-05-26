@@ -5,7 +5,7 @@ import dataprism.jdbc.platform.MariaDbJdbcPlatform
 import dataprism.jdbc.sql.{JdbcCodec, MySqlJdbcTypeCastable, MySqlJdbcTypes}
 import org.scalacheck.Gen
 
-object MariaDbMathSuite extends MariaDbFunSuite with PlatformMathSuite[JdbcCodec, MariaDbJdbcPlatform] {
+object MariaDbMathSuite extends MariaDbFunSuite, PlatformMathSuite[JdbcCodec, MariaDbJdbcPlatform] {
   import platform.Api.*
   override def maxParallelism: Int = 10
 

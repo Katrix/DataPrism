@@ -4,7 +4,7 @@ import dataprism.PlatformOperationSuite
 import dataprism.skunk.platform.PostgresSkunkPlatform
 import skunk.Codec
 
-object PostgresOperationSuite extends PostgresFunSuite with PlatformOperationSuite[Codec, PostgresSkunkPlatform] {
+object PostgresOperationSuite extends PostgresFunSuite, PlatformOperationSuite[Codec, PostgresSkunkPlatform] {
   doTestDeleteUsing()
   doTestDeleteReturning()
   doTestDeleteUsingReturning()

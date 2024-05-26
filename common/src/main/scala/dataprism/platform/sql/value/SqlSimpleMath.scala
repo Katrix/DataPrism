@@ -47,10 +47,10 @@ trait SqlSimpleMath extends SqlDbValuesBase {
     def sign[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Sign, Seq(a.unsafeAsAnyDbVal), a.tpe)
 
-    def pi[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
+    def pi[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[?]]): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Pi, Nil, tpe.castTypeType).cast(tpe)
 
-    def random[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[_]]): DbValue[A] =
+    def random[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[?]]): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Random, Nil, tpe.castTypeType).cast(tpe)
   
   type Impl <: SqlFunctionImpl & SqlBaseImpl

@@ -6,7 +6,7 @@ import dataprism.jdbc.platform.MySql57JdbcPlatform
 import dataprism.jdbc.sql.{JdbcCodec, MySqlJdbcTypeCastable, MySqlJdbcTypes}
 import org.scalacheck.Gen
 
-object MySql57MathSuite extends MySql57FunSuite with PlatformMathSuite[JdbcCodec, MySql57JdbcPlatform] {
+object MySql57MathSuite extends MySql57FunSuite, PlatformMathSuite[JdbcCodec, MySql57JdbcPlatform] {
   import platform.Api.*
   override def maxParallelism: Int = 10
 

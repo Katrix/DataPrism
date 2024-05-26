@@ -4,7 +4,7 @@ import dataprism.PlatformQuerySuite
 import dataprism.jdbc.platform.MySql8JdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-object MySql8QuerySuite extends MySql8FunSuite with PlatformQuerySuite[JdbcCodec, MySql8JdbcPlatform] {
+object MySql8QuerySuite extends MySql8FunSuite, PlatformQuerySuite[JdbcCodec, MySql8JdbcPlatform] {
   doTestFlatmapLateral()
   doTestExcept()
   doTestIntersect()

@@ -102,11 +102,11 @@ trait SqlOperationsBase extends SqlQueryPlatformBase, SqlQueriesBase { platform 
   trait SqlInsertOperation[A[_[_]], B[_[_]]] extends IntOperation:
 
     def onConflict(
-        on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]],
+        on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, ?]],
         a: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
     )(using InsertOnConflictCapability): InsertOperation[A, B]
 
-    def onConflictUpdate(on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]])(
+    def onConflictUpdate(on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, ?]])(
         using InsertOnConflictCapability
     ): InsertOperation[A, B]
 

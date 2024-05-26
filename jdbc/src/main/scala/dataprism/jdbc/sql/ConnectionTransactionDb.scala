@@ -1,14 +1,15 @@
 package dataprism.jdbc.sql
 
-import cats.Functor
-
 import java.sql.Connection
+
 import scala.util.Try
+
+import cats.Functor
 import dataprism.sql.{ResourceManager, TransactionDb}
 
 class ConnectionTransactionDb[F[_]: Functor](con: Connection, wrapTryV: [A] => (() => Try[A]) => F[A])
-    extends ConnectionDb[F]
-    with TransactionDb[F, JdbcCodec] {
+    extends ConnectionDb[F],
+      TransactionDb[F, JdbcCodec] {
 
   override protected def wrapTry[A](tryV: => Try[A]): F[A] = wrapTryV(() => tryV)
 

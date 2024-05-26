@@ -14,7 +14,7 @@ import perspective.derivation.ProductKPar
 //noinspection ScalaUnusedSymbol
 trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
-  trait SqlQueryGrouped[A[_[_]]] extends QueryGroupedBase[A] with SqlQuery[A]
+  trait SqlQueryGrouped[A[_[_]]] extends QueryGroupedBase[A], SqlQuery[A]
 
   sealed trait SqlQuery[A[_[_]]] extends SqlQueryBase[A] {
 
@@ -140,14 +140,14 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         copy(f(values)).liftSqlQuery
     }
 
-    type AppTravKC[A[_[_]]] = ApplyKC[A] with TraverseKC[A]
+    type AppTravKC[A[_[_]]] = ApplyKC[A] & TraverseKC[A]
 
     private def innerJoinInstances[MA[_[_]], MB[_[_]]](
         using AA: ApplyKC[MA],
         BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplyKC[InnerJoin[MA, MB]] with TraverseKC[InnerJoin[MA, MB]] =
+    ): ApplyKC[InnerJoin[MA, MB]] & TraverseKC[InnerJoin[MA, MB]] =
       new ApplyKC[InnerJoin[MA, MB]] with TraverseKC[InnerJoin[MA, MB]] {
         type F[X[_]] = (MA[X], MB[X])
 
@@ -183,24 +183,24 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplyKC[LeftJoin[MA, MB]] with TraverseKC[LeftJoin[MA, MB]] =
-      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[LeftJoin[MA, MB]] with TraverseKC[LeftJoin[MA, MB]]]
+    ): ApplyKC[LeftJoin[MA, MB]] & TraverseKC[LeftJoin[MA, MB]] =
+      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[LeftJoin[MA, MB]] & TraverseKC[LeftJoin[MA, MB]]]
 
     private def rightJoinInstances[MA[_[_]], MB[_[_]]](
         using AA: ApplyKC[MA],
         BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplyKC[RightJoin[MA, MB]] with TraverseKC[RightJoin[MA, MB]] =
-      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[RightJoin[MA, MB]] with TraverseKC[RightJoin[MA, MB]]]
+    ): ApplyKC[RightJoin[MA, MB]] & TraverseKC[RightJoin[MA, MB]] =
+      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[RightJoin[MA, MB]] & TraverseKC[RightJoin[MA, MB]]]
 
     private def fullJoinInstances[MA[_[_]], MB[_[_]]](
         using AA: ApplyKC[MA],
         BA: ApplyKC[MB],
         AT: TraverseKC[MA],
         BT: TraverseKC[MB]
-    ): ApplyKC[FullJoin[MA, MB]] with TraverseKC[FullJoin[MA, MB]] =
-      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[FullJoin[MA, MB]] with TraverseKC[FullJoin[MA, MB]]]
+    ): ApplyKC[FullJoin[MA, MB]] & TraverseKC[FullJoin[MA, MB]] =
+      innerJoinInstances[MA, MB].asInstanceOf[ApplyKC[FullJoin[MA, MB]] & TraverseKC[FullJoin[MA, MB]]]
 
     case class SqlQueryFromStage[A[_[_]]](valueSource: ValueSource[A])(
         using val applyK: ApplyKC[A],
@@ -422,8 +422,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         GR: TraverseKC[Gr],
         val applyK: ApplyKC[Ma],
         val traverseK: TraverseKC[Ma]
-    ) extends SqlQuery[Ma]
-        with SqlQueryGrouped[Ma] {
+    ) extends SqlQuery[Ma], SqlQueryGrouped[Ma] {
 
       private inline def valuesAsMany(values: A[DbValue]): A[Many] =
         values.asInstanceOf[A[Many]] // Safe as many is an opaque type in another file

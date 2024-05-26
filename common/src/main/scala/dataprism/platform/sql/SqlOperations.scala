@@ -148,7 +148,7 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
       protected val table: Table[Codec, A],
       protected val columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
       protected val values: Query[B],
-      protected val conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, _]],
+      protected val conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, ?]],
       protected val onConflict: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
   ) extends SqlInsertOperation[A, B]:
     override def sqlAndTypes: (SqlStr[Codec], Type[Int]) =
@@ -178,12 +178,12 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
       (ret.runA(freshTaggedState).value, AnsiTypes.integer.notNull)
 
     def onConflict(
-        on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]],
+        on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, ?]],
         a: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]]
     )(using InsertOnConflictCapability): InsertOperation[A, B] =
       SqlInsertOperationImpl(table, columns, values, on(_).toList, a).lift
 
-    def onConflictUpdate(on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, _]])(
+    def onConflictUpdate(on: A[[Z] =>> Column[Codec, Z]] => NonEmptyList[Column[Codec, ?]])(
         using InsertOnConflictCapability
     ): InsertOperation[A, B] =
       import values.given_ApplyKC_A
@@ -206,7 +206,7 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
       protected val table: Table[Codec, A],
       protected val columns: A[[X] =>> Column[Codec, X]] => B[[X] =>> Column[Codec, X]],
       protected val values: Query[B],
-      protected val conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, _]],
+      protected val conflictOn: A[[Z] =>> Column[Codec, Z]] => List[Column[Codec, ?]],
       protected val onConflict: B[[Z] =>> (DbValue[Z], DbValue[Z]) => Option[DbValue[Z]]],
       protected val returning: A[DbValue] => C[DbValue]
   ) extends SqlInsertReturningOperation[A, B, C]:

@@ -12,7 +12,7 @@ object ResourceManager:
 
   private case class StoredManaged[A](obj: A, releaseable: Using.Releasable[A])
 
-  class Storing private (managed: mutable.Buffer[StoredManaged[_]]) extends ResourceManager {
+  class Storing private (managed: mutable.Buffer[StoredManaged[?]]) extends ResourceManager {
     extension [A: Using.Releasable](a: A)
       override def acquire: A = {
         managed += StoredManaged(a, summon[Using.Releasable[A]])

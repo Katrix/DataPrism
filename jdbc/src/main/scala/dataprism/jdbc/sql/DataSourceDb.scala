@@ -9,7 +9,7 @@ import scala.util.*
 import dataprism.sql.*
 import perspective.Id
 
-trait DataSourceDb[F[_]](ds: DataSource) extends ConnectionDb[F] with TransactionalDb[F, JdbcCodec]:
+trait DataSourceDb[F[_]](ds: DataSource) extends ConnectionDb[F], TransactionalDb[F, JdbcCodec]:
 
   protected def wrapTry[A](tryV: => Try[A]): F[A]
 

@@ -11,11 +11,14 @@ in `Fs2SqlQueryPlatform`. Here's an example.
 
 ```scala 3
 import dataprism.jdbc.platform.PostgresJdbcPlatform
-import dataprism.platform.sql.Fs2SqlQueryPlatform
+import dataprism.platform.sql.Fs2SqlPlatform
 
-object MyPlatform extends PostgresJdbcPlatform, Fs2SqlQueryPlatform {
+object MyPlatform extends PostgresJdbcPlatform, Fs2SqlPlatform {
   override type Api = PostgresApi & Fs2Api
   object Api extends PostgresApi, Fs2Api
+
+  override type Impl = DefaultCompleteImpl
+  object Impl extends DefaultCompleteImpl
 }
 ```
 

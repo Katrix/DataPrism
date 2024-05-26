@@ -4,7 +4,7 @@ import dataprism.PlatformQuerySuite
 import dataprism.jdbc.platform.SqliteJdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-object SqliteQuerySuite extends SqliteFunSuite with PlatformQuerySuite[JdbcCodec, SqliteJdbcPlatform] {
+object SqliteQuerySuite extends SqliteFunSuite, PlatformQuerySuite[JdbcCodec, SqliteJdbcPlatform] {
   doTestExcept()
   doTestIntersect()
 }

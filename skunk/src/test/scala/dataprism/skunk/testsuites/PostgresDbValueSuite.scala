@@ -4,7 +4,7 @@ import dataprism.PlatformDbValueSuite
 import dataprism.skunk.platform.PostgresSkunkPlatform
 import skunk.Codec
 
-object PostgresDbValueSuite extends PostgresFunSuite with PlatformDbValueSuite[Codec, PostgresSkunkPlatform] {
+object PostgresDbValueSuite extends PostgresFunSuite, PlatformDbValueSuite[Codec, PostgresSkunkPlatform] {
   // override def maxParallelism: Int = 10
 
   //override val configuredForall: PostgresDbValueSuite.PartiallyAppliedForall =

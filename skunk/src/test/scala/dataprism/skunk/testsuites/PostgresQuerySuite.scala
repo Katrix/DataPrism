@@ -4,7 +4,7 @@ import dataprism.PlatformQuerySuite
 import dataprism.skunk.platform.PostgresSkunkPlatform
 import skunk.Codec
 
-object PostgresQuerySuite extends PostgresFunSuite with PlatformQuerySuite[Codec, PostgresSkunkPlatform] {
+object PostgresQuerySuite extends PostgresFunSuite, PlatformQuerySuite[Codec, PostgresSkunkPlatform] {
   doTestFlatmapLateral()
   doTestExcept()
   doTestIntersect()

@@ -19,7 +19,7 @@ class NullabilityTypeChoice[Codec[_], A](
 
   def imap[B](f: A => B)(
       g: B => A
-  )(using NotGiven[B <:< Option[_]], Invariant[Codec]): NullabilityTypeChoice[Codec, B] =
+  )(using NotGiven[B <:< Option[?]], Invariant[Codec]): NullabilityTypeChoice[Codec, B] =
     NullabilityTypeChoice(
       notNullCodec.imap[B](f)(g),
       nullableCodec.imap[Option[B]](na => na.map(f))((b: Option[B]) => b.map(g))

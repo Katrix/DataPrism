@@ -4,7 +4,7 @@ import dataprism.PlatformOperationSuite
 import dataprism.jdbc.platform.PostgresJdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-object PostgresOperationSuite extends PostgresFunSuite with PlatformOperationSuite[JdbcCodec, PostgresJdbcPlatform] {
+object PostgresOperationSuite extends PostgresFunSuite, PlatformOperationSuite[JdbcCodec, PostgresJdbcPlatform] {
   doTestDeleteUsing()
   doTestDeleteReturning()
   doTestDeleteUsingReturning()

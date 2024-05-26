@@ -4,6 +4,6 @@ import dataprism.PlatformDbValueSuite
 import dataprism.jdbc.platform.H2JdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-object H2DbValueSuite extends H2FunSuite with PlatformDbValueSuite[JdbcCodec, H2JdbcPlatform] {
+object H2DbValueSuite extends H2FunSuite, PlatformDbValueSuite[JdbcCodec, H2JdbcPlatform] {
   override def leastGreatestBubbleNulls: Boolean = true
 }

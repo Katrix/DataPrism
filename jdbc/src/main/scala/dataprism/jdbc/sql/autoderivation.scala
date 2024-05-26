@@ -61,7 +61,7 @@ object JdbcColumns:
 
         val typeExpr: Either[(String, Option[Position]), Either[
           (Expr[Any], Type[? <: AnyKind]),
-          (Expr[JdbcColumns[_]], Expr[FunctorK[_]])
+          (Expr[JdbcColumns[?]], Expr[FunctorK[?]])
         ]] =
           val fieldTypeUpd = TypeLambda(
             fTypeLambdaNames.map(_ + "Upd"),
@@ -83,7 +83,7 @@ object JdbcColumns:
 
           (searchColumns, searchFunctor) match
             case (Right(tree), Right(functor)) =>
-              Right(Right(tree.asExprOf[JdbcColumns[_]] -> functor.asExprOf[FunctorK[_]]))
+              Right(Right(tree.asExprOf[JdbcColumns[?]] -> functor.asExprOf[FunctorK[?]]))
             case (e1, e2) =>
               // println((e1, e2))
               paramType match

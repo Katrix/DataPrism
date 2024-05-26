@@ -4,4 +4,4 @@ import dataprism.PlatformValueSourceSuite
 import dataprism.jdbc.platform.MariaDbJdbcPlatform
 import dataprism.jdbc.sql.JdbcCodec
 
-object MariaDbValueSourceSuite extends MariaDbFunSuite with PlatformValueSourceSuite[JdbcCodec, MariaDbJdbcPlatform]
+object MariaDbValueSourceSuite extends MariaDbFunSuite, PlatformValueSourceSuite[JdbcCodec, MariaDbJdbcPlatform]

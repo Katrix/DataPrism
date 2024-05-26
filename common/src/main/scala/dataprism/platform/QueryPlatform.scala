@@ -43,7 +43,7 @@ trait QueryPlatform { platform =>
 
   type Many[A]
 
-  type Nullable[A] <: Option[_] = A match {
+  type Nullable[A] <: Option[?] = A match {
     case Option[b] => Option[b]
     case _         => Option[A]
   }
