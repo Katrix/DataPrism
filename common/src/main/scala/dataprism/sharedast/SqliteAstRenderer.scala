@@ -19,7 +19,11 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
       case SqlExpr.BinaryOperation.Concat => sql"(${renderExpr(lhs)} || ${renderExpr(rhs)})"
       case _                              => super.renderBinaryOp(lhs, rhs, op, tpe)
 
-  override protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]], tpe: String): SqlStr[Codec] =
+  override protected def renderFunctionCall(
+      call: SqlExpr.FunctionName,
+      args: Seq[SqlExpr[Codec]],
+      tpe: String
+  ): SqlStr[Codec] =
     inline def rendered                         = args.map(renderExpr).intercalate(sql", ")
     inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
 
@@ -28,7 +32,8 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
         val slidingArgs            = args.sliding(99).toSeq
         val (handled, notHandleds) = slidingArgs.splitAt(99)
         val handledArgs            = handled.map(args => SqlExpr.FunctionCall(call, args, tpe))
-        val notHandledArg = if notHandleds.nonEmpty then Seq(SqlExpr.FunctionCall(call, notHandleds.flatten, tpe)) else Nil
+        val notHandledArg =
+          if notHandleds.nonEmpty then Seq(SqlExpr.FunctionCall(call, notHandleds.flatten, tpe)) else Nil
 
         val allArgs = handledArgs ++ notHandledArg
 
@@ -40,7 +45,17 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
       case SqlExpr.FunctionName.Greatest => subdivided("max")
       case SqlExpr.FunctionName.Min      => normal("min")
       case SqlExpr.FunctionName.Least    => subdivided("min")
-      case _                             => super.renderFunctionCall(call, args, tpe)
+
+      case SqlExpr.FunctionName.Cot =>
+        renderExpr(
+          SqlExpr.BinOp(
+            SqlExpr.FunctionCall(SqlExpr.FunctionName.Cos, args, tpe),
+            SqlExpr.FunctionCall(SqlExpr.FunctionName.Sin, args, tpe),
+            SqlExpr.BinaryOperation.Divide,
+            tpe
+          )
+        )
+      case _ => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderFrom(from: SelectAst.From[Codec]): SqlStr[Codec] = from match
     case SelectAst.From.FromQuery(_, _, true) => throw new SQLException("H2 does not support lateral")

@@ -80,6 +80,13 @@ object SqlExpr {
     case Sin
     case Tan
 
+    case ACosh
+    case ASinh
+    case ATanh
+    case Cosh
+    case Sinh
+    case Tanh
+
     case Greatest
     case Least
 

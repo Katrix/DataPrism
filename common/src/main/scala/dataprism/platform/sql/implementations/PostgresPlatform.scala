@@ -1,13 +1,13 @@
 package dataprism.platform.sql.implementations
 
 import cats.syntax.all.*
-import dataprism.platform.sql.value.SqlBitwiseOps
+import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps { platform =>
+trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps, SqlTrigFunctions, SqlHyperbolicTrigFunctions { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -36,6 +36,10 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
 
   given ExceptCapability with {}
   given IntersectCapability with {}
+  
+  given ASinhCapability with {}
+  given ACoshCapability with {}
+  given ATanhCapability with {}
 
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](
@@ -65,8 +69,8 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
     override def castTypeName: String  = t.name
     override def castTypeType: Type[A] = t
 
-  type DbMath = SimpleSqlDbMath
-  object DbMath extends SimpleSqlDbMath
+  type DbMath = SimpleSqlDbMath & SqlTrigMath & SqlHyperbolicTrigMath
+  object DbMath extends SimpleSqlDbMath, SqlTrigMath, SqlHyperbolicTrigMath
 
   type DbValue[A] = SqlDbValue[A]
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = Lift.subtype

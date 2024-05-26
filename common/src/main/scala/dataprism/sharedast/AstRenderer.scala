@@ -89,6 +89,13 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.Sin   => normal("sin")
       case SqlExpr.FunctionName.Tan   => normal("tan")
 
+      case SqlExpr.FunctionName.ACosh  => normal("acosh")
+      case SqlExpr.FunctionName.ASinh  => normal("asinh")
+      case SqlExpr.FunctionName.ATanh  => normal("atanh")
+      case SqlExpr.FunctionName.Cosh   => normal("cosh")
+      case SqlExpr.FunctionName.Sinh   => normal("sinh")
+      case SqlExpr.FunctionName.Tanh   => normal("tanh")
+
       case SqlExpr.FunctionName.Abs   => normal("abs")
       case SqlExpr.FunctionName.Avg   => normal("avg")
       case SqlExpr.FunctionName.Count => normal("count")

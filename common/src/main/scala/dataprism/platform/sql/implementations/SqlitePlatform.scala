@@ -1,10 +1,10 @@
 package dataprism.platform.sql.implementations
 
-import dataprism.platform.sql.value.SqlBitwiseOps
+import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{SqlExpr, SqliteAstRenderer}
 
-trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps { platform =>
+trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps, SqlTrigFunctions, SqlHyperbolicTrigFunctions { platform =>
 
   override type CastType[A] = Type[A]
 
@@ -37,6 +37,10 @@ trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwis
   given ExceptCapability with    {}
   given IntersectCapability with {}
 
+  given ASinhCapability with {}
+  given ACoshCapability with {}
+  given ATanhCapability with {}
+
   override protected def generateDeleteAlias: Boolean = false
   override protected def generateUpdateAlias: Boolean = false
 
@@ -60,8 +64,8 @@ trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwis
   lazy val sqlRenderer: SqliteAstRenderer[Codec] =
     new SqliteAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
-  type DbMath = SimpleSqlDbMath
-  object DbMath extends SimpleSqlDbMath
+  type DbMath = SimpleSqlDbMath & SqlTrigMath & SqlHyperbolicTrigMath
+  object DbMath extends SimpleSqlDbMath, SqlTrigMath, SqlHyperbolicTrigMath
 
   type DbValue[A] = SqlDbValue[A]
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = Lift.subtype

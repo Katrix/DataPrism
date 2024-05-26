@@ -1,10 +1,8 @@
 package dataprism.jdbc.mysql57
 
 import dataprism.PlatformMathSuite
-import dataprism.jdbc.mariadb.MariaDbMathSuite.platform
 import dataprism.jdbc.platform.MySql57JdbcPlatform
 import dataprism.jdbc.sql.{JdbcCodec, MySqlJdbcTypeCastable, MySqlJdbcTypes}
-import org.scalacheck.Gen
 
 object MySql57MathSuite extends MySql57FunSuite, PlatformMathSuite[JdbcCodec, MySql57JdbcPlatform] {
   import platform.Api.*
@@ -18,12 +16,9 @@ object MySql57MathSuite extends MySql57FunSuite, PlatformMathSuite[JdbcCodec, My
 
   override protected type DoubleLikeCastType = BigDecimal
   override protected def doubleCastType: MySqlJdbcTypeCastable[BigDecimal] = MySqlJdbcTypes.castType.decimalN(15, 9)
-  override protected def doubleLikeTypeInfo: TypeInfo[BigDecimal] = TypeInfo(
-    MySqlJdbcTypes.decimal,
-    Gen.choose(BigDecimal(-10000), BigDecimal(10000)),
-    BigDecimal(0.000000001),
-    _ => false
-  )
+  override protected def doubleLikeTypeInfo: TypeInfo[BigDecimal] = decimalTypeInfo
   override protected def doubleToDoubleLikeCastType(d: Double): BigDecimal    = BigDecimal.decimal(d)
   override protected def doubleLikeCastTypeSqlNumeric: SqlNumeric[BigDecimal] = platform.sqlNumericBigDecimal
+
+  testTrigFunctions(platform)
 }

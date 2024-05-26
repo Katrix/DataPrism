@@ -4,12 +4,14 @@ import cats.Show
 import cats.effect.IO
 import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatform
+import dataprism.platform.sql.value.SqlTrigFunctions
 import org.scalacheck.Gen
 import org.scalacheck.cats.implicits.*
 import weaver.{Expectations, Log, SourceLocation}
 
 trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
-    extends PlatformFunSuite[Codec0, Platform], WithOptionalMath:
+    extends PlatformFunSuite[Codec0, Platform],
+      WithOptionalMath:
   import platform.Api.*
   import platform.{AnsiTypes, name}
 
@@ -29,8 +31,7 @@ trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] 
   case class TypeInfo[A](
       tpe: Type[A],
       gen: Gen[A],
-      epsilon: A,
-      isNan: A => Boolean,
+      areEqual: (A, A) => Expectations,
       transform2: Gen[(A, A)] => Gen[(A, A)] = identity[Gen[(A, A)]]
   )(using val numeric: Numeric[A], val show: Show[A])
 
@@ -40,50 +41,37 @@ trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] 
       name: String,
       dbLevel: CastType[A] => DbValue[A],
       valueLevel: () => A
-  ): Unit = typeLogTest(name, castType.castTypeType): log =>
+  )(using SourceLocation): Unit = typeLogTest(name, castType.castTypeType): log =>
     given Log[IO] = log
-    import typeInfo.given
-    import Numeric.Implicits.*
-    import Ordering.Implicits.*
     logQuery(Select(Query.of(dbLevel(castType))))
       .flatMap(_.runOne[F])
-      .map: r =>
-        val v = valueLevel()
-        expect((v - r <= typeInfo.epsilon) || (typeInfo.isNan(v) && typeInfo.isNan(r)))
+      .map(r => typeInfo.areEqual(valueLevel(), r))
 
   def functionTest1[A: SqlNumeric](
       name: String,
       typeInfo: TypeInfo[A],
       dbLevel: DbValue[A] => DbValue[A],
       valueLevel: A => A
-  ): Unit = typeLogTest(name, typeInfo.tpe): log =>
+  )(using SourceLocation): Unit = typeLogTest(name, typeInfo.tpe): log =>
     given Log[IO] = log
     import typeInfo.given
-    import Numeric.Implicits.*
-    import Ordering.Implicits.*
     configuredForall(typeInfo.gen): (a: A) =>
       logQuery(Select(Query.of(dbLevel(a.as(typeInfo.tpe)))))
         .flatMap(_.runOne[F])
-        .map: r =>
-          val v = valueLevel(a)
-          expect((v - r <= typeInfo.epsilon) || (typeInfo.isNan(v) && typeInfo.isNan(r)))
+        .map(r => typeInfo.areEqual(valueLevel(a), r))
 
   def functionTest2[A: SqlNumeric](
       name: String,
       typeInfo: TypeInfo[A],
       dbLevel: (DbValue[A], DbValue[A]) => DbValue[A],
       valueLevel: (A, A) => A
-  ): Unit = typeLogTest(name, typeInfo.tpe): log =>
+  )(using SourceLocation): Unit = typeLogTest(name, typeInfo.tpe): log =>
     given Log[IO] = log
     import typeInfo.given
-    import Numeric.Implicits.*
-    import Ordering.Implicits.*
     configuredForall(typeInfo.transform2((typeInfo.gen, typeInfo.gen).tupled)): (a: A, b: A) =>
       logQuery(Select(Query.of(dbLevel(a.as(typeInfo.tpe), b.as(typeInfo.tpe)))))
         .flatMap(_.runOne[F])
-        .map: r =>
-          val v = valueLevel(a, b)
-          expect((v - r <= typeInfo.epsilon) || (typeInfo.isNan(v) && typeInfo.isNan(r)))
+        .map(r => typeInfo.areEqual(valueLevel(a, b), r))
 
   def testPow[A: SqlNumeric](typeInfo: TypeInfo[A], op: (A, A) => A): Unit =
     functionTest2("pow", typeInfo, DbMath.pow, op)
@@ -133,13 +121,43 @@ trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] 
         .runOne[F]
         .map(r => expect(true))
 
-  private val longGen = Gen.choose(-10000L, 10000L)
+  private def doubleGen = Gen.choose(-10000D, 10000D)
 
-  val longTypeInfo: TypeInfo[Long] = TypeInfo(
+  def doubleTypeInfo: TypeInfo[Double] = TypeInfo(
+    AnsiTypes.doublePrecision,
+    Gen.choose(-10000D, 10000D),
+    (v: Double, r: Double) => {
+      val epsilon = 0.00001
+      import java.lang.Double as JDouble
+
+      expect(
+        Math.abs(v - r) <= epsilon
+          || (JDouble.isNaN(v) && JDouble.isNaN(r))
+          || (JDouble.isInfinite(v) && JDouble.isInfinite(r) && Math.signum(v) == Math.signum(r))
+          || (Math.getExponent(v) == Math.getExponent(r)
+            && (v / Math.pow(2, Math.getExponent(v))) - (r / Math.pow(2, Math.getExponent(r))) <= epsilon) //Compare the exponents and mantissa seperately. Sadly it seems like we do sometimes reach this case
+      )
+    }
+  )
+
+  def doublePositiveTypeInfo: TypeInfo[Double] = doubleTypeInfo.copy(gen = Gen.choose(0, 10000D))
+
+  def testTrigFunctions[A](platformWithTrig: platform.type & SqlTrigFunctions): Unit =
+    functionTest1("acos", doubleTypeInfo.copy(gen = Gen.choose(-1, 1)), platformWithTrig.DbMath.acos, Math.acos)
+    functionTest1("asin", doubleTypeInfo.copy(gen = Gen.choose(-1, 1)), platformWithTrig.DbMath.asin, Math.asin)
+    functionTest1("atan", doubleTypeInfo, platformWithTrig.DbMath.atan, Math.atan)
+    functionTest2("atan2", doubleTypeInfo, platformWithTrig.DbMath.atan2, Math.atan2)
+    functionTest1("cos", doubleTypeInfo, platformWithTrig.DbMath.cos, Math.cos)
+    functionTest1("cot", doubleTypeInfo, platformWithTrig.DbMath.cot, (x: Double) => Math.cos(x) / Math.sin(x))
+    functionTest1("sin", doubleTypeInfo, platformWithTrig.DbMath.sin, Math.sin)
+    functionTest1("tan", doubleTypeInfo, platformWithTrig.DbMath.tan, Math.tan)
+
+  private def longGen = Gen.choose(-10000L, 10000L)
+
+  def longTypeInfo: TypeInfo[Long] = TypeInfo(
     AnsiTypes.bigint,
     Gen.choose(-10000L, 10000L),
-    0,
-    _ => false
+    (v, r) => expect(v == r)
   )
 
   protected type LongLikeCastType
@@ -169,22 +187,11 @@ trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] 
   testPi(longCastType, longLikeTypeInfo, () => doubleToLongLikeCastType(Math.PI))
   testRandom(longCastType)
 
-  private val doubleGen = Gen.choose(-10000D, 10000D)
-
   protected type DoubleLikeCastType
   protected def doubleCastType: CastType[DoubleLikeCastType]
   protected def doubleLikeTypeInfo: TypeInfo[DoubleLikeCastType]
   protected def doubleToDoubleLikeCastType(d: Double): DoubleLikeCastType
   protected given doubleLikeCastTypeSqlNumeric: SqlNumeric[DoubleLikeCastType]
-
-  val doubleTypeInfo: TypeInfo[Double] = TypeInfo(
-    AnsiTypes.doublePrecision,
-    Gen.choose(-10000D, 10000D),
-    0.00001,
-    java.lang.Double.isNaN
-  )
-
-  val doublePositiveTypeInfo: TypeInfo[Double] = doubleTypeInfo.copy(gen = Gen.choose(0, 10000D))
 
   testPow(
     doubleTypeInfo.copy(
@@ -216,20 +223,19 @@ trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] 
   testPi(doubleCastType, doubleLikeTypeInfo, () => doubleToDoubleLikeCastType(Math.PI))
   testRandom(doubleCastType)
 
-  val decimalTypeInfo: TypeInfo[BigDecimal] = TypeInfo(
+  def decimalTypeInfo: TypeInfo[BigDecimal] = TypeInfo(
     AnsiTypes.decimalN(15, 9),
     Gen.choose(BigDecimal(-10000D), BigDecimal(10000D)),
-    0.00001,
-    _ => false
+    (v, r) => expect((v - r).abs < BigDecimal(0.00001))
   )
 
-  val decimalPositiveTypeInfo: TypeInfo[BigDecimal] =
+  def decimalPositiveTypeInfo: TypeInfo[BigDecimal] =
     decimalTypeInfo.copy(gen = Gen.choose(BigDecimal(0), BigDecimal(10000)))
 
   import spire.implicits.*
 
   // Hard to test
-  //testPow(
+  // testPow(
   //  decimalTypeInfo.copy(
   //    gen = Gen.choose(BigDecimal(-10), BigDecimal(10)),
   //    transform2 = _ => {
@@ -245,7 +251,7 @@ trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] 
   //  (a: BigDecimal, b: BigDecimal) => {
   //    if b.isWhole then a.pow(b.toInt) else spire.math.exp(a.log * b)
   //  }
-  //)
+  // )
   testSqrt(decimalPositiveTypeInfo, (_: BigDecimal).sqrt)
   testAbs(decimalTypeInfo, (_: BigDecimal).abs)
   testCeil(decimalTypeInfo, (_: BigDecimal).setScale(0, BigDecimal.RoundingMode.CEILING))

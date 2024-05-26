@@ -1,8 +1,9 @@
 package dataprism.platform.sql.implementations
 
+import dataprism.platform.sql.value.SqlTrigFunctions
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 
-trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations { platform =>
+trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlTrigFunctions { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -33,8 +34,8 @@ trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations { platform 
     export platform.{given DeleteUsingCapability, given LateralJoinCapability}
   }
 
-  type DbMath = SimpleSqlDbMath
-  object DbMath extends SimpleSqlDbMath
+  type DbMath = SimpleSqlDbMath & SqlTrigMath
+  object DbMath extends SimpleSqlDbMath, SqlTrigMath
 
   type DbValue[A] = SqlDbValue[A]
   override protected def sqlDbValueLift[A]: Lift[SqlDbValue[A], DbValue[A]] = Lift.subtype

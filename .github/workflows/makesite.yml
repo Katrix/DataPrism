@@ -25,5 +25,5 @@ jobs:
         env:
           REPO: self
           BRANCH: gh-pages
-          FOLDER: docs/target/scala-3.3.1/unidoc
+          FOLDER: docs/target/scala-3.3.2/unidoc
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
