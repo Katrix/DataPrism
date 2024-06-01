@@ -25,6 +25,8 @@ trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
   trait IntersectAllCapability
   trait IntersectCapability
 
+  trait DistinctOnCapability
+
   trait SqlQueryBase[A[_[_]]] extends QueryBase[A] {
 
     private[platform] def selectAstAndValues: TagState[QueryAstMetadata[A]]
@@ -34,6 +36,8 @@ trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
     def nested: Query[A]
 
     def distinct: Query[A]
+
+    def distinctOn(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A]
 
     def join[B[_[_]]](that: Table[Codec, B])(
         on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]

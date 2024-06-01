@@ -5,6 +5,23 @@ import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 
 trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlTrigFunctions { platform =>
 
+  given SqlStringLpadCapability with {}
+  given SqlStringRpadCapability with {}
+
+  given SqlStringTrimLeadingCapability with {}
+  given SqlStringTrimTrailingCapability with {}
+
+  given SqlStringLeftCapability with {}
+  given SqlStringRightCapability with {}
+
+  given SqlStringMd5Capability with {}
+  given SqlStringSha256Capability with {}
+
+  given SqlStringRepeatCapability with {}
+  given SqlStringReverseCapability with {}
+
+  given SqlStringHexCapability with {}
+
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
   override type InJoinConditionCapability = Unit
@@ -30,8 +47,8 @@ trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlTrigFun
   ): (Table, From) => Res = f
 
   type Api <: MySqlApi
-  trait MySqlApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlOperationApi, SqlQueryApi {
-    export platform.{given DeleteUsingCapability, given LateralJoinCapability}
+  trait MySqlApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
+    export platform.given
   }
 
   type DbMath = SimpleSqlDbMath & SqlTrigMath

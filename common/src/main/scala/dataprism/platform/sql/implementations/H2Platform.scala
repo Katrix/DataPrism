@@ -35,6 +35,22 @@ trait H2Platform
   given ExceptCapability with    {}
   given IntersectCapability with {}
 
+  given DistinctOnCapability with {}
+
+  given SqlStringLpadCapability with {}
+  given SqlStringRpadCapability with {}
+
+  given SqlStringTrimLeadingCapability with {}
+  given SqlStringTrimTrailingCapability with {}
+
+  given SqlStringLeftCapability with {}
+  given SqlStringRightCapability with {}
+
+  given SqlStringMd5Capability with {}
+  given SqlStringSha256Capability with {}
+
+  given SqlStringRepeatCapability with {}
+
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](
       f: MapUpdateReturning[Table, From, Res]
@@ -49,7 +65,7 @@ trait H2Platform
 
   type Api <: H2Api
 
-  trait H2Api extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlOperationApi, SqlQueryApi {
+  trait H2Api extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
     export platform.given
   }
 

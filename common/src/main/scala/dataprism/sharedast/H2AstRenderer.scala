@@ -14,8 +14,9 @@ class H2AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A]
 
   override protected def renderUnaryOp(expr: SqlExpr[Codec], op: SqlExpr.UnaryOperation, tpe: String): SqlStr[Codec] =
     op match
-      case SqlExpr.UnaryOperation.BitwiseNot => renderFunctionCall(SqlExpr.FunctionName.Custom("BITNOT"), Seq(expr), tpe)
-      case _                                 => super.renderUnaryOp(expr, op, tpe)
+      case SqlExpr.UnaryOperation.BitwiseNot =>
+        renderFunctionCall(SqlExpr.FunctionName.Custom("BITNOT"), Seq(expr), tpe)
+      case _ => super.renderUnaryOp(expr, op, tpe)
 
   override protected def renderBinaryOp(
       lhs: SqlExpr[Codec],
@@ -27,10 +28,20 @@ class H2AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A]
       case SqlExpr.BinaryOperation.Concat => sql"(${renderExpr(lhs)} || ${renderExpr(rhs)})"
       case SqlExpr.BinaryOperation.BitwiseAnd =>
         renderFunctionCall(SqlExpr.FunctionName.Custom("BITAND"), Seq(lhs, rhs), tpe)
-      case SqlExpr.BinaryOperation.BitwiseOr => renderFunctionCall(SqlExpr.FunctionName.Custom("BITOR"), Seq(lhs, rhs), tpe)
+      case SqlExpr.BinaryOperation.BitwiseOr =>
+        renderFunctionCall(SqlExpr.FunctionName.Custom("BITOR"), Seq(lhs, rhs), tpe)
       case SqlExpr.BinaryOperation.BitwiseXOr =>
         renderFunctionCall(SqlExpr.FunctionName.Custom("BITXOR"), Seq(lhs, rhs), tpe)
       case _ => super.renderBinaryOp(lhs, rhs, op, tpe)
+
+  override protected def renderFunctionCall(
+      call: SqlExpr.FunctionName,
+      args: Seq[SqlExpr[Codec]],
+      tpe: String
+  ): SqlStr[Codec] = call match
+    case SqlExpr.FunctionName.Md5    => sql"HASH('MD5' ${renderExpr(args.head)})"
+    case SqlExpr.FunctionName.Sha256 => sql"HASH('SHA-256' ${renderExpr(args.head)})"
+    case _                           => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderPreparedArgument(arg: SqlExpr.PreparedArgument[Codec]): SqlStr[Codec] =
     SqlStr(s"CAST(? AS ${arg.arg.codec.name})", Seq(arg.arg))

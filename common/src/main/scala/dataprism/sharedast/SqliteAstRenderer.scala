@@ -55,6 +55,11 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
             tpe
           )
         )
+
+      case SqlExpr.FunctionName.CharLength => normal("length")
+      case SqlExpr.FunctionName.IndexOf    => normal("instr")
+      case SqlExpr.FunctionName.TrimBoth     => sql"trim(${renderExpr(args.head)}, ${renderExpr(args(1))})"
+
       case _ => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderFrom(from: SelectAst.From[Codec]): SqlStr[Codec] = from match

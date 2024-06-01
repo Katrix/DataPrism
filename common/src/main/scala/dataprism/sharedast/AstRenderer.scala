@@ -46,7 +46,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.BinaryOperation.BoolAnd => normal("AND")
       case SqlExpr.BinaryOperation.BoolOr  => normal("OR")
 
-      case SqlExpr.BinaryOperation.Concat => sql"concat($lhsr, $rhsr)"
+      case SqlExpr.BinaryOperation.Concat => normal("||")
 
       case SqlExpr.BinaryOperation.Plus     => normal("+")
       case SqlExpr.BinaryOperation.Minus    => normal("-")
@@ -64,7 +64,11 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
         renderExpr(
           SqlExpr.BinOp(
             SqlExpr
-              .UnaryOp(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BitwiseAnd, tpe), SqlExpr.UnaryOperation.BitwiseNot, tpe),
+              .UnaryOp(
+                SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BitwiseAnd, tpe),
+                SqlExpr.UnaryOperation.BitwiseNot,
+                tpe
+              ),
             SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BitwiseOr, tpe),
             SqlExpr.BinaryOperation.BitwiseAnd,
             tpe
@@ -72,6 +76,10 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
         )
       case SqlExpr.BinaryOperation.RightShift => normal(">>")
       case SqlExpr.BinaryOperation.LeftShift  => normal("<<")
+
+      case SqlExpr.BinaryOperation.Like => normal("LIKE")
+      case SqlExpr.BinaryOperation.RegexMatches =>
+        throw new IllegalArgumentException("Calling str.matches(str) is not supported on this platform")
 
       case SqlExpr.BinaryOperation.Custom(op) => normal(op)
 
@@ -89,12 +97,12 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.Sin   => normal("sin")
       case SqlExpr.FunctionName.Tan   => normal("tan")
 
-      case SqlExpr.FunctionName.ACosh  => normal("acosh")
-      case SqlExpr.FunctionName.ASinh  => normal("asinh")
-      case SqlExpr.FunctionName.ATanh  => normal("atanh")
-      case SqlExpr.FunctionName.Cosh   => normal("cosh")
-      case SqlExpr.FunctionName.Sinh   => normal("sinh")
-      case SqlExpr.FunctionName.Tanh   => normal("tanh")
+      case SqlExpr.FunctionName.ACosh => normal("acosh")
+      case SqlExpr.FunctionName.ASinh => normal("asinh")
+      case SqlExpr.FunctionName.ATanh => normal("atanh")
+      case SqlExpr.FunctionName.Cosh  => normal("cosh")
+      case SqlExpr.FunctionName.Sinh  => normal("sinh")
+      case SqlExpr.FunctionName.Tanh  => normal("tanh")
 
       case SqlExpr.FunctionName.Abs   => normal("abs")
       case SqlExpr.FunctionName.Avg   => normal("avg")
@@ -116,7 +124,6 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.Exp     => normal("exp")
       case SqlExpr.FunctionName.Ceiling => normal("ceil")
       case SqlExpr.FunctionName.Floor   => normal("floor")
-      case SqlExpr.FunctionName.Concat  => normal("concat")
 
       case SqlExpr.FunctionName.Degrees => normal("degrees")
       case SqlExpr.FunctionName.Radians => normal("radians")
@@ -127,6 +134,54 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
 
       case SqlExpr.FunctionName.Coalesce => normal("COALESCE")
       case SqlExpr.FunctionName.NullIf   => normal("NULLIF")
+
+      case SqlExpr.FunctionName.Concat   => normal("concat")
+      case SqlExpr.FunctionName.ConcatWs => normal("concat_ws")
+
+      case SqlExpr.FunctionName.Repeat     => normal("repeat")
+      case SqlExpr.FunctionName.CharLength => normal("char_length")
+
+      case SqlExpr.FunctionName.Lower => normal("lower")
+      case SqlExpr.FunctionName.Upper => normal("upper")
+
+      case SqlExpr.FunctionName.Lpad => normal("lpad")
+      case SqlExpr.FunctionName.Rpad => normal("rpad")
+
+      case SqlExpr.FunctionName.Ltrim => normal("ltrim")
+      case SqlExpr.FunctionName.Rtrim => normal("rtrim")
+
+      case SqlExpr.FunctionName.IndexOf   => normal("locate")
+      case SqlExpr.FunctionName.Substring => normal("substring")
+
+      case SqlExpr.FunctionName.TrimLeading  => sql"trim(LEADING ${renderExpr(args(1))} FROM ${renderExpr(args.head)})"
+      case SqlExpr.FunctionName.TrimTrailing => sql"trim(TRAILING ${renderExpr(args(1))} FROM ${renderExpr(args.head)})"
+      case SqlExpr.FunctionName.TrimBoth     => sql"trim(BOTH ${renderExpr(args(1))} FROM ${renderExpr(args.head)})"
+
+      case SqlExpr.FunctionName.StartsWith =>
+        renderBinaryOp(
+          args.head,
+          SqlExpr.BinOp(args(1), SqlExpr.Custom(Nil, _ => sql"'%'"), SqlExpr.BinaryOperation.Concat, "TEXT"),
+          BinaryOperation.Like,
+          tpe
+        )
+      case SqlExpr.FunctionName.EndsWith =>
+        renderBinaryOp(
+          args.head,
+          SqlExpr.BinOp(SqlExpr.Custom(Nil, _ => sql"'%'"), args(1), SqlExpr.BinaryOperation.Concat, "TEXT"),
+          BinaryOperation.Like,
+          tpe
+        )
+
+      case SqlExpr.FunctionName.Left  => normal("left")
+      case SqlExpr.FunctionName.Right => normal("right")
+
+      case SqlExpr.FunctionName.Md5    => normal("md5")
+      case SqlExpr.FunctionName.Sha256 => normal("sha256")
+
+      case SqlExpr.FunctionName.Replace => normal("replace")
+      case SqlExpr.FunctionName.Reverse => normal("reverse")
+
+      case SqlExpr.FunctionName.Hex => normal("hex")
 
       case SqlExpr.FunctionName.Custom(f) => normal(f)
 

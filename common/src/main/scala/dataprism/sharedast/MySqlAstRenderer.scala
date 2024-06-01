@@ -23,10 +23,16 @@ abstract class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecT
       tpe: String
   ): SqlStr[Codec] =
     op match
-      case SqlExpr.BinaryOperation.BitwiseXOr => sql"(${renderExpr(lhs)} ^ ${renderExpr(rhs)})"
-      case _                                  => super.renderBinaryOp(lhs, rhs, op, tpe)
+      case SqlExpr.BinaryOperation.BitwiseXOr   => sql"(${renderExpr(lhs)} ^ ${renderExpr(rhs)})"
+      case SqlExpr.BinaryOperation.RegexMatches => sql"(${renderExpr(lhs)} RLIKE ${renderExpr(rhs)})"
+      case SqlExpr.BinaryOperation.Concat       => renderFunctionCall(SqlExpr.FunctionName.Concat, Seq(lhs, rhs), tpe)
+      case _                                    => super.renderBinaryOp(lhs, rhs, op, tpe)
 
-  override protected def renderFunctionCall(call: SqlExpr.FunctionName, args: Seq[SqlExpr[Codec]], tpe: String): SqlStr[Codec] =
+  override protected def renderFunctionCall(
+      call: SqlExpr.FunctionName,
+      args: Seq[SqlExpr[Codec]],
+      tpe: String
+  ): SqlStr[Codec] =
     inline def rendered                         = args.map(renderExpr).intercalate(sql", ")
     inline def normal(f: String): SqlStr[Codec] = sql"${SqlStr.const(f)}($rendered)"
 
@@ -34,6 +40,7 @@ abstract class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecT
       case SqlExpr.FunctionName.Random                       => normal("rand")
       case SqlExpr.FunctionName.Greatest if args.length == 1 => renderExpr(args.head)
       case SqlExpr.FunctionName.Least if args.length == 1    => renderExpr(args.head)
+      case SqlExpr.FunctionName.Sha256 => sql"SHA2(${renderExpr(args.head)}, 256)"
       case _                                                 => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderRow(row: Seq[SqlExpr[Codec]]): SqlStr[Codec] = sql"ROW${super.renderRow(row)}"

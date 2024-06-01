@@ -41,6 +41,8 @@ trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwis
   given ACoshCapability with {}
   given ATanhCapability with {}
 
+  given SqlStringHexCapability with {}
+
   override protected def generateDeleteAlias: Boolean = false
   override protected def generateUpdateAlias: Boolean = false
 
@@ -57,7 +59,7 @@ trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwis
   given bitwiseOptInt: SqlBitwise[Option[Int]] = SqlBitwise.defaultInstance
 
   type Api <: SqliteApi
-  trait SqliteApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlOperationApi, SqlQueryApi {
+  trait SqliteApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
     export platform.given
   }
   

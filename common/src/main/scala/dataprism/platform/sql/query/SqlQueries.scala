@@ -1,6 +1,7 @@
 package dataprism.platform.sql.query
 
 import scala.annotation.targetName
+
 import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
@@ -66,7 +67,8 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
     override def drop(n: Int): Query[A] = nested.drop(n)
 
-    override def distinct: Query[A] = nested.distinct
+    override def distinct: Query[A]                                     = nested.distinct
+    override def distinctOn(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] = nested.distinctOn(a)
 
     override def union(that: Query[A]): Query[A]    = nested.union(that)
     override def unionAll(that: Query[A]): Query[A] = nested.unionAll(that)
@@ -287,10 +289,10 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
-      override def distinct: Query[A] = SqlQueryDistinctStage(
-        this.liftSqlQuery,
-        defaultDistinct = true
-      ).liftSqlQuery
+      override def distinct: Query[A] = SqlQueryDistinctStage(this.liftSqlQuery, on = _ => Nil).liftSqlQuery
+
+      override def distinctOn(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] =
+        SqlQueryDistinctStage(this.liftSqlQuery, a).liftSqlQuery
 
       override def union(that: Query[A]): Query[A] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(false), that))).liftSqlQuery
@@ -364,10 +366,9 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         offset = Some(i.as(AnsiTypes.integer))
       ).liftSqlQuery
 
-      override def distinct: Query[B] = SqlQueryDistinctStage(
-        this.liftSqlQuery,
-        defaultDistinct = true
-      ).liftSqlQuery
+      override def distinct: Query[B] = SqlQueryDistinctStage(this.liftSqlQuery, on = _ => Nil).liftSqlQuery
+      override def distinctOn(on: B[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[B] =
+        SqlQueryDistinctStage(this.liftSqlQuery, on).liftSqlQuery
 
       override def union(that: Query[B]): Query[B] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(false), that))).liftSqlQuery
@@ -422,7 +423,8 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         GR: TraverseKC[Gr],
         val applyK: ApplyKC[Ma],
         val traverseK: TraverseKC[Ma]
-    ) extends SqlQuery[Ma], SqlQueryGrouped[Ma] {
+    ) extends SqlQuery[Ma],
+          SqlQueryGrouped[Ma] {
 
       private inline def valuesAsMany(values: A[DbValue]): A[Many] =
         values.asInstanceOf[A[Many]] // Safe as many is an opaque type in another file
@@ -461,8 +463,10 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
       override def distinct: Query[Ma] = SqlQueryDistinctStage(
         this.liftSqlQuery,
-        defaultDistinct = true
+        on = _ => Nil
       ).liftSqlQuery
+      override def distinctOn(on: Ma[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[Ma] =
+        SqlQueryDistinctStage(this.liftSqlQuery, on).liftSqlQuery
 
       override def union(that: Query[Ma]): Query[Ma] =
         SqlQuerySetOperations(this.liftSqlQuery, Seq((SetOperation.Union(false), that))).liftSqlQuery
@@ -485,10 +489,11 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
       override def selectAstAndValues: TagState[QueryAstMetadata[Ma]] =
         def astAnd(lhs: Option[SqlExpr[Codec]], rhs: Option[SqlExpr[Codec]]): Option[SqlExpr[Codec]] =
           (lhs, rhs) match
-            case (Some(lhs), Some(rhs)) => Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd, AnsiTypes.boolean.name))
-            case (Some(lhs), None)      => Some(lhs)
-            case (None, Some(rhs))      => Some(rhs)
-            case (None, None)           => None
+            case (Some(lhs), Some(rhs)) =>
+              Some(SqlExpr.BinOp(lhs, rhs, SqlExpr.BinaryOperation.BoolAnd, AnsiTypes.boolean.name))
+            case (Some(lhs), None) => Some(lhs)
+            case (None, Some(rhs)) => Some(rhs)
+            case (None, None)      => None
         end astAnd
 
         query.selectAstAndValues.flatMap {
@@ -523,7 +528,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
     case class SqlQueryDistinctStage[A[_[_]]](
         query: Query[A],
-        defaultDistinct: Boolean
+        on: A[DbValue] => Seq[AnyDbValue]
     ) extends SqlQuery[A] {
       export query.{applyK, traverseK}
 
@@ -547,7 +552,10 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         query.selectAstAndValues.flatMap { meta =>
           meta.ast match
             case from: SelectAst.SelectFrom[Codec] =>
-              State.pure(meta.copy(ast = from.copy(distinct = Some(SelectAst.Distinct(Nil)))))
+              on(meta.values)
+                .traverse(_.ast)
+                .map(onAsts => meta.copy(ast = from.copy(distinct = Some(SelectAst.Distinct(onAsts)))))
+
             case _ =>
               for
                 queryNum <- State((s: TaggedState) => (s.withNewQueryNum(s.queryNum + 1), s.queryNum))
@@ -557,11 +565,12 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
                   [X] =>
                     (alias: String, value: DbValue[X]) => SqlDbValue.QueryColumn[X](alias, queryName, value.tpe).lift
                 )
-                t <- tagValues(newValues)
+                t      <- tagValues(newValues)
+                onAsts <- on(newValues).traverse(_.ast)
                 (aliases, exprs) = t
               yield QueryAstMetadata(
                 SelectAst.SelectFrom(
-                  Some(SelectAst.Distinct(Nil)),
+                  Some(SelectAst.Distinct(onAsts)),
                   exprs,
                   Some(SelectAst.From.FromQuery(meta.ast, queryName, lateral = false)),
                   None,
@@ -866,7 +875,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
           Nil
         )
         .liftSqlQuery
-    
+
   end SqlQueryCompanionImpl
 
   extension [A](query: Query[[F[_]] =>> F[A]])

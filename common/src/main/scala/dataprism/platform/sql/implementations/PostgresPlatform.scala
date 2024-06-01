@@ -34,12 +34,30 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
   given ExceptAllCapability with        {}
   given FullJoinCapability with         {}
 
+  given DistinctOnCapability with {}
+
   given ExceptCapability with {}
   given IntersectCapability with {}
   
   given ASinhCapability with {}
   given ACoshCapability with {}
   given ATanhCapability with {}
+
+  given SqlStringLpadCapability with {}
+  given SqlStringRpadCapability with {}
+
+  given SqlStringTrimLeadingCapability with {}
+  given SqlStringTrimTrailingCapability with {}
+
+  given SqlStringLeftCapability with {}
+  given SqlStringRightCapability with {}
+
+  given SqlStringMd5Capability with {}
+
+  given SqlStringRepeatCapability with {}
+  given SqlStringReverseCapability with {}
+
+  given SqlStringHexCapability with {}
 
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](
@@ -54,7 +72,7 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
   given bitwiseOptInt: SqlBitwise[Option[Int]] = SqlBitwise.defaultInstance
 
   type Api <: PostgresApi
-  trait PostgresApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlOperationApi, SqlQueryApi {
+  trait PostgresApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
     export platform.given 
   }
 

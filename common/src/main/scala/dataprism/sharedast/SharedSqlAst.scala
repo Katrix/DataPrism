@@ -68,6 +68,9 @@ object SqlExpr {
     case RightShift
     case LeftShift
 
+    case Like
+    case RegexMatches
+
     case Custom(op: String)
 
   enum FunctionName:
@@ -115,10 +118,46 @@ object SqlExpr {
     case Pi
     case Random
 
-    case Concat
-
     case Coalesce
     case NullIf
+
+    // String functions
+
+    case Concat
+    case ConcatWs
+
+    case Repeat
+    case CharLength
+
+    case Lower
+    case Upper
+
+    case Lpad
+    case Rpad
+
+    case Ltrim
+    case Rtrim
+
+    case IndexOf
+    case Substring
+
+    case TrimLeading
+    case TrimTrailing
+    case TrimBoth
+
+    case StartsWith
+    case EndsWith
+
+    case Left
+    case Right
+
+    case Md5
+    case Sha256
+
+    case Replace
+    case Reverse
+
+    case Hex
 
     case Custom(f: String)
 

@@ -33,7 +33,12 @@ class PostgresAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeNam
 
       case SqlExpr.FunctionName.Radians => sql"${normal("radians")}::$tpeSql"
       case SqlExpr.FunctionName.Degrees => sql"${normal("degrees")}::$tpeSql"
-      case _                            => super.renderFunctionCall(call, args, tpe)
+
+      case SqlExpr.FunctionName.IndexOf => sql"position(${renderExpr(args.head)} IN ${renderExpr(args(1))})"
+
+      case SqlExpr.FunctionName.Hex => normal("to_hex")
+
+      case _ => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderBinaryOp(
       lhs: SqlExpr[Codec],
@@ -42,9 +47,10 @@ class PostgresAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeNam
       tpe: String
   ): SqlStr[Codec] =
     op match
-      case SqlExpr.BinaryOperation.Concat     => sql"(${renderExpr(lhs)} || ${renderExpr(rhs)})"
-      case SqlExpr.BinaryOperation.BitwiseXOr => sql"(${renderExpr(lhs)} # ${renderExpr(rhs)})"
-      case _                                  => super.renderBinaryOp(lhs, rhs, op, tpe)
+      case SqlExpr.BinaryOperation.Concat       => sql"(${renderExpr(lhs)} || ${renderExpr(rhs)})"
+      case SqlExpr.BinaryOperation.BitwiseXOr   => sql"(${renderExpr(lhs)} # ${renderExpr(rhs)})"
+      case SqlExpr.BinaryOperation.RegexMatches => sql"(${renderExpr(lhs)} SIMILAR TO ${renderExpr(rhs)})"
+      case _                                    => super.renderBinaryOp(lhs, rhs, op, tpe)
 
   override protected def renderPreparedArgument(arg: SqlExpr.PreparedArgument[Codec]): SqlStr[Codec] =
     SqlStr(s"(?::${arg.arg.codec.name})", Seq(arg.arg))
