@@ -46,7 +46,7 @@ query, like map, filter, grouping and more. Here are some simple examples. The t
 are annotated for better understanding.
 
 ```scala 3 sc-compile-with:User.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
 
 val q: Query[UserK] = Query.from(UserK.table)
 
@@ -104,7 +104,7 @@ case class NullableUser(
 With that, here are the `Query` types for joins.
 
 ```scala 3 sc-compile-with:User.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
 
 // Generally you'd just import perspective.Compose2
 type Compose2[A[_], B[_]] = [X] =>> A[B[X]]
@@ -137,7 +137,7 @@ Arrays are currently out of commission.
 
 ```scala 3 sc-compile-with:User.scala
 /*
-import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
 
 //Needed for arrayAgg currently
 import dataprism.jdbc.sql.PostgresJdbcTypes.ArrayMapping.given_ArrayMapping_A
@@ -170,7 +170,7 @@ want flatMap for a database which does not support `LATERAL`, create your own pl
 `UnsafeSqlQueryPlatformFlatmap` into it.
 
 ```scala 3 sc-compile-with:User.scala
-import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
 
 //TODO: Does not compile for some reason. Fix MapRes
 //val q1: Query[[F[_]] =>> (UserK[F], UserK[F])] =
@@ -194,7 +194,7 @@ Arrays are currently out of commission.
 
 ```scala 3 sc-compile-with:User.scala
 /*
-import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.*
+import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
 
 //Needed for arrayAgg currently
 import dataprism.jdbc.sql.PostgresJdbcTypes.ArrayMapping.given_ArrayMapping_A

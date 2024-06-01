@@ -49,6 +49,8 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
   given SqlStringTrimLeadingCapability with {}
   given SqlStringTrimTrailingCapability with {}
 
+  given SqlStringRegexMatchesCapability with {}
+
   given SqlStringLeftCapability with {}
   given SqlStringRightCapability with {}
 

@@ -45,5 +45,6 @@ trait SqlBitwiseOps extends SqlDbValuesBase { platform =>
   type Api <: SqlBitwiseApi & SqlDbValueApi & QueryApi
   trait SqlBitwiseApi {
     export platform.SqlBitwise
+    export platform.SqlBitwise.given
   }
 }

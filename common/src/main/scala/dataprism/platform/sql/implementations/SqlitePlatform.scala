@@ -41,8 +41,6 @@ trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwis
   given ACoshCapability with {}
   given ATanhCapability with {}
 
-  given SqlStringHexCapability with {}
-
   override protected def generateDeleteAlias: Boolean = false
   override protected def generateUpdateAlias: Boolean = false
 

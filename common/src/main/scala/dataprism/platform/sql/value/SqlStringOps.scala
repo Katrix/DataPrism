@@ -12,6 +12,8 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
   trait SqlStringTrimLeadingCapability
   trait SqlStringTrimTrailingCapability
 
+  trait SqlStringRegexMatchesCapability
+
   trait SqlStringLeftCapability
   trait SqlStringRightCapability
 
@@ -60,7 +62,7 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
       def ltrim: DbValue[A]
       def rtrim: DbValue[A]
 
-      def indexOf(a: DbValue[A]): DbValue[A]
+      def indexOf(a: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Int]]
 
       def substr(from: DbValue[Int], forLength: DbValue[Int]): DbValue[A]
 
@@ -69,7 +71,7 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
       def trimBoth(rhs: DbValue[A]): DbValue[A]
 
       def like(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
-      def matches(regex: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
+      def matches(regex: DbValue[A])(using n: Nullability[A], cap: SqlStringRegexMatchesCapability): DbValue[n.N[Boolean]]
 
       def startsWith(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
       def endsWith(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
@@ -86,13 +88,13 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
 
       // TODO: Postgres? Split functions
 
-      def hex(using SqlStringHexCapability): DbValue[A]
-
   object SqlString:
     def concat[A: SqlString](v1: DbValue[A], vars: DbValue[A]*): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Concat, (v1 +: vars).map(_.unsafeAsAnyDbVal), v1.tpe)
-    def concatWs[A: SqlString](v1: DbValue[A], vars: DbValue[A]*): DbValue[A] =
-      Impl.function(SqlExpr.FunctionName.ConcatWs, (v1 +: vars).map(_.unsafeAsAnyDbVal), v1.tpe)
+    def concatWs[A: SqlString](sep: DbValue[A], v1: DbValue[A], vars: DbValue[A]*): DbValue[A] =
+      Impl.function(SqlExpr.FunctionName.ConcatWs, (sep +: v1 +: vars).map(_.unsafeAsAnyDbVal), v1.tpe)
+
+    def hex(i: DbValue[Long])(using SqlStringHexCapability): DbValue[String] = Impl.function(SqlExpr.FunctionName.Hex, Seq(i.unsafeAsAnyDbVal), AnsiTypes.defaultStringType)
 
     def defaultInstance[A]: SqlString[A] = new SqlString[A]:
       extension (lhs: DbValue[A])
@@ -110,15 +112,15 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
           Impl.function(SqlExpr.FunctionName.Upper, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
 
         override def lpad(length: DbValue[Int], content: DbValue[A])(using SqlStringLpadCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Lpad, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Lpad, Seq(lhs.unsafeAsAnyDbVal, length.unsafeAsAnyDbVal, content.unsafeAsAnyDbVal), lhs.tpe)
         override def rpad(length: DbValue[Int], content: DbValue[A])(using SqlStringRpadCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Rpad, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Rpad, Seq(lhs.unsafeAsAnyDbVal, length.unsafeAsAnyDbVal, content.unsafeAsAnyDbVal), lhs.tpe)
 
         override def ltrim: DbValue[A] = Impl.function(SqlExpr.FunctionName.Ltrim, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
         override def rtrim: DbValue[A] = Impl.function(SqlExpr.FunctionName.Rtrim, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
 
-        override def indexOf(a: DbValue[A]): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.IndexOf, Seq(lhs.unsafeAsAnyDbVal, a.unsafeAsAnyDbVal), lhs.tpe)
+        override def indexOf(a: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Int]] =
+          Impl.function(SqlExpr.FunctionName.IndexOf, Seq(lhs.unsafeAsAnyDbVal, a.unsafeAsAnyDbVal), n.wrapType(AnsiTypes.integer))
         override def substr(from: DbValue[Int], forLength: DbValue[Int]): DbValue[A] = Impl.function(
           SqlExpr.FunctionName.Substring,
           Seq(lhs.unsafeAsAnyDbVal, from.unsafeAsAnyDbVal, forLength.unsafeAsAnyDbVal),
@@ -134,7 +136,7 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
 
         override def like(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
           Impl.binaryOp(n.castDbVal(lhs), n.castDbVal(rhs), n.wrapBinOp(SqlStringLikeOp()))
-        override def matches(regex: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
+        override def matches(regex: DbValue[A])(using n: Nullability[A], cap: SqlStringRegexMatchesCapability): DbValue[n.N[Boolean]] =
           Impl.binaryOp(n.castDbVal(lhs), n.castDbVal(regex), n.wrapBinOp(SqlStringRegexMatchesOp()))
 
         override def startsWith(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
@@ -168,9 +170,6 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
         override def reverse(using SqlStringReverseCapability): DbValue[A] =
           Impl.function(SqlExpr.FunctionName.Reverse, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
 
-        override def hex(using SqlStringHexCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Hex, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
-
     end defaultInstance
 
     given SqlString[String]         = defaultInstance
@@ -179,5 +178,6 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
   type Api <: SqlStringApi & SqlDbValueApi & QueryApi
   trait SqlStringApi {
     export platform.SqlString
+    export platform.SqlString.given
   }
 }

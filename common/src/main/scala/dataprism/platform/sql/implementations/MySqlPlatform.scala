@@ -11,6 +11,8 @@ trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlTrigFun
   given SqlStringTrimLeadingCapability with {}
   given SqlStringTrimTrailingCapability with {}
 
+  given SqlStringRegexMatchesCapability with {}
+
   given SqlStringLeftCapability with {}
   given SqlStringRightCapability with {}
 

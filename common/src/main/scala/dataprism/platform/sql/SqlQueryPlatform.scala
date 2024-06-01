@@ -11,4 +11,8 @@ trait SqlQueryPlatform
       SqlStringOps,
       SqlValueSources,
       SqlQueries,
-      SqlOperations
+      SqlOperations {
+
+  //For better types in IntelliJ
+  type Api <: SqlQueryApi & SqlDbValueApi & SqlDbValueImplApi & SqlStringApi & SqlQueryApi & SqlOperationApi & QueryApi
+}

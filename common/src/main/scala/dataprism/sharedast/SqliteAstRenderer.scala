@@ -58,7 +58,9 @@ class SqliteAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName:
 
       case SqlExpr.FunctionName.CharLength => normal("length")
       case SqlExpr.FunctionName.IndexOf    => normal("instr")
-      case SqlExpr.FunctionName.TrimBoth     => sql"trim(${renderExpr(args.head)}, ${renderExpr(args(1))})"
+      case SqlExpr.FunctionName.Concat     => subdivided("concat")
+      case SqlExpr.FunctionName.ConcatWs   => subdivided("concat_ws")
+      case SqlExpr.FunctionName.TrimBoth   => sql"trim(${renderExpr(args.head)}, ${renderExpr(args(1))})"
 
       case _ => super.renderFunctionCall(call, args, tpe)
 
