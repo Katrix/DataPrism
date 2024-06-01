@@ -37,7 +37,12 @@ trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
 
     def distinct: Query[A]
 
-    def distinctOn(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A]
+    def distinctOnSeq(on: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A]
+    def distinctOnK[B[_[_]]: FoldableKC](on: A[DbValue] => B[DbValue])(using DistinctOnCapability): Query[A] =
+      this.distinctOnSeq(a => on(a).foldMapK([Z] => (v: DbValue[Z]) => Seq(v.unsafeAsAnyDbVal)))
+
+    inline def distinctOn[B](on: A[DbValue] => B)(using mr: MapRes[DbValue, B])(using cap: DistinctOnCapability): Query[A] =
+      this.distinctOnK(a => mr.toK(on(a)))(using mr.traverseKC, cap)
 
     def join[B[_[_]]](that: Table[Codec, B])(
         on: InJoinConditionCapability ?=> (A[DbValue], B[DbValue]) => DbValue[Boolean]

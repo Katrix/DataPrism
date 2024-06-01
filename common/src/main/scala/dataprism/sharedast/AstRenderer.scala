@@ -524,7 +524,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     spaceConcat(
       sql"DISTINCT",
       if distinct.on.isEmpty then sql"" else sql"ON",
-      distinct.on.map(renderExpr).intercalate(sql", ")
+      if distinct.on.isEmpty then sql"" else sql"(${distinct.on.map(renderExpr).intercalate(sql", ")})"
     )
 
   protected def renderExprWithAlias(exprWithAlias: SelectAst.ExprWithAlias[Codec]): SqlStr[Codec] =

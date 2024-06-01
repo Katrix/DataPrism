@@ -60,6 +60,11 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).distinct).run.map: r =>
       expect.same(r.toSet, Set(5, 3, 2))
 
+  def doTestDistinctOn()(using platform.DistinctOnCapability): Unit =
+    dbTest("DistinctOn"):
+      Select(Query.values((integer.forgetNNA, integer.forgetNNA))((5, 3), (5, 2), (3, 3), (1, 2)).distinctOn(_._1)).run.map: r =>
+        expect.same(r.toSet, Set((5, 3), (3, 3), (1, 2)))
+
   dbTest("Limit"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3)).run.map: r =>
       expect.same(Set(5, 3, 5), r.toSet)

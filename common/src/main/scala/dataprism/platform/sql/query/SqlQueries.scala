@@ -68,7 +68,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
     override def drop(n: Int): Query[A] = nested.drop(n)
 
     override def distinct: Query[A]                                     = nested.distinct
-    override def distinctOn(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] = nested.distinctOn(a)
+    override def distinctOnSeq(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] = nested.distinctOnSeq(a)
 
     override def union(that: Query[A]): Query[A]    = nested.union(that)
     override def unionAll(that: Query[A]): Query[A] = nested.unionAll(that)
@@ -291,7 +291,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
       override def distinct: Query[A] = SqlQueryDistinctStage(this.liftSqlQuery, on = _ => Nil).liftSqlQuery
 
-      override def distinctOn(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] =
+      override def distinctOnSeq(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] =
         SqlQueryDistinctStage(this.liftSqlQuery, a).liftSqlQuery
 
       override def union(that: Query[A]): Query[A] =
@@ -367,7 +367,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
       ).liftSqlQuery
 
       override def distinct: Query[B] = SqlQueryDistinctStage(this.liftSqlQuery, on = _ => Nil).liftSqlQuery
-      override def distinctOn(on: B[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[B] =
+      override def distinctOnSeq(on: B[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[B] =
         SqlQueryDistinctStage(this.liftSqlQuery, on).liftSqlQuery
 
       override def union(that: Query[B]): Query[B] =
@@ -465,7 +465,7 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
         this.liftSqlQuery,
         on = _ => Nil
       ).liftSqlQuery
-      override def distinctOn(on: Ma[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[Ma] =
+      override def distinctOnSeq(on: Ma[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[Ma] =
         SqlQueryDistinctStage(this.liftSqlQuery, on).liftSqlQuery
 
       override def union(that: Query[Ma]): Query[Ma] =
