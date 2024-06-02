@@ -34,7 +34,7 @@ class PostgresAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeNam
       case SqlExpr.FunctionName.Radians => sql"${normal("radians")}::$tpeSql"
       case SqlExpr.FunctionName.Degrees => sql"${normal("degrees")}::$tpeSql"
 
-      case SqlExpr.FunctionName.IndexOf => sql"position(${renderExpr(args.head)} IN ${renderExpr(args(1))})"
+      case SqlExpr.FunctionName.IndexOf => sql"position(${renderExpr(args(1))} IN ${renderExpr(args.head)})"
 
       case SqlExpr.FunctionName.Hex => normal("to_hex")
 

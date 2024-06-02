@@ -2,13 +2,15 @@ package dataprism
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-
 import cats.effect.IO
 import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatform
 import org.scalacheck.Gen
 import org.scalacheck.cats.implicits.*
+import org.scalacheck.rng.Seed
 import weaver.{Expectations, Log}
+
+import scala.annotation.tailrec
 
 trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
     extends PlatformFunSuite[Codec0, Platform]:
@@ -110,7 +112,6 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
       Select(Query.of(a.asDbString.ltrim))
         .runOne[F]
         .map: r =>
-          val (space, content) = a.span(_.isSpaceChar)
           expect(r == a.dropWhile(_.isSpaceChar))
 
   dbTest("Rtrim"):
@@ -118,8 +119,14 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
       Select(Query.of(a.asDbString.rtrim))
         .runOne[F]
         .map: l =>
-          val (space, content) = a.span(_.isSpaceChar)
-          expect(l == (space + content.trim))
+          expect(l == a.reverse.dropWhile(_.isSpaceChar).reverse)
+
+  def indexOfCaseInsensitive: Boolean = false
+
+  def idxOf(a: String, b: String): Int =
+    if indexOfCaseInsensitive then
+      a.toLowerCase.indexOf(b.toLowerCase)
+    else a.indexOf(b)
 
   dbLogTest("IndexOf"): log =>
     configuredForall(
@@ -127,7 +134,7 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
         9 -> (
           for
             str  <- stringGen
-            from <- Gen.choose(0, str.length - 1)
+            from <- Gen.choose(0, str.length)
             to   <- Gen.choose(from, str.length)
           yield (str, str.substring(from, to))
         ),
@@ -136,25 +143,41 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
     ): (a, b) =>
       Select(Query.of(a.asDbString.indexOf(b.asDbString), b.asDbString.indexOf(a.asDbString)))
         .runOne[F]
-        .flatMap((r1, r2) => log.debug((r1, r2, a.indexOf(b), b.indexOf(a)).toString).as((r1, r2)))
+        .flatTap: (r1, r2) =>
+          val v1 = idxOf(a, b) + 1
+          val v2 = idxOf(b, a) + 1
+          if v1 != r1 || v2 != r2 then log.debug((r1, r2, v1, v2).toString) else IO.unit
         .map: (r1, r2) =>
           expect.all(
-            r1 == (a.indexOf(b) + 1),
-            r2 == (b.indexOf(a) + 1)
+            r1 == (idxOf(a, b) + 1),
+            r2 == (idxOf(b, a) + 1)
           )
 
-  dbTest("Substr"):
+  dbLogTest("Substr"): log =>
     configuredForall(
       for
         str  <- stringGen
-        from <- Gen.choose(0, str.length)
-        len  <- Gen.choose(0, str.length - from)
+        from <- Gen.choose(1, str.length + 1)
+        len  <- Gen.choose(0, Math.max(0, str.length - from))
       yield (str, from, len)
     ): (str, from, len) =>
       Select(Query.of(str.asDbString.substr(from.as(AnsiTypes.integer), len.as(AnsiTypes.integer))))
         .runOne[F]
+        .flatTap: r =>
+          val v = str.slice(from - 1, from - 1 + len)
+          if v != r then log.debug((str, from, len, r, v).toString) else IO.unit
         .map: r =>
-          expect(r == str.substring(Math.max(0, from - 1), Math.max(0, from + len - 1)))
+          val v = str.slice(from - 1, from - 1 + len)
+          expect(r == v)
+
+  def trimAllOrNothing: Boolean = false
+
+  @tailrec
+  private def trimAllOrNothing(str: String, remove: String, leading: Boolean, trailing: Boolean): String =
+    if remove.isEmpty then str
+    else if leading && str.startsWith(remove) then trimAllOrNothing(str.drop(remove.length), remove, leading, trailing)
+    else if trailing && str.endsWith(remove) then trimAllOrNothing(str.dropRight(remove.length), remove, leading, trailing)
+    else str
 
   def doTestTrimLeading()(using platform.SqlStringTrimLeadingCapability): Unit = dbLogTest("TrimLeading"): log =>
     given Log[IO] = log
@@ -162,7 +185,10 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
       logQuery(Select(Query.of(a.asDbString.trimLeading(b.asDbString))))
         .flatMap(_.runOne[F])
         .map: r =>
-          expect(r == a.dropWhile(c => b.contains(c)))
+          val v =
+            if trimAllOrNothing then trimAllOrNothing(a, b, leading = true, trailing = false)
+            else a.dropWhile(c => b.contains(c))
+          expect(r == v)
 
   def doTestTrimTrailing()(using platform.SqlStringTrimTrailingCapability): Unit = dbLogTest("TrimTrailing"): log =>
     given Log[IO] = log
@@ -170,15 +196,21 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
       logQuery(Select(Query.of(a.asDbString.trimTrailing(b.asDbString))))
         .flatMap(_.runOne[F])
         .map: r =>
-          expect(r == a.reverse.dropWhile(c => b.contains(c)).reverse)
+          val v =
+            if trimAllOrNothing then trimAllOrNothing(a, b, leading = false, trailing = true)
+            else a.reverse.dropWhile(c => b.contains(c)).reverse
+          expect(r == v)
 
   dbLogTest("TrimBoth"): log =>
     given Log[IO] = log
-    configuredForall((stringGen, stringGen).tupled): (a, b) =>
+    configuredForall((stringGen, stringGen.retryUntil(_.nonEmpty)).tupled): (a, b) =>
       logQuery(Select(Query.of(a.asDbString.trimBoth(b.asDbString))))
         .flatMap(_.runOne[F])
         .map: r =>
-          expect(r == a.dropWhile(c => b.contains(c)).reverse.dropWhile(c => b.contains(c)).reverse)
+          val v =
+            if trimAllOrNothing then trimAllOrNothing(a, b, leading = true, trailing = true)
+            else a.dropWhile(c => b.contains(c)).reverse.dropWhile(c => b.contains(c)).reverse
+          expect(r == v)
 
   // Just test that it runs, we test it a bit with starts with and ends with
   dbTest("Like"):
@@ -258,26 +290,43 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
   def hash(alg: String, str: String): String =
     bytesToHex(MessageDigest.getInstance(alg).digest(str.getBytes(StandardCharsets.UTF_8)))
 
-  def doTestMd5()(using platform.SqlStringMd5Capability): Unit = dbTest("Md5"):
+  def doTestMd5()(using platform.SqlStringMd5Capability): Unit = dbLogTest("Md5"): log =>
     configuredForall(stringGen): a =>
       Select(Query.of(a.asDbString.md5))
         .runOne[F]
+        .flatTap: r =>
+          log.debug((bytesToHex(r.getBytes), hash("MD5", a)).toString)
         .map: r =>
           expect(r.toUpperCase == hash("MD5", a))
 
-  def doTestSha256()(using platform.SqlStringSha256Capability): Unit = dbTest("Sha256"):
+  def doTestSha256()(using platform.SqlStringSha256Capability): Unit = dbLogTest("Sha256"): log =>
     configuredForall(stringGen): a =>
       Select(Query.of(a.asDbString.sha256))
         .runOne[F]
+        .flatTap: r =>
+          log.debug((bytesToHex(r.getBytes), hash("MD5", a)).toString)
         .map: r =>
           expect(r.toUpperCase == hash("SHA-256", a))
 
   dbTest("Replace"):
-    configuredForall((stringGen, stringGen, stringGen).tupled): (a, b, c) =>
+    configuredForall(
+      Gen.frequency(
+        6 -> (
+          for
+            str <- stringGen
+            from <- Gen.choose(0, str.length)
+            to   <- Gen.choose(from, str.length)
+            replacement <- stringGen
+          yield (str, str.substring(from, to), replacement)
+        ),
+        4 -> (stringGen, stringGen, stringGen).tupled
+      )
+    ): (a, b, c) =>
       Select(Query.of(a.asDbString.replace(b.asDbString, c.asDbString)))
         .runOne[F]
         .map: r =>
-          expect(r == a.replace(b, c))
+          val v = if b.isEmpty then a else a.replace(b, c)
+          expect(r == v)
 
   def doTestReverse()(using platform.SqlStringReverseCapability): Unit = dbTest("Reverse"):
     configuredForall(stringGen): a =>

@@ -39,8 +39,8 @@ class H2AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A]
       args: Seq[SqlExpr[Codec]],
       tpe: String
   ): SqlStr[Codec] = call match
-    case SqlExpr.FunctionName.Md5    => sql"HASH('MD5', ${renderExpr(args.head)})"
-    case SqlExpr.FunctionName.Sha256 => sql"HASH('SHA-256', ${renderExpr(args.head)})"
+    case SqlExpr.FunctionName.Md5    => sql"RAWTOHEX(HASH('MD5', ${renderExpr(args.head)}))"
+    case SqlExpr.FunctionName.Sha256 => sql"RAWTOHEX(HASH('SHA-256', ${renderExpr(args.head)}))"
     case _                           => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderPreparedArgument(arg: SqlExpr.PreparedArgument[Codec]): SqlStr[Codec] =

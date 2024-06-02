@@ -150,7 +150,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.Ltrim => normal("ltrim")
       case SqlExpr.FunctionName.Rtrim => normal("rtrim")
 
-      case SqlExpr.FunctionName.IndexOf   => normal("locate")
+      case SqlExpr.FunctionName.IndexOf   => sql"locate(${renderExpr(args(1))}, ${renderExpr(args.head)})"
       case SqlExpr.FunctionName.Substring => normal("substring")
 
       case SqlExpr.FunctionName.TrimLeading  => sql"trim(LEADING ${renderExpr(args(1))} FROM ${renderExpr(args.head)})"
