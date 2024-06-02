@@ -16,4 +16,6 @@ object PostgresOperationSuite extends PostgresFunSuite, PlatformOperationSuite[C
   doTestUpdateFrom()
   doTestUpdateReturning((a, _) => a)
   doTestUpdateFromReturning((_, b) => b, Seq(1, 2))
+
+  doTestMerge(platform)
 }

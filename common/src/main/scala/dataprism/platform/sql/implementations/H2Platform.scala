@@ -75,6 +75,7 @@ trait H2Platform
         SqlBitwiseApi,
         SqlStringApi,
         SqlOperationApi,
+        SqlMergeApi,
         SqlQueryApi {
     export platform.given
   }

@@ -1,6 +1,6 @@
 package dataprism.skunk.sql
 
-import dataprism.sharedast.{PostgresAstRenderer, SelectAst, SqlExpr}
+import dataprism.sharedast.{MergeAst, PostgresAstRenderer, SelectAst, SqlExpr}
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection
@@ -45,6 +45,9 @@ class PostgresSkunkAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTy
 
   override def renderSelectStatement(data: SelectAst[Codec]): SqlStr[Codec] =
     postProcessAssignArgIndices(super.renderSelectStatement(data))
+
+  override def renderMerge(ast: MergeAst[Codec]): SqlStr[Codec] =
+    postProcessAssignArgIndices(super.renderMerge(ast))
 
   override protected def renderPreparedArgument(arg: SqlExpr.PreparedArgument[Codec]): SqlStr[Codec] =
     SqlStr(s"($$$replaceStr::${arg.arg.codec.name})", Seq(arg.arg))

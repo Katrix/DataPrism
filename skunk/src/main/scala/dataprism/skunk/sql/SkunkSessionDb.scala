@@ -136,6 +136,14 @@ abstract class SkunkSessionDb[F[_]: Concurrent](autoTransact: Boolean) extends F
     case Completion.Grant                   => 0
     case Completion.Revoke                  => 0
     case Completion.AlterIndex              => 0
+    case Completion.AlterFunction           => 0
+    case Completion.AlterRole               => 0
+    case Completion.Merge(v)                => v
+    case Completion.CreatePolicy            => 0
+    case Completion.AlterPolicy             => 0
+    case Completion.DropPolicy              => 0
+    case Completion.Comment                 => 0
+    case Completion.Analyze                 => 0
     case Completion.Unknown(_)              => 0
 
   override def run(sql: SqlStr[Codec]): F[Int] =

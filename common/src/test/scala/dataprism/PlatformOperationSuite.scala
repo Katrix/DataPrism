@@ -5,7 +5,7 @@ import cats.kernel.Eq
 import cats.syntax.all.*
 import cats.{MonadThrow, Monoid}
 import dataprism.platform.MapRes
-import dataprism.platform.sql.SqlQueryPlatform
+import dataprism.platform.sql.{SqlMergeOperations, SqlQueryPlatform}
 import dataprism.sql.*
 import perspective.{DistributiveKC, Id}
 import weaver.{Expectations, SourceLocation, TestName}
@@ -245,6 +245,102 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
             originalTestTableValues.map(v => if v.a == 1 || v.a == 2 then v.copy(b = "next") else v)
           )
         }
+
+  def doTestMerge(platform: Platform & SqlMergeOperations): Unit =
+    import platform.Api.*
+
+    testWithTable("MergeDelete"): table =>
+      Merge
+        .into(table)
+        .using(Query.values(integer.forgetNNA)(1, 3))
+        .on(_.a === _)
+        .whenMatched
+        .thenDelete
+        .run
+        .map(_ => originalTestTableValues.filter(t => t.a != 1 && t.a != 3))
+
+    testWithTable("MergeDeleteAnd"): table =>
+      Merge
+        .into(table)
+        .using(Query.values((integer.forgetNNA, defaultStringType.forgetNNA))((1, "foo"), (3, "foo")))
+        .on(_.a === _._1)
+        .whenMatched
+        .and(_.b === _._2)
+        .thenDelete
+        .run
+        .map(_ => originalTestTableValues.filter(t => t.a != 1))
+
+    testWithTable("MergeUpdate"): table =>
+      Merge
+        .into(table)
+        .using(Query.values((integer.forgetNNA, defaultStringType.forgetNNA))((1, "baz"), (3, "foo")))
+        .on(_.a === _._1)
+        .whenMatched
+        .thenUpdate
+        .valuesInColumns(_.b)((_, b) => b._2)
+        .run
+        .map(_ =>
+          originalTestTableValues.map(t =>
+            if t.a == 1 then t.copy(b = "baz") else if t.a == 3 then t.copy(b = "foo") else t
+          )
+        )
+
+    testWithTable("MergeUpdateAnd"): table =>
+      Merge
+        .into(table)
+        .using(
+          Query.values((integer.forgetNNA, defaultStringType.forgetNNA, defaultStringType.forgetNNA))(
+            (1, "foo", "baz"),
+            (3, "foo", "baz")
+          )
+        )
+        .on(_.a === _._1)
+        .whenMatched
+        .and(_.b === _._2)
+        .thenUpdate
+        .valuesInColumns(_.b)((a, b) => b._3)
+        .run
+        .map(_ => originalTestTableValues.map(t => if t.a == 1 then t.copy(b = "baz") else t))
+
+    val newV1 = TestTable[Id](5, "newfoo", Some(9.9), Some(-1))
+    val newV2 = TestTable[Id](6, "newbar", None, Some(-1.9F))
+
+    testWithTable("MergeInsert"): table =>
+      Merge
+        .into(table)
+        .using(Query.valuesOf(table, newV1, newV2))
+        .on(_.a === _._1)
+        .whenNotMatched
+        .thenInsert
+        .values(identity)
+        .run
+        .map(_ => originalTestTableValues :+ newV1 :+ newV2)
+
+    testWithTable("MergeInsertAnd"): table =>
+      Merge
+        .into(table)
+        .using(Query.valuesOf(table, newV1, newV2))
+        .on(_.a === _.a)
+        .whenNotMatched
+        .and(_.b === "newfoo".as(defaultStringType))
+        .thenInsert
+        .values(identity)
+        .run
+        .map(_ => originalTestTableValues :+ newV1)
+
+    testWithTable("MergeUpdateOrInsert"): table =>
+      Merge
+        .into(table)
+        .using(Query.valuesOf(table, newV1, newV2.copy(a = 1)))
+        .on(_.a === _.a)
+        .whenMatched
+        .thenUpdate
+        .values((_, b) => b)
+        .whenNotMatched
+        .thenInsert
+        .values(identity)
+        .run
+        .map(_ => originalTestTableValues.map(t => if t.a == 1 then newV2.copy[Id](a = 1) else t) :+ newV1)
 }
 object PlatformOperationSuite:
   case class TestTable[F[_]](a: F[Int], b: F[String], c: F[Option[Double]], d: F[Option[Float]])

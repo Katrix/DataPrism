@@ -90,6 +90,7 @@ trait PostgresPlatform
         SqlBitwiseApi,
         SqlStringApi,
         SqlOperationApi,
+        SqlMergeApi,
         SqlQueryApi {
     export platform.given
   }

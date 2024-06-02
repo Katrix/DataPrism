@@ -102,7 +102,7 @@ lazy val skunk = project
     commonSettings,
     publishSettings,
     name                                  := "dataprism-skunk",
-    libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.2",
+    libraryDependencies += "org.tpolecat" %% "skunk-core" % "0.6.4",
     libraryDependencies ++= Seq(
       "org.testcontainers" % "testcontainers" % "1.19.5" % Test,
       "org.testcontainers" % "postgresql"     % "1.19.5" % Test,

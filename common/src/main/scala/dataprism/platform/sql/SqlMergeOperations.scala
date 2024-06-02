@@ -8,7 +8,7 @@ import dataprism.sharedast.{MergeAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 
-trait SqlMergeOperations extends SqlOperationsBase, SqlDbValuesBase {
+trait SqlMergeOperations extends SqlOperationsBase, SqlDbValuesBase { platform =>
 
   class SqlMergeCompanion:
     def into[A[_[_]]](table: Table[Codec, A]): SqlMergeInto[A] = new SqlMergeInto(table)
@@ -210,5 +210,10 @@ trait SqlMergeOperations extends SqlOperationsBase, SqlDbValuesBase {
   type OperationCompanion <: SqlOperationCompanion & SqlMergeOperationsCompanion
   trait SqlMergeOperationsCompanion {
     val Merge: SqlMergeCompanion = new SqlMergeCompanion
+  }
+
+  type Api <: SqlOperationApi & SqlMergeApi & SqlQueryApi & SqlDbValueApi & QueryApi
+  trait SqlMergeApi {
+    inline def Merge: platform.SqlMergeCompanion = Operation.Merge
   }
 }
