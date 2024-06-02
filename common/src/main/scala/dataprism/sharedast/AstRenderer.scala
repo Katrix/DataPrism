@@ -480,6 +480,64 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
     )
   end renderDelete
 
+  def renderMerge(ast: MergeAst[Codec]): SqlStr[Codec] =
+    val (table, alias, usingV, joinCondition) = ast.selectAst match {
+      case SelectAst.SelectFrom(
+            None,
+            _,
+            Some(SelectAst.From.InnerJoin(SelectAst.From.FromTable(table, alias), usingV, joinCondition)),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None
+          ) =>
+        (table, alias, usingV, joinCondition)
+
+      case _ =>
+        // TODO: Enforce statically in the API
+        throw new IllegalArgumentException("Can't use any other operator than a join with renderMerge")
+    }
+
+    spaceConcat(
+      sql"MERGE INTO",
+      SqlStr.const(quote(table)),
+      alias.fold(sql"")(a => sql"AS ${SqlStr.const(quote(a))}"),
+      sql"USING ${renderFrom(usingV)}",
+      sql"ON",
+      renderExpr(joinCondition),
+      ast.whens.map(renderMergeWhen).intercalate(sql"")
+    )
+  end renderMerge
+
+  protected def renderMergeWhen(when: MergeAst.When[Codec]): SqlStr[Codec] =
+    spaceConcat(
+      sql"WHEN",
+      if when.not then sql"NOT" else sql"",
+      sql"MATCHED",
+      when.cond.fold(sql"")(cond => sql"AND ${renderExpr(cond)}"),
+      sql"THEN",
+      when.operation match
+        case MergeAst.WhenOperation.Update(usedColumns, values) =>
+          spaceConcat(
+            sql"UPDATE SET",
+            usedColumns.zip(values).map((col, e) => sql"${quoteSql(col)} = ${renderExpr(e)}").intercalate(sql", ")
+          )
+        case MergeAst.WhenOperation.Delete() => sql"DELETE"
+        case MergeAst.WhenOperation.Insert(usedColumns, values) =>
+          spaceConcat(
+            sql"INSERT",
+            sql"(",
+            usedColumns.map(quoteSql).intercalate(sql", "),
+            sql")",
+            sql"VALUES",
+            sql"(",
+            values.map(renderExpr).intercalate(sql", "),
+            sql")"
+          )
+    )
+
   def renderSelectStatement(data: SelectAst[Codec]): SqlStr[Codec] = renderSelect(data)
 
   protected def renderSelect(data: SelectAst[Codec]): SqlStr[Codec] = data match

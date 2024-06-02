@@ -238,6 +238,9 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
   type SqlLogic[A] <: SqlLogicBase[A]
 
+  given booleanSqlLogic: SqlLogic[Boolean]
+  given booleanOptSqlLogic: SqlLogic[Option[Boolean]]
+
   type Many[A]
   val Many: ManyCompanion
 

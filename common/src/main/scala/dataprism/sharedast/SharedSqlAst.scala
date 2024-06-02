@@ -229,3 +229,16 @@ object SelectAst {
 
   case class Locks() // TODO
 }
+
+case class MergeAst[Codec[_]](
+    selectAst: SelectAst[Codec],
+    whens: Seq[MergeAst.When[Codec]]
+)
+object MergeAst {
+  case class When[Codec[_]](not: Boolean, cond: Option[SqlExpr[Codec]], operation: WhenOperation[Codec])
+
+  enum WhenOperation[Codec[_]]:
+    case Update(usedColumns: Seq[SqlStr[Codec]], values: Seq[SqlExpr[Codec]])
+    case Delete()
+    case Insert(usedColumns: Seq[SqlStr[Codec]], values: Seq[SqlExpr[Codec]])
+}
