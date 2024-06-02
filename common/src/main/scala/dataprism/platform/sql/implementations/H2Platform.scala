@@ -1,12 +1,13 @@
 package dataprism.platform.sql.implementations
 
 import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
-import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
+import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations, SqlMergeOperations}
 import dataprism.sharedast.H2AstRenderer
 
 trait H2Platform
     extends DefaultCompleteSql,
       DefaultSqlOperations,
+      SqlMergeOperations,
       SqlBitwiseOps,
       SqlTrigFunctions,
       SqlHyperbolicTrigFunctions {
@@ -63,8 +64,10 @@ trait H2Platform
   given bitwiseInt: SqlBitwise[Int]                = SqlBitwise.defaultInstance
   given bitwiseOptInt: SqlBitwise[Option[Int]]     = SqlBitwise.defaultInstance
 
-  type Api <: H2Api
+  type OperationCompanion = SqlOperationCompanion & SqlMergeOperationsCompanion
+  object Operation extends SqlOperationCompanionImpl, SqlMergeOperationsCompanion
 
+  type Api <: H2Api
   trait H2Api
       extends QueryApi,
         SqlDbValueApi,

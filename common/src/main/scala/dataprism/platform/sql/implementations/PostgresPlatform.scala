@@ -2,7 +2,7 @@ package dataprism.platform.sql.implementations
 
 import cats.syntax.all.*
 import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
-import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
+import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations, SqlMergeOperations}
 import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
 import dataprism.sql.*
 
@@ -10,6 +10,7 @@ import dataprism.sql.*
 trait PostgresPlatform
     extends DefaultCompleteSql,
       DefaultSqlOperations,
+      SqlMergeOperations,
       SqlBitwiseOps,
       SqlTrigFunctions,
       SqlHyperbolicTrigFunctions { platform =>
@@ -77,6 +78,9 @@ trait PostgresPlatform
   given bitwiseOptShort: SqlBitwise[Option[Short]] = SqlBitwise.defaultInstance
   given bitwiseInt: SqlBitwise[Int]                = SqlBitwise.defaultInstance
   given bitwiseOptInt: SqlBitwise[Option[Int]]     = SqlBitwise.defaultInstance
+
+  type OperationCompanion = SqlOperationCompanion & SqlMergeOperationsCompanion
+  object Operation extends SqlOperationCompanionImpl, SqlMergeOperationsCompanion
 
   type Api <: PostgresApi
   trait PostgresApi

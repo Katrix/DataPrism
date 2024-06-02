@@ -48,6 +48,9 @@ trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlTrigFun
       f: MapUpdateReturning[Table, From, Res]
   ): (Table, From) => Res = f
 
+  type OperationCompanion = SqlOperationCompanion
+  object Operation extends SqlOperationCompanionImpl
+
   type Api <: MySqlApi
   trait MySqlApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
     export platform.given

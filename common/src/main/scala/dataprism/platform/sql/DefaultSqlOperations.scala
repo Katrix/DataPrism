@@ -52,8 +52,4 @@ trait DefaultSqlOperations extends SqlOperations { platform: SqlQueryPlatform =>
     Lift.subtype
   override given sqlUpdateTableFromWhereLift[A[_[_]], C[_[_]]]
       : Lift[SqlUpdateTableFromWhereImpl[A, C], SqlUpdateTableFromWhere[A, C]] = Lift.subtype
-
-  type OperationCompanion = SqlOperationCompanion
-
-  object Operation extends SqlOperationCompanionImpl
 }

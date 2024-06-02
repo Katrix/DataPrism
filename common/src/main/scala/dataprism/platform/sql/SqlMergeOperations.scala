@@ -205,4 +205,10 @@ trait SqlMergeOperations extends SqlOperationsBase, SqlDbValuesBase {
       yield MergeAst(astMetadata.ast, whenAsts)
 
       (sqlRenderer.renderMerge(st.runA(freshTaggedState).value), AnsiTypes.integer)
+  end SqlMergeOperation
+
+  type OperationCompanion <: SqlOperationCompanion & SqlMergeOperationsCompanion
+  trait SqlMergeOperationsCompanion {
+    val Merge: SqlMergeCompanion = new SqlMergeCompanion
+  }
 }

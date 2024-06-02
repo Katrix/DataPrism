@@ -61,6 +61,9 @@ trait SqlitePlatform
   given bitwiseInt: SqlBitwise[Int]                = SqlBitwise.defaultInstance
   given bitwiseOptInt: SqlBitwise[Option[Int]]     = SqlBitwise.defaultInstance
 
+  type OperationCompanion = SqlOperationCompanion
+  object Operation extends SqlOperationCompanionImpl
+
   type Api <: SqliteApi
   trait SqliteApi
       extends QueryApi,
