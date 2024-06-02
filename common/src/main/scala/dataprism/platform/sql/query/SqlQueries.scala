@@ -67,8 +67,9 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
     override def drop(n: Int): Query[A] = nested.drop(n)
 
-    override def distinct: Query[A]                                     = nested.distinct
-    override def distinctOnSeq(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] = nested.distinctOnSeq(a)
+    override def distinct: Query[A] = nested.distinct
+    override def distinctOnSeq(a: A[DbValue] => Seq[AnyDbValue])(using DistinctOnCapability): Query[A] =
+      nested.distinctOnSeq(a)
 
     override def union(that: Query[A]): Query[A]    = nested.union(that)
     override def unionAll(that: Query[A]): Query[A] = nested.unionAll(that)

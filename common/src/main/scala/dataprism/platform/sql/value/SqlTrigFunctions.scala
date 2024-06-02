@@ -13,7 +13,11 @@ trait SqlTrigFunctions extends SqlDbValuesBase {
     def atan(v: DbValue[Double]): DbValue[Double] =
       Impl.function(SqlExpr.FunctionName.ATan, Seq(v.unsafeAsAnyDbVal), AnsiTypes.doublePrecision)
     def atan2(v1: DbValue[Double], v2: DbValue[Double]): DbValue[Double] =
-      Impl.function(SqlExpr.FunctionName.ATan2, Seq(v1.unsafeAsAnyDbVal, v2.unsafeAsAnyDbVal), AnsiTypes.doublePrecision)
+      Impl.function(
+        SqlExpr.FunctionName.ATan2,
+        Seq(v1.unsafeAsAnyDbVal, v2.unsafeAsAnyDbVal),
+        AnsiTypes.doublePrecision
+      )
     def cos(v: DbValue[Double]): DbValue[Double] =
       Impl.function(SqlExpr.FunctionName.Cos, Seq(v.unsafeAsAnyDbVal), AnsiTypes.doublePrecision)
     def cot(v: DbValue[Double]): DbValue[Double] =

@@ -12,7 +12,7 @@ class PostgresSkunkAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTy
   private def postProcessAssignArgIndices(str: SqlStr[Codec]): SqlStr[Codec] =
     val query = str.str
 
-    val buf = StringBuffer(query)
+    val buf               = StringBuffer(query)
     var subtractIdxAmount = 0
     replaceStr.r.findAllMatchIn(query).zipWithIndex.foreach { case (m, idx) =>
       buf.replace(m.start - subtractIdxAmount, m.end - subtractIdxAmount, (idx + 1).toString)
@@ -29,7 +29,9 @@ class PostgresSkunkAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTy
       conflictOn: List[SqlStr[Codec]],
       onConflict: List[(SqlStr[Codec], SqlExpr[Codec])],
       returning: List[SqlExpr[Codec]]
-  ): SqlStr[Codec] = postProcessAssignArgIndices(super.renderInsert(table, columns, values, conflictOn, onConflict, returning))
+  ): SqlStr[Codec] = postProcessAssignArgIndices(
+    super.renderInsert(table, columns, values, conflictOn, onConflict, returning)
+  )
 
   override def renderUpdate(
       columnNames: List[SqlStr[Codec]],

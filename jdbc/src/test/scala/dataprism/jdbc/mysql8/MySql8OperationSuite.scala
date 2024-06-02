@@ -6,5 +6,5 @@ import dataprism.jdbc.sql.JdbcCodec
 
 object MySql8OperationSuite extends MySql8FunSuite, PlatformOperationSuite[JdbcCodec, MySql8JdbcPlatform] {
   doTestDeleteUsing()
-  //TODO doTestUpdateFrom()
+  // TODO doTestUpdateFrom()
 }

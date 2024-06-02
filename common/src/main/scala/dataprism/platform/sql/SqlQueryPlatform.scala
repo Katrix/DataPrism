@@ -13,6 +13,6 @@ trait SqlQueryPlatform
       SqlQueries,
       SqlOperations {
 
-  //For better types in IntelliJ
+  // For better types in IntelliJ
   type Api <: SqlQueryApi & SqlDbValueApi & SqlDbValueImplApi & SqlStringApi & SqlQueryApi & SqlOperationApi & QueryApi
 }

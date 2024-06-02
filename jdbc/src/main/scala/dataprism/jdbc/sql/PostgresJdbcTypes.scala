@@ -12,7 +12,9 @@ import dataprism.sql.{NullabilityTypeChoice, SelectedType}
 trait PostgresJdbcTypes extends JdbcAnsiTypes:
   private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
-  val text: TypeOf[String] = tc(JdbcCodec.withWasNullCheck[String]("TEXT", Types.VARCHAR, _.getString(_), _.setString(_, _)))
+  val text: TypeOf[String] = tc(
+    JdbcCodec.withWasNullCheck[String]("TEXT", Types.VARCHAR, _.getString(_), _.setString(_, _))
+  )
 
   override def defaultStringType: TypeOf[String] = text
 

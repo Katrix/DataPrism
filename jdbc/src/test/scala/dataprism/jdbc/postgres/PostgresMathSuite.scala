@@ -18,6 +18,16 @@ object PostgresMathSuite extends PostgresFunSuite, PlatformSaneMathSuite[JdbcCod
   functionTest1("cosh", doubleTypeInfo, platform.DbMath.cosh, Math.cosh)
   functionTest1("tanh", doubleTypeInfo, platform.DbMath.tanh, Math.tanh)
   functionTest1("asinh", doubleTypeInfo, platform.DbMath.asinh, a => Real.asinh(Real(a)).toDouble)
-  functionTest1("acosh", doubleTypeInfo.copy(gen = Gen.choose(1D, 10000D)), platform.DbMath.acosh, a => Real.acosh(Real(a)).toDouble)
-  functionTest1("atanh", doubleTypeInfo.copy(gen = Gen.choose(-1D, 1D)), platform.DbMath.atanh, a => Real.atanh(Real(a)).toDouble)
+  functionTest1(
+    "acosh",
+    doubleTypeInfo.copy(gen = Gen.choose(1D, 10000D)),
+    platform.DbMath.acosh,
+    a => Real.acosh(Real(a)).toDouble
+  )
+  functionTest1(
+    "atanh",
+    doubleTypeInfo.copy(gen = Gen.choose(-1D, 1D)),
+    platform.DbMath.atanh,
+    a => Real.atanh(Real(a)).toDouble
+  )
 }

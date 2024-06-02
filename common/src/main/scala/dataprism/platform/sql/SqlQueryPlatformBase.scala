@@ -19,7 +19,7 @@ trait SqlQueryPlatformBase extends QueryPlatform { platform =>
   extension [A](tpe: Codec[A]) @targetName("codecTypeName") def name: String
 
   extension [A](tpe: Type[A]) @targetName("typeName") def name: String = tpe.codec.name
-  
+
   type Impl <: SqlBaseImpl
   protected val Impl: Impl
   trait SqlBaseImpl

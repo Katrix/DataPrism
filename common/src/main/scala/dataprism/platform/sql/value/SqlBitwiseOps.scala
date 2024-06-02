@@ -38,8 +38,8 @@ trait SqlBitwiseOps extends SqlDbValuesBase { platform =>
         override def |(rhs: DbValue[A]): DbValue[A] = Impl.binaryOp(lhs, rhs, SqlBitwiseBinOp.Or(this))
         override def ^(rhs: DbValue[A]): DbValue[A] = Impl.binaryOp(lhs, rhs, SqlBitwiseBinOp.Xor(this))
         override def unary_~ : DbValue[A]           = Impl.unaryOp(lhs, SqlBitwiseNotOp(this))
-        
-    given longBitwiseOps: SqlBitwise[Long] = defaultInstance
+
+    given longBitwiseOps: SqlBitwise[Long]            = defaultInstance
     given optLongBitwiseOps: SqlBitwise[Option[Long]] = defaultInstance
 
   type Api <: SqlBitwiseApi & SqlDbValueApi & QueryApi

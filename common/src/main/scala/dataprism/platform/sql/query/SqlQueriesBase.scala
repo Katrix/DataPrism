@@ -1,5 +1,7 @@
 package dataprism.platform.sql.query
 
+import scala.annotation.targetName
+
 import cats.Applicative
 import cats.data.State
 import cats.syntax.all.*
@@ -10,8 +12,6 @@ import dataprism.sharedast.{SelectAst, SqlExpr}
 import dataprism.sql.*
 import perspective.*
 import perspective.derivation.ProductKPar
-
-import scala.annotation.targetName
 
 //noinspection ScalaUnusedSymbol
 trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
@@ -41,7 +41,9 @@ trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
     def distinctOnK[B[_[_]]: FoldableKC](on: A[DbValue] => B[DbValue])(using DistinctOnCapability): Query[A] =
       this.distinctOnSeq(a => on(a).foldMapK([Z] => (v: DbValue[Z]) => Seq(v.unsafeAsAnyDbVal)))
 
-    inline def distinctOn[B](on: A[DbValue] => B)(using mr: MapRes[DbValue, B])(using cap: DistinctOnCapability): Query[A] =
+    inline def distinctOn[B](on: A[DbValue] => B)(using mr: MapRes[DbValue, B])(
+        using cap: DistinctOnCapability
+    ): Query[A] =
       this.distinctOnK(a => mr.toK(on(a)))(using mr.traverseKC, cap)
 
     def join[B[_[_]]](that: Table[Codec, B])(
@@ -119,7 +121,7 @@ trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
     def valuesOf[A[_[_]]](table: Table[Codec, A], value: A[Id], values: A[Id]*): Query[A] =
       import table.given
       given FunctorKC[A] = table.FA
-      Query.valuesK(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values *)
+      Query.valuesK(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
 
     def valuesOfBatch[A[_[_]]: DistributiveKC](table: Table[Codec, A], value: A[Id], values: A[Id]*): Query[A] =
       import table.given

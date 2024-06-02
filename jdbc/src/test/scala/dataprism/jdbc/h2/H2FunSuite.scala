@@ -1,6 +1,7 @@
 package dataprism.jdbc.h2
 
 import java.nio.file.{Files, Paths}
+
 import cats.effect.{IO, Resource}
 import dataprism.PlatformFunSuite
 import dataprism.PlatformFunSuite.DbToTest

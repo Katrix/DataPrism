@@ -6,5 +6,5 @@ import dataprism.jdbc.sql.JdbcCodec
 
 object MySql57OperationSuite extends MySql57FunSuite, PlatformOperationSuite[JdbcCodec, MySql57JdbcPlatform] {
   doTestDeleteUsing()
-  //TODO doTestUpdateFrom()
+  // TODO doTestUpdateFrom()
 }

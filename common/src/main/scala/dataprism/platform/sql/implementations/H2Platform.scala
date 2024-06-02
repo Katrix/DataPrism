@@ -40,13 +40,13 @@ trait H2Platform
   given SqlStringLpadCapability with {}
   given SqlStringRpadCapability with {}
 
-  given SqlStringTrimLeadingCapability with {}
+  given SqlStringTrimLeadingCapability with  {}
   given SqlStringTrimTrailingCapability with {}
 
-  given SqlStringLeftCapability with {}
+  given SqlStringLeftCapability with  {}
   given SqlStringRightCapability with {}
 
-  given SqlStringMd5Capability with {}
+  given SqlStringMd5Capability with    {}
   given SqlStringSha256Capability with {}
 
   given SqlStringRepeatCapability with {}
@@ -65,7 +65,14 @@ trait H2Platform
 
   type Api <: H2Api
 
-  trait H2Api extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
+  trait H2Api
+      extends QueryApi,
+        SqlDbValueApi,
+        SqlDbValueImplApi,
+        SqlBitwiseApi,
+        SqlStringApi,
+        SqlOperationApi,
+        SqlQueryApi {
     export platform.given
   }
 

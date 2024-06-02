@@ -3,14 +3,14 @@ package dataprism
 import scala.annotation.unused
 import scala.compiletime.{constValue, erasedValue, summonInline}
 import scala.deriving.Mirror
+import scala.quoted.Quotes
 import scala.reflect.TypeTest
+
 import cats.Applicative
 import cats.syntax.all.*
 import cats.{Applicative, Functor}
 import perspective.*
 import perspective.Finite.NotZero
-
-import scala.quoted.Quotes
 
 //noinspection DuplicatedCode
 object KMacros {
@@ -27,36 +27,38 @@ object KMacros {
   }
 
   // Can't use substitute type as we didn't get a nice symbol to substitute
-  def replaceTypes(using q: Quotes)(dest: q.reflect.TypeRepr)(from: List[q.reflect.TypeRepr], to: List[q.reflect.TypeRepr]): q.reflect.TypeRepr =
+  def replaceTypes(using q: Quotes)(
+      dest: q.reflect.TypeRepr
+  )(from: List[q.reflect.TypeRepr], to: List[q.reflect.TypeRepr]): q.reflect.TypeRepr =
     import q.reflect.*
     from.zipWithIndex.find(_._1 =:= dest).fold(dest)(t => to(t._2)) match
-      case t: TermRef => TermRef(replaceTypes(t.qualifier)(from, to), t.name)
-      case t: TypeRef => t
-      case t: ConstantType => t
-      case t: SuperType => SuperType(replaceTypes(t.thistpe)(from, to), replaceTypes(t.supertpe)(from, to))
-      case t: Refinement => Refinement(replaceTypes(t.parent)(from, to), t.name, replaceTypes(t.info)(from, to))
-      case t: AppliedType => AppliedType(replaceTypes(t.tycon)(from, to), t.args.map(replaceTypes(_)(from, to)))
+      case t: TermRef       => TermRef(replaceTypes(t.qualifier)(from, to), t.name)
+      case t: TypeRef       => t
+      case t: ConstantType  => t
+      case t: SuperType     => SuperType(replaceTypes(t.thistpe)(from, to), replaceTypes(t.supertpe)(from, to))
+      case t: Refinement    => Refinement(replaceTypes(t.parent)(from, to), t.name, replaceTypes(t.info)(from, to))
+      case t: AppliedType   => AppliedType(replaceTypes(t.tycon)(from, to), t.args.map(replaceTypes(_)(from, to)))
       case t: AnnotatedType => AnnotatedType(replaceTypes(t.underlying)(from, to), t.annotation)
-      case t: AndType => AndType(replaceTypes(t.left)(from, to), replaceTypes(t.right)(from, to))
-      case t: OrType => OrType(replaceTypes(t.left)(from, to), replaceTypes(t.right)(from, to))
+      case t: AndType       => AndType(replaceTypes(t.left)(from, to), replaceTypes(t.right)(from, to))
+      case t: OrType        => OrType(replaceTypes(t.left)(from, to), replaceTypes(t.right)(from, to))
       case t: MatchType =>
         MatchType(
           replaceTypes(t.bound)(from, to),
           replaceTypes(t.scrutinee)(from, to),
           t.cases.map(replaceTypes(_)(from, to))
         )
-      case t: ByNameType => ByNameType(replaceTypes(t.underlying)(from, to))
-      case t: ParamRef => t
-      case t: ThisType => t
+      case t: ByNameType    => ByNameType(replaceTypes(t.underlying)(from, to))
+      case t: ParamRef      => t
+      case t: ThisType      => t
       case t: RecursiveThis => t
       case t: RecursiveType => t
-      case t: MethodType => t
-      case t: PolyType => t
-      case t: TypeLambda => t
-      case t: MatchCase => MatchCase(replaceTypes(t.pattern)(from, to), replaceTypes(t.rhs)(from, to))
-      case t: TypeBounds => TypeBounds(replaceTypes(t.low)(from, to), replaceTypes(t.hi)(from, to))
-      case t: NoPrefix => t
-      case t => t
+      case t: MethodType    => t
+      case t: PolyType      => t
+      case t: TypeLambda    => t
+      case t: MatchCase     => MatchCase(replaceTypes(t.pattern)(from, to), replaceTypes(t.rhs)(from, to))
+      case t: TypeBounds    => TypeBounds(replaceTypes(t.low)(from, to), replaceTypes(t.hi)(from, to))
+      case t: NoPrefix      => t
+      case t                => t
   end replaceTypes
 
   private def getInstancesForFieldsImpl[Labels <: Tuple: scala.quoted.Type, F[_[_]]: scala.quoted.Type, Instance[_[_[
@@ -193,7 +195,8 @@ object KMacros {
       Tuple.fromArray(
         functionImpl[F, Compose2[G, A], DistributiveKC](size)(
           [X] =>
-            (idx: Int, instance: DistributiveKC[IdFC[X]]) => instance.cosequenceK(gfa.map(fa => fa.productElement(idx).asInstanceOf[A[X]]))
+            (idx: Int, instance: DistributiveKC[IdFC[X]]) =>
+              instance.cosequenceK(gfa.map(fa => fa.productElement(idx).asInstanceOf[A[X]]))
         ).toArray
       )
     ).asInstanceOf[F[Compose2[G, A]]]

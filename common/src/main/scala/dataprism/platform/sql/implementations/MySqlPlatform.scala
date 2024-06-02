@@ -8,18 +8,18 @@ trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlTrigFun
   given SqlStringLpadCapability with {}
   given SqlStringRpadCapability with {}
 
-  given SqlStringTrimLeadingCapability with {}
+  given SqlStringTrimLeadingCapability with  {}
   given SqlStringTrimTrailingCapability with {}
 
   given SqlStringRegexMatchesCapability with {}
 
-  given SqlStringLeftCapability with {}
+  given SqlStringLeftCapability with  {}
   given SqlStringRightCapability with {}
 
-  given SqlStringMd5Capability with {}
+  given SqlStringMd5Capability with    {}
   given SqlStringSha256Capability with {}
 
-  given SqlStringRepeatCapability with {}
+  given SqlStringRepeatCapability with  {}
   given SqlStringReverseCapability with {}
 
   given SqlStringHexCapability with {}
@@ -38,10 +38,10 @@ trait MySqlPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlTrigFun
   override protected val InHavingCapability: Unit        = ()
   override protected val InOrderByCapability: Unit       = ()
 
-  given DeleteUsingCapability with  {}
-  
-  //TODO: Support MySql variant
-  //given UpdateFromCapability with {}
+  given DeleteUsingCapability with {}
+
+  // TODO: Support MySql variant
+  // given UpdateFromCapability with {}
 
   override type MapUpdateReturning[Table, From, Res] = (Table, From) => Res
   override protected def contramapUpdateReturning[Table, From, Res](

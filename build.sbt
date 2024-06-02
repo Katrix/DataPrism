@@ -115,7 +115,7 @@ lazy val docs = project
   .enablePlugins(ScalaUnidocPlugin)
   .settings(
     commonSettings,
-    //scalaVersion := "3.5.0-RC1",
+    // scalaVersion := "3.5.0-RC1",
     libraryDependencies += "org.typelevel" %% "cats-effect-std" % "3.5.3",
     autoAPIMappings                        := true,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(

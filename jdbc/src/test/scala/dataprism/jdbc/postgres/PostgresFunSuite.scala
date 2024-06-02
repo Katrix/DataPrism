@@ -12,7 +12,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 abstract class PostgresFunSuite extends PlatformFunSuite[JdbcCodec, PostgresJdbcPlatform](PostgresJdbcPlatform) {
 
   def dbToTest: DbToTest = DbToTest.Postgres
-  
+
   override def sharedResource: Resource[IO, DbType] =
     Resource
       .make(IO.blocking {

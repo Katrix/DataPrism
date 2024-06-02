@@ -173,7 +173,7 @@ abstract class SkunkSessionDb[F[_]: Concurrent](autoTransact: Boolean) extends F
     val (query, batchArgs) = makeQuery(sql, dbTypes)
     getSession.use: s =>
       val action: F[Seq[Res[Id]]] =
-        s.prepare(query).flatMap(q => q.pipe(512).apply(fs2.Stream.apply(batchArgs *)).compile.toList.map(_.toSeq))
+        s.prepare(query).flatMap(q => q.pipe(512).apply(fs2.Stream.apply(batchArgs*)).compile.toList.map(_.toSeq))
       if autoTransact then s.transaction.surround(action) else action
   }
 
@@ -181,5 +181,7 @@ abstract class SkunkSessionDb[F[_]: Concurrent](autoTransact: Boolean) extends F
       using FT: TraverseKC[Res]
   ): fs2.Stream[F, Res[Id]] =
     val (query, batchArgs) = makeQuery(sql, dbTypes)
-    fs2.Stream.resource(getSession).flatMap: s =>
-      fs2.Stream.eval(s.prepare(query)).flatMap(q => q.pipe(512).apply(fs2.Stream.apply(batchArgs*)))
+    fs2.Stream
+      .resource(getSession)
+      .flatMap: s =>
+        fs2.Stream.eval(s.prepare(query)).flatMap(q => q.pipe(512).apply(fs2.Stream.apply(batchArgs*)))

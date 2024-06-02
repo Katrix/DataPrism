@@ -119,7 +119,8 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
       )
   end SqlDeleteReturningOperationImpl
 
-  given sqlDeleteReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlDeleteReturningOperationImpl[A, B, C], DeleteReturningOperation[A, B, C]]
+  given sqlDeleteReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]
+      : Lift[SqlDeleteReturningOperationImpl[A, B, C], DeleteReturningOperation[A, B, C]]
 
   class SqlDeleteCompanionImpl extends SqlDeleteCompanion:
     def from[A[_[_]]](from: Table[Codec, A]): DeleteFrom[A] = SqlDeleteFromImpl(from).lift
@@ -251,7 +252,8 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
       ret.runA(freshTaggedState).value
   end SqlInsertReturningOperationImpl
 
-  given sqlInsertReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlInsertReturningOperationImpl[A, B, C], InsertReturningOperation[A, B, C]]
+  given sqlInsertReturningOperationLift[A[_[_]], B[_[_]], C[_[_]]]
+      : Lift[SqlInsertReturningOperationImpl[A, B, C], InsertReturningOperation[A, B, C]]
 
   class SqlInsertCompanionImpl extends SqlInsertCompanion:
     def into[A[_[_]]](table: Table[Codec, A]): InsertInto[A] = SqlInsertIntoImpl(table).lift
@@ -400,7 +402,8 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
       ).lift
   end SqlUpdateOperationImpl
 
-  given sqlUpdateOperationLift[A[_[_]], B[_[_]], C[_[_]]]: Lift[SqlUpdateOperationImpl[A, B, C], UpdateOperation[A, B, C]]
+  given sqlUpdateOperationLift[A[_[_]], B[_[_]], C[_[_]]]
+      : Lift[SqlUpdateOperationImpl[A, B, C], UpdateOperation[A, B, C]]
 
   class SqlUpdateReturningOperationImpl[A[_[_]], B[_[_]]: ApplyKC: TraverseKC, C[_[_]], D[_[_]]: ApplyKC: TraverseKC](
       protected val table: Table[Codec, A],
@@ -482,7 +485,8 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
     }
   end SqlUpdateReturningOperationImpl
 
-  given sqlUpdateReturningOperationLift[A[_[_]], B[_[_]], C[_[_]], D[_[_]]]: Lift[SqlUpdateReturningOperationImpl[A, B, C, D], UpdateReturningOperation[A, B, C, D]]
+  given sqlUpdateReturningOperationLift[A[_[_]], B[_[_]], C[_[_]], D[_[_]]]
+      : Lift[SqlUpdateReturningOperationImpl[A, B, C, D], UpdateReturningOperation[A, B, C, D]]
 
   class SqlUpdateCompanionImpl extends SqlUpdateCompanion:
     def table[A[_[_]]](table: Table[Codec, A]): UpdateTable[A] = SqlUpdateTableImpl(table).lift
@@ -536,7 +540,8 @@ trait SqlOperations extends SqlOperationsBase { platform: SqlQueryPlatform =>
         setValues: (A[DbValue], C[DbValue]) => B[DbValue]
     ): UpdateOperation[A, B, C] = SqlUpdateOperationImpl[A, B, C](table, columns, Some(from), setValues, where).lift
 
-  given sqlUpdateTableFromWhereLift[A[_[_]], C[_[_]]]: Lift[SqlUpdateTableFromWhereImpl[A, C], UpdateTableFromWhere[A, C]]
+  given sqlUpdateTableFromWhereLift[A[_[_]], C[_[_]]]
+      : Lift[SqlUpdateTableFromWhereImpl[A, C], UpdateTableFromWhere[A, C]]
 
   trait SqlOperationCompanionImpl extends SqlOperationCompanion:
     val Select: SelectCompanion = new SqlSelectCompanionImpl().lift

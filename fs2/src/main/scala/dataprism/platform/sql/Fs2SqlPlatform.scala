@@ -25,7 +25,7 @@ trait Fs2SqlPlatform { platform: SqlQueryPlatform =>
         platform.runStream(op)
 
       @targetName("resultOperationRunStream") def runStreamWithChunkSize[F[_]](chunkSize: Int)(
-        using db: Fs2Db[F, Codec]
+          using db: Fs2Db[F, Codec]
       ): fs2.Stream[F, Res[Id]] = platform.runStreamWithChunkSize(op)(chunkSize)
   }
 }

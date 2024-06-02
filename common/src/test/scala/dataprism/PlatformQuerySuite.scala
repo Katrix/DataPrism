@@ -62,8 +62,9 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
 
   def doTestDistinctOn()(using platform.DistinctOnCapability): Unit =
     dbTest("DistinctOn"):
-      Select(Query.values((integer.forgetNNA, integer.forgetNNA))((5, 3), (5, 2), (3, 3), (1, 2)).distinctOn(_._1)).run.map: r =>
-        expect.same(r.toSet, Set((5, 3), (3, 3), (1, 2)))
+      Select(Query.values((integer.forgetNNA, integer.forgetNNA))((5, 3), (5, 2), (3, 3), (1, 2)).distinctOn(_._1)).run
+        .map: r =>
+          expect.same(r.toSet, Set((5, 3), (3, 3), (1, 2)))
 
   dbTest("Limit"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3)).run.map: r =>
@@ -73,8 +74,7 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
     for
       r <- Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(1)).run
       _ <- log.debug(Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(1)).sqlAndTypes._1.str)
-    yield
-      expect.same(Set(3, 5, 2), r.toSet)
+    yield expect.same(Set(3, 5, 2), r.toSet)
 
   dbTest("LimitOffset"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).limit(3).offset(1)).run.map: r =>
@@ -84,8 +84,7 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
     for
       r <- Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(2).limit(1)).run
       _ <- log.debug(Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).offset(2).limit(1)).sqlAndTypes._1.str)
-    yield
-      expect.same(Set(5), r.toSet)
+    yield expect.same(Set(5), r.toSet)
 
   dbTest("Union"):
     Select(Query.values(integer.forgetNNA)(5, 3).union(Query.values(integer.forgetNNA)(5, 2))).run.map: r =>

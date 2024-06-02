@@ -6,7 +6,7 @@ import dataprism.jdbc.sql.JdbcCodec
 
 object MariaDbOperationSuite extends MariaDbFunSuite, PlatformOperationSuite[JdbcCodec, MariaDbJdbcPlatform] {
   doTestDeleteUsing()
-  //TODO doTestUpdateFrom()
+  // TODO doTestUpdateFrom()
 
   doTestInsertReturning()
 }

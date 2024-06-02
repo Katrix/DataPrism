@@ -49,8 +49,8 @@ object JdbcCodec {
   ): JdbcCodec[Option[A]] = simple(
     name,
     (rs, i) => {
-      val r = get(rs, i)
-      val wasNull = rs.wasNull() || r == null //Seems to sometimes lie...
+      val r       = get(rs, i)
+      val wasNull = rs.wasNull() || r == null // Seems to sometimes lie...
       if wasNull then None else Some(r)
     },
     (ps, i, vo) => vo.fold(ps.setNull(i, sqlType, name))(v => set(ps, i, v))

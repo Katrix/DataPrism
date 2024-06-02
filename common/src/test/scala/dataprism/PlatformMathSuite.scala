@@ -135,7 +135,10 @@ trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] 
           || (JDouble.isNaN(v) && JDouble.isNaN(r))
           || (JDouble.isInfinite(v) && JDouble.isInfinite(r) && Math.signum(v) == Math.signum(r))
           || (Math.getExponent(v) == Math.getExponent(r)
-            && (v / Math.pow(2, Math.getExponent(v))) - (r / Math.pow(2, Math.getExponent(r))) <= epsilon) //Compare the exponents and mantissa seperately. Sadly it seems like we do sometimes reach this case
+            && (v / Math.pow(2, Math.getExponent(v))) - (r / Math.pow(
+              2,
+              Math.getExponent(r)
+            )) <= epsilon) // Compare the exponents and mantissa seperately. Sadly it seems like we do sometimes reach this case
       )
     }
   )

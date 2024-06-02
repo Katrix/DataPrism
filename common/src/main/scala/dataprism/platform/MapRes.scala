@@ -1,13 +1,15 @@
 package dataprism.platform
 
+import scala.annotation.implicitNotFound
+
 import cats.Applicative
 import cats.syntax.all.*
 import perspective.*
 import perspective.derivation.{ProductK, TypeLength}
 
-import scala.annotation.implicitNotFound
-
-@implicitNotFound("Do not know how ${R} incorporates the type ${F}. If you're working with Types, try calling forgetNNA on all the types")
+@implicitNotFound(
+  "Do not know how ${R} incorporates the type ${F}. If you're working with Types, try calling forgetNNA on all the types"
+)
 trait MapRes[F[_], R] {
   type K[_[_]]
 

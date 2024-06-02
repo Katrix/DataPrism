@@ -2,7 +2,9 @@ package dataprism.jdbc
 
 import java.time.{Instant, ZoneOffset}
 import java.util.UUID
+
 import scala.concurrent.Future
+
 import dataprism.KMacros
 import dataprism.jdbc.platform.PostgresJdbcPlatform
 import dataprism.jdbc.sql.{JdbcCodec, JdbcColumns, PostgresJdbcTypes, jdbcType}
@@ -115,13 +117,18 @@ object TaskK {
     Table("tasks", TaskK(Column("emp", PostgresJdbcTypes.text), Column("tsk", PostgresJdbcTypes.text)))
 }
 
-case class FooK[F[_]](@named("aInt") a: F[PostgresJdbcTypes.integer.T], @jdbcType(PostgresJdbcTypes.integer) b: F[Int], c: FooK.CK[F]) derives dataprism.jdbc.sql.JdbcColumns
+case class FooK[F[_]](
+    @named("aInt") a: F[PostgresJdbcTypes.integer.T],
+    @jdbcType(PostgresJdbcTypes.integer) b: F[Int],
+    c: FooK.CK[F]
+) derives dataprism.jdbc.sql.JdbcColumns
 object FooK {
   given KMacros.ApplyTraverseKC[FooK] = KMacros.deriveApplyTraverseKC[FooK]
 
   val autoTable = JdbcColumns.table[FooK]("foo")
 
-  case class CK[F[_]](d: F[PostgresJdbcTypes.doublePrecision.T], e: F[PostgresJdbcTypes.doublePrecision.T]) derives dataprism.jdbc.sql.JdbcColumns
+  case class CK[F[_]](d: F[PostgresJdbcTypes.doublePrecision.T], e: F[PostgresJdbcTypes.doublePrecision.T])
+      derives dataprism.jdbc.sql.JdbcColumns
   object CK {
     given KMacros.ApplyTraverseKC[CK] = KMacros.deriveApplyTraverseKC[CK]
   }
@@ -320,7 +327,7 @@ object Testing {
     )
 
     printQuery(
-      Query.of(("foo".as(PostgresJdbcTypes.text)))
+      Query.of("foo".as(PostgresJdbcTypes.text))
     )
 
     printQuery(

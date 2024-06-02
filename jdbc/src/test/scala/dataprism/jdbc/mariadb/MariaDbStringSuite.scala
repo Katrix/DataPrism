@@ -8,7 +8,7 @@ object MariaDbStringSuite extends MariaDbFunSuite, PlatformStringSuite[JdbcCodec
   override def maxParallelism: Int = 10
 
   override def indexOfCaseInsensitive: Boolean = true
-  override def trimAllOrNothing: Boolean = true
+  override def trimAllOrNothing: Boolean       = true
 
   doTestLpad()
   doTestRpad()

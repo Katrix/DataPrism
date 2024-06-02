@@ -1,8 +1,8 @@
 package dataprism.platform.sql.value
 
-import dataprism.sharedast.SqlExpr
-
 import scala.util.NotGiven
+
+import dataprism.sharedast.SqlExpr
 
 trait SqlSimpleMath extends SqlDbValuesBase {
 

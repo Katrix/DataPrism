@@ -4,7 +4,12 @@ import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, 
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{SqlExpr, SqliteAstRenderer}
 
-trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps, SqlTrigFunctions, SqlHyperbolicTrigFunctions { platform =>
+trait SqlitePlatform
+    extends DefaultCompleteSql,
+      DefaultSqlOperations,
+      SqlBitwiseOps,
+      SqlTrigFunctions,
+      SqlHyperbolicTrigFunctions { platform =>
 
   override type CastType[A] = Type[A]
 
@@ -48,19 +53,26 @@ trait SqlitePlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwis
   override protected def contramapUpdateReturning[Table, From, Res](
       f: MapUpdateReturning[Table, From, Res]
   ): (Table, From) => Res = (a, _) => f(a)
-  
-  given bitwiseByte: SqlBitwise[Byte] = SqlBitwise.defaultInstance
-  given bitwiseOptByte: SqlBitwise[Option[Byte]] = SqlBitwise.defaultInstance
-  given bitwiseShort: SqlBitwise[Short] = SqlBitwise.defaultInstance
+
+  given bitwiseByte: SqlBitwise[Byte]              = SqlBitwise.defaultInstance
+  given bitwiseOptByte: SqlBitwise[Option[Byte]]   = SqlBitwise.defaultInstance
+  given bitwiseShort: SqlBitwise[Short]            = SqlBitwise.defaultInstance
   given bitwiseOptShort: SqlBitwise[Option[Short]] = SqlBitwise.defaultInstance
-  given bitwiseInt: SqlBitwise[Int] = SqlBitwise.defaultInstance
-  given bitwiseOptInt: SqlBitwise[Option[Int]] = SqlBitwise.defaultInstance
+  given bitwiseInt: SqlBitwise[Int]                = SqlBitwise.defaultInstance
+  given bitwiseOptInt: SqlBitwise[Option[Int]]     = SqlBitwise.defaultInstance
 
   type Api <: SqliteApi
-  trait SqliteApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
+  trait SqliteApi
+      extends QueryApi,
+        SqlDbValueApi,
+        SqlDbValueImplApi,
+        SqlBitwiseApi,
+        SqlStringApi,
+        SqlOperationApi,
+        SqlQueryApi {
     export platform.given
   }
-  
+
   lazy val sqlRenderer: SqliteAstRenderer[Codec] =
     new SqliteAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 

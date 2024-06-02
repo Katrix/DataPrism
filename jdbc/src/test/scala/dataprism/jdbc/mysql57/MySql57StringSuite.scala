@@ -8,7 +8,7 @@ object MySql57StringSuite extends MySql57FunSuite, PlatformStringSuite[JdbcCodec
   override def maxParallelism: Int = 10
 
   override def indexOfCaseInsensitive: Boolean = true
-  override def trimAllOrNothing: Boolean = true
+  override def trimAllOrNothing: Boolean       = true
 
   doTestLpad()
   doTestRpad()

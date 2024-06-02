@@ -2,6 +2,7 @@ package dataprism.skunk.sql
 
 import java.sql.{Date, Time, Timestamp}
 import java.time.ZoneOffset
+
 import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}
 import skunk.Codec
 import skunk.codec.all

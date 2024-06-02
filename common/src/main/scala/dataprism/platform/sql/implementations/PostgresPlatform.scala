@@ -7,7 +7,12 @@ import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
-trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitwiseOps, SqlTrigFunctions, SqlHyperbolicTrigFunctions { platform =>
+trait PostgresPlatform
+    extends DefaultCompleteSql,
+      DefaultSqlOperations,
+      SqlBitwiseOps,
+      SqlTrigFunctions,
+      SqlHyperbolicTrigFunctions { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -36,9 +41,9 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
 
   given DistinctOnCapability with {}
 
-  given ExceptCapability with {}
+  given ExceptCapability with    {}
   given IntersectCapability with {}
-  
+
   given ASinhCapability with {}
   given ACoshCapability with {}
   given ATanhCapability with {}
@@ -46,17 +51,17 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
   given SqlStringLpadCapability with {}
   given SqlStringRpadCapability with {}
 
-  given SqlStringTrimLeadingCapability with {}
+  given SqlStringTrimLeadingCapability with  {}
   given SqlStringTrimTrailingCapability with {}
 
   given SqlStringRegexMatchesCapability with {}
 
-  given SqlStringLeftCapability with {}
+  given SqlStringLeftCapability with  {}
   given SqlStringRightCapability with {}
 
   given SqlStringMd5Capability with {}
 
-  given SqlStringRepeatCapability with {}
+  given SqlStringRepeatCapability with  {}
   given SqlStringReverseCapability with {}
 
   given SqlStringHexCapability with {}
@@ -66,16 +71,23 @@ trait PostgresPlatform extends DefaultCompleteSql, DefaultSqlOperations, SqlBitw
       f: MapUpdateReturning[Table, From, Res]
   ): (Table, From) => Res = f
 
-  given bitwiseByte: SqlBitwise[Byte] = SqlBitwise.defaultInstance
-  given bitwiseOptByte: SqlBitwise[Option[Byte]] = SqlBitwise.defaultInstance
-  given bitwiseShort: SqlBitwise[Short] = SqlBitwise.defaultInstance
+  given bitwiseByte: SqlBitwise[Byte]              = SqlBitwise.defaultInstance
+  given bitwiseOptByte: SqlBitwise[Option[Byte]]   = SqlBitwise.defaultInstance
+  given bitwiseShort: SqlBitwise[Short]            = SqlBitwise.defaultInstance
   given bitwiseOptShort: SqlBitwise[Option[Short]] = SqlBitwise.defaultInstance
-  given bitwiseInt: SqlBitwise[Int] = SqlBitwise.defaultInstance
-  given bitwiseOptInt: SqlBitwise[Option[Int]] = SqlBitwise.defaultInstance
+  given bitwiseInt: SqlBitwise[Int]                = SqlBitwise.defaultInstance
+  given bitwiseOptInt: SqlBitwise[Option[Int]]     = SqlBitwise.defaultInstance
 
   type Api <: PostgresApi
-  trait PostgresApi extends QueryApi, SqlDbValueApi, SqlDbValueImplApi, SqlBitwiseApi, SqlStringApi, SqlOperationApi, SqlQueryApi {
-    export platform.given 
+  trait PostgresApi
+      extends QueryApi,
+        SqlDbValueApi,
+        SqlDbValueImplApi,
+        SqlBitwiseApi,
+        SqlStringApi,
+        SqlOperationApi,
+        SqlQueryApi {
+    export platform.given
   }
 
   lazy val sqlRenderer: PostgresAstRenderer[Codec] =

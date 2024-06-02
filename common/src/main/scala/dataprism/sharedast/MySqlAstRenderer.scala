@@ -40,7 +40,7 @@ abstract class MySqlAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecT
       case SqlExpr.FunctionName.Random                       => normal("rand")
       case SqlExpr.FunctionName.Greatest if args.length == 1 => renderExpr(args.head)
       case SqlExpr.FunctionName.Least if args.length == 1    => renderExpr(args.head)
-      case SqlExpr.FunctionName.Sha256 => sql"SHA2(${renderExpr(args.head)}, 256)"
+      case SqlExpr.FunctionName.Sha256                       => sql"SHA2(${renderExpr(args.head)}, 256)"
       case _                                                 => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderRow(row: Seq[SqlExpr[Codec]]): SqlStr[Codec] = sql"ROW${super.renderRow(row)}"

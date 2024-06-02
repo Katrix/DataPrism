@@ -24,5 +24,10 @@ object PostgresDbValueSuite extends PostgresFunSuite, PlatformDbValueSuite[Codec
   )
 
   testBitwiseOps[Short, perspective.Id](platform, platform.AnsiTypes.smallint, Gen.choose(-10000, 10000), _.toInt)
-  testBitwiseOps[Short, Option](platform, platform.AnsiTypes.smallint.nullable, Gen.option(Gen.choose(-10000, 10000)), _.toInt)
+  testBitwiseOps[Short, Option](
+    platform,
+    platform.AnsiTypes.smallint.nullable,
+    Gen.option(Gen.choose(-10000, 10000)),
+    _.toInt
+  )
 }

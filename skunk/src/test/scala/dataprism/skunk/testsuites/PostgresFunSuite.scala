@@ -5,9 +5,9 @@ import dataprism.PlatformFunSuite
 import dataprism.PlatformFunSuite.DbToTest
 import dataprism.skunk.DescriptiveSkunkDb
 import dataprism.skunk.platform.PostgresSkunkPlatform
+import natchez.Trace.Implicits.noop
 import org.testcontainers.containers.PostgreSQLContainer
 import skunk.{Codec, Session}
-import natchez.Trace.Implicits.noop
 
 abstract class PostgresFunSuite extends PlatformFunSuite[Codec, PostgresSkunkPlatform](PostgresSkunkPlatform) {
 

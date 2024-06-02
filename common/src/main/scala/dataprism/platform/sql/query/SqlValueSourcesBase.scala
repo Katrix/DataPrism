@@ -1,6 +1,7 @@
 package dataprism.platform.sql.query
 
 import scala.annotation.targetName
+
 import cats.data.State
 import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatformBase

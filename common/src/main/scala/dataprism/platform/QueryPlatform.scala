@@ -65,7 +65,7 @@ trait QueryPlatform { platform =>
   protected val InHavingCapability: InHavingCapability
   type InOrderByCapability
   protected val InOrderByCapability: InOrderByCapability
-  
+
   trait FullJoinCapability
 
   trait QueryBase[A[_[_]]]:

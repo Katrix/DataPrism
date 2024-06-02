@@ -6,7 +6,7 @@ trait Db[F[_], Codec[_]]:
   self =>
 
   def run(sql: SqlStr[Codec]): F[Int]
-  
+
   def runBatch(sql: SqlStr[Codec]): F[Seq[Int]]
 
   def runIntoSimple[Res](

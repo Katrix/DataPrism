@@ -1,24 +1,24 @@
 package dataprism.jdbc.platform
 
-import dataprism.jdbc.sql.{JdbcCodec, H2JdbcTypes}
+import scala.annotation.targetName
+
+import dataprism.jdbc.sql.{H2JdbcTypes, JdbcCodec}
 import dataprism.platform.sql.implementations.H2Platform
 import dataprism.sql.AnsiTypes
-
-import scala.annotation.targetName
 
 trait H2JdbcPlatform extends H2Platform {
 
   type Api <: H2Api
 
-  //override type ArrayTypeArgs[A] = Nothing // H2JdbcTypes.ArrayMapping[A]
-  override type Codec[A]          = JdbcCodec[A]
+  // override type ArrayTypeArgs[A] = Nothing // H2JdbcTypes.ArrayMapping[A]
+  override type Codec[A] = JdbcCodec[A]
   extension [A](tpe: Codec[A])
     @targetName("codecTypeName")
     override def name: String = tpe.name
 
-  //override protected def arrayType[A](elemType: Type[A])(
+  // override protected def arrayType[A](elemType: Type[A])(
   //    using extraArrayTypeArgs: ArrayTypeArgs[A]
-  //): Type[Seq[A]] = 
+  // ): Type[Seq[A]] =
   //  ??? // H2JdbcTypes.array(elemType).notNull
 
   override val AnsiTypes: AnsiTypes[JdbcCodec] = H2JdbcTypes

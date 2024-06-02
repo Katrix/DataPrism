@@ -2,6 +2,9 @@ package dataprism
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+
+import scala.annotation.tailrec
+
 import cats.effect.IO
 import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatform
@@ -9,8 +12,6 @@ import org.scalacheck.Gen
 import org.scalacheck.cats.implicits.*
 import org.scalacheck.rng.Seed
 import weaver.{Expectations, Log}
-
-import scala.annotation.tailrec
 
 trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
     extends PlatformFunSuite[Codec0, Platform]:
@@ -124,8 +125,7 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
   def indexOfCaseInsensitive: Boolean = false
 
   def idxOf(a: String, b: String): Int =
-    if indexOfCaseInsensitive then
-      a.toLowerCase.indexOf(b.toLowerCase)
+    if indexOfCaseInsensitive then a.toLowerCase.indexOf(b.toLowerCase)
     else a.indexOf(b)
 
   dbLogTest("IndexOf"): log =>
@@ -176,7 +176,8 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
   private def trimAllOrNothing(str: String, remove: String, leading: Boolean, trailing: Boolean): String =
     if remove.isEmpty then str
     else if leading && str.startsWith(remove) then trimAllOrNothing(str.drop(remove.length), remove, leading, trailing)
-    else if trailing && str.endsWith(remove) then trimAllOrNothing(str.dropRight(remove.length), remove, leading, trailing)
+    else if trailing && str.endsWith(remove) then
+      trimAllOrNothing(str.dropRight(remove.length), remove, leading, trailing)
     else str
 
   def doTestTrimLeading()(using platform.SqlStringTrimLeadingCapability): Unit = dbLogTest("TrimLeading"): log =>
@@ -313,9 +314,9 @@ trait PlatformStringSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
       Gen.frequency(
         6 -> (
           for
-            str <- stringGen
-            from <- Gen.choose(0, str.length)
-            to   <- Gen.choose(from, str.length)
+            str         <- stringGen
+            from        <- Gen.choose(0, str.length)
+            to          <- Gen.choose(from, str.length)
             replacement <- stringGen
           yield (str, str.substring(from, to), replacement)
         ),
