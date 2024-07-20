@@ -1,6 +1,6 @@
 package dataprism.platform.sql.implementations
 
-import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
+import dataprism.platform.sql.value.{SqlArrays, SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations, SqlMergeOperations}
 import dataprism.sharedast.H2AstRenderer
 
@@ -10,7 +10,8 @@ trait H2Platform
       SqlMergeOperations,
       SqlBitwiseOps,
       SqlTrigFunctions,
-      SqlHyperbolicTrigFunctions {
+      SqlHyperbolicTrigFunctions,
+      SqlArrays {
   platform =>
 
   override type CastType[A] = Type[A]
@@ -76,7 +77,8 @@ trait H2Platform
         SqlStringApi,
         SqlOperationApi,
         SqlMergeApi,
-        SqlQueryApi {
+        SqlQueryApi,
+        SqlArraysApi {
     export platform.given
   }
 

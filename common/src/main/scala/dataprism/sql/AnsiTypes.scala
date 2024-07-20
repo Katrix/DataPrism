@@ -3,7 +3,8 @@ package dataprism.sql
 import java.sql.{Date, Time, Timestamp}
 
 trait AnsiTypes[Codec[_]] {
-  type TypeOf[A] = NullabilityTypeChoice[Codec, A]
+  type TypeOf[A]                                   = NullabilityTypeChoiceNoArr[Codec, A]
+  type TypeOfN[A, Arr[_], ElementDimension <: Int] = NullabilityTypeChoiceArr[Codec, Arr, A, ElementDimension]
 
   def smallint: TypeOf[Short]
   def integer: TypeOf[Int]

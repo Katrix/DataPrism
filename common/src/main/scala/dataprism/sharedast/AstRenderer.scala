@@ -46,7 +46,8 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.BinaryOperation.BoolAnd => normal("AND")
       case SqlExpr.BinaryOperation.BoolOr  => normal("OR")
 
-      case SqlExpr.BinaryOperation.Concat => normal("||")
+      case SqlExpr.BinaryOperation.Concat      => normal("||")
+      case SqlExpr.BinaryOperation.ArrayConcat => normal("||")
 
       case SqlExpr.BinaryOperation.Plus     => normal("+")
       case SqlExpr.BinaryOperation.Minus    => normal("-")
@@ -182,6 +183,13 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.Reverse => normal("reverse")
 
       case SqlExpr.FunctionName.Hex => normal("hex")
+
+      case SqlExpr.FunctionName.ArrayConstruction => sql"ARRAY[$rendered]"
+      case SqlExpr.FunctionName.ArrayGet          => sql"${renderExpr(args.head)}[${renderExpr(args(1))}]"
+      case SqlExpr.FunctionName.Cardinality       => normal("cardinality")
+      case SqlExpr.FunctionName.ArrayContains     => normal("array_contains")
+      case SqlExpr.FunctionName.TrimArray         => normal("trim_array")
+      case SqlExpr.FunctionName.Unnest            => normal("unnest")
 
       case SqlExpr.FunctionName.Custom(f) => normal(f)
 
@@ -606,6 +614,9 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       sql"${renderFrom(lhs)} RIGHT OUTER JOIN ${renderFrom(rhs)} ON ${renderExpr(on)}"
     case SelectAst.From.FullOuterJoin(lhs, rhs, on) =>
       sql"${renderFrom(lhs)} FULL OUTER JOIN ${renderFrom(rhs)} ON ${renderExpr(on)}"
+    case SelectAst.From.FromTableFunction(functionName, values, fromName, columnNames) =>
+      sql"${renderFunctionCall(functionName, values, "")} AS ${SqlStr
+          .const(quote(fromName))}(${columnNames.map(quote.andThen(SqlStr.const)).intercalate(sql", ")})"
 
   protected def renderWhere(where: SqlExpr[Codec]): SqlStr[Codec] =
     val e = simplifyExpr(where)

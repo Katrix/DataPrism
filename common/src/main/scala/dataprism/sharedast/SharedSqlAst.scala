@@ -55,6 +55,7 @@ object SqlExpr {
     case BoolOr
 
     case Concat
+    case ArrayConcat
 
     case Plus
     case Minus
@@ -159,6 +160,13 @@ object SqlExpr {
 
     case Hex
 
+    case ArrayConstruction
+    case ArrayGet
+    case Cardinality
+    case ArrayContains
+    case TrimArray
+    case Unnest
+
     case Custom(f: String)
 
     def name: String = this match
@@ -206,11 +214,17 @@ object SelectAst {
     case class FromTable[Codec[_]](table: String, alias: Option[String])                         extends From[Codec]
     case class FromQuery[Codec[_]](selectAst: SelectAst[Codec], alias: String, lateral: Boolean) extends From[Codec]
     case class FromMulti[Codec[_]](fst: From[Codec], snd: From[Codec])                           extends From[Codec]
-    case class CrossJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec])                           extends From[Codec]
-    case class InnerJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])       extends From[Codec]
-    case class LeftOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])   extends From[Codec]
-    case class RightOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
-    case class FullOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])   extends From[Codec]
+    case class FromTableFunction[Codec[_]](
+        functionName: SqlExpr.FunctionName,
+        values: Seq[SqlExpr[Codec]],
+        fromName: String,
+        columnNames: Seq[String]
+    ) extends From[Codec]
+    case class CrossJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec])                          extends From[Codec]
+    case class InnerJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])      extends From[Codec]
+    case class LeftOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
+    case class RightOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec]) extends From[Codec]
+    case class FullOuterJoin[Codec[_]](lhs: From[Codec], rhs: From[Codec], on: SqlExpr[Codec])  extends From[Codec]
   }
 
   case class GroupBy[Codec[_]](exprs: Seq[SqlExpr[Codec]])

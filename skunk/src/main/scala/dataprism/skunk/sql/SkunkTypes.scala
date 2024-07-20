@@ -3,20 +3,35 @@ package dataprism.skunk.sql
 import java.time.{Duration, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
 
-import dataprism.sql.NullabilityTypeChoice
+import dataprism.sql.{NullabilityTypeChoice, NullabilityTypeChoiceArr, NullabilityTypeChoiceNoArr, SelectedType}
 import scodec.bits.BitVector
 import skunk.Codec
 import skunk.codec.all
 import skunk.data.{Arr, LTree, Type}
 
 object SkunkTypes {
-  type TypeOf[A] = NullabilityTypeChoice[Codec, A]
+  type TypeOf[A]            = NullabilityTypeChoiceNoArr[Codec, A]
+  type TypeOfN[A, N <: Int] = NullabilityTypeChoiceArr[Codec, Seq, A, N]
 
   extension [A](skunkCodec: Codec[A])
     def wrap: TypeOf[A] =
       if skunkCodec.types.length != 1 then
         throw new IllegalArgumentException("Skunk types must always have only one SQL type")
       NullabilityTypeChoice.notNullByDefault(skunkCodec, _.opt)
+
+  //FIXME: This won't work for multi dimensional arrays
+  def arrayOf[A](tpe: SelectedType[Codec, A]): TypeOfN[A, tpe.Dimension] =
+    NullabilityTypeChoice.notNullByDefaultDimensional(
+      Codec
+        .array[A](
+          a => tpe.codec.encode(a).head.get,
+          s => tpe.codec.decode(0, List(Some(s))).left.map(_.message),
+          tpe.codec.types.head
+        )
+        .imap(arr => Seq.tabulate(arr.size)(arr.get(_).get))(seq => Arr(seq*)),
+      _.opt,
+      tpe
+    )
 
   // =============== Numerics ===============
 
@@ -30,12 +45,12 @@ object SkunkTypes {
   val float4: TypeOf[Float]  = all.float4.wrap
   val float8: TypeOf[Double] = all.float8.wrap
 
-  val _int2: TypeOf[Arr[Short]]         = all._int2.wrap
-  val _int4: TypeOf[Arr[Int]]           = all._int4.wrap
-  val _int8: TypeOf[Arr[Long]]          = all._int8.wrap
-  val _numeric: TypeOf[Arr[BigDecimal]] = all._numeric.wrap
-  val _float4: TypeOf[Arr[Float]]       = all._float4.wrap
-  val _float8: TypeOf[Arr[Double]]      = all._float8.wrap
+  val _int2: TypeOfN[Short, 0]         = arrayOf(int2)
+  val _int4: TypeOfN[Int, 0]           = arrayOf(int4)
+  val _int8: TypeOfN[Long, 0]          = arrayOf(int8)
+  val _numeric: TypeOfN[BigDecimal, 0] = arrayOf(numeric)
+  val _float4: TypeOfN[Float, 0]       = arrayOf(float4)
+  val _float8: TypeOfN[Double, 0]      = arrayOf(float8)
 
   // =============== Text ===============
 

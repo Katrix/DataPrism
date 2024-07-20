@@ -1,12 +1,7 @@
 package dataprism.platform.sql.query
 
-import scala.annotation.targetName
-
-import cats.data.State
-import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatformBase
-import dataprism.sharedast.{SelectAst, SqlExpr}
-import dataprism.sql.*
+import dataprism.sharedast.SelectAst
 import perspective.*
 
 trait SqlValueSourcesBase extends SqlQueryPlatformBase { platform =>
@@ -21,10 +16,11 @@ trait SqlValueSourcesBase extends SqlQueryPlatformBase { platform =>
   }
 
   type ValueSource[A[_[_]]] <: SqlValueSourceBase[A]
-  type ValueSourceCompanion
-  val ValueSource: ValueSourceCompanion
+  trait SqlValueSourceCompanion {
+    def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A]
+  }
 
-  extension (c: ValueSourceCompanion)
-    @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A]
+  type ValueSourceCompanion <: SqlValueSourceCompanion
+  val ValueSource: ValueSourceCompanion
 
 }

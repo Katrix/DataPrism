@@ -1,12 +1,12 @@
 package dataprism.jdbc.sql
 
-import java.sql.{Connection, PreparedStatement, ResultSet, Types}
-import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
+import java.sql.Types
+import java.time.*
 import java.util.UUID
 
-import scala.annotation.unused
-import scala.util.NotGiven
+import scala.util.Using
 
+import cats.syntax.all.*
 import dataprism.sql.{NullabilityTypeChoice, SelectedType}
 
 trait PostgresJdbcTypes extends JdbcAnsiTypes:
@@ -15,6 +15,38 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
   val text: TypeOf[String] = tc(
     JdbcCodec.withWasNullCheck[String]("TEXT", Types.VARCHAR, _.getString(_), _.setString(_, _))
   )
+
+  def arrayOf[A](tpe: SelectedType[JdbcCodec, A]): TypeOfN[A, Seq, tpe.Dimension] =
+    val elementCodec = tpe.codec
+
+    given Using.Releasable[java.sql.Array] with {
+      override def release(resource: java.sql.Array): Unit = resource.free()
+    }
+
+    NullabilityTypeChoice.nullableByDefaultDimensional(
+      JdbcCodec.withConnection(
+        s"${elementCodec.name}[]",
+        rm ?=>
+          (rs, i, c) =>
+            Option(rs.getArray(i))
+              .map { arr =>
+                arr.acquire
+                val arrRs = arr.getResultSet
+                Seq.unfold((arrRs.next(), 1)) { (cond, i) =>
+                  Option.when(cond)(
+                    (elementCodec.get(using rm)(arrRs, i, c), (arrRs.next(), i + 1))
+                  )
+                }
+              }
+              .traverse(_.sequence),
+        rm ?=>
+          (ps, i, v, c) => {
+            ps.setArray(i, c.createArrayOf(elementCodec.name, v.fold(null)(_.toArray[Any])).acquire)
+          }
+      ),
+      _.get,
+      tpe
+    )
 
   override def defaultStringType: TypeOf[String] = text
 

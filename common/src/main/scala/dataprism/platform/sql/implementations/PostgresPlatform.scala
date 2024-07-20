@@ -1,9 +1,9 @@
 package dataprism.platform.sql.implementations
 
 import cats.syntax.all.*
-import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
+import dataprism.platform.sql.value.{SqlArrays, SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations, SqlMergeOperations}
-import dataprism.sharedast.{PostgresAstRenderer, SqlExpr}
+import dataprism.sharedast.PostgresAstRenderer
 import dataprism.sql.*
 
 //noinspection SqlNoDataSourceInspection, ScalaUnusedSymbol
@@ -13,7 +13,8 @@ trait PostgresPlatform
       SqlMergeOperations,
       SqlBitwiseOps,
       SqlTrigFunctions,
-      SqlHyperbolicTrigFunctions { platform =>
+      SqlHyperbolicTrigFunctions,
+      SqlArrays { platform =>
 
   override type InFilterCapability        = Unit
   override type InMapCapability           = Unit
@@ -91,14 +92,13 @@ trait PostgresPlatform
         SqlStringApi,
         SqlOperationApi,
         SqlMergeApi,
-        SqlQueryApi {
+        SqlQueryApi,
+        SqlArraysApi {
     export platform.given
   }
 
   lazy val sqlRenderer: PostgresAstRenderer[Codec] =
     new PostgresAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
-  type ArrayTypeArgs[A]
-  protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: ArrayTypeArgs[A]): Type[Seq[A]]
 
   override type CastType[A] = Type[A]
 

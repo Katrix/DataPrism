@@ -113,10 +113,10 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
 
   trait SqlOrdered[A](using n0: NullabilityOf[A]) extends SqlOrderedBase[A]:
     override def greatest(head: DbValue[A], tail: DbValue[A]*): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Greatest, (head +: tail).map(_.unsafeAsAnyDbVal), head.tpe).lift
+      SqlDbValue.Function(SqlExpr.FunctionName.Greatest, (head +: tail).map(_.asAnyDbVal), head.tpe).lift
 
     override def least(head: DbValue[A], tail: DbValue[A]*): DbValue[A] =
-      SqlDbValue.Function(SqlExpr.FunctionName.Least, (head +: tail).map(_.unsafeAsAnyDbVal), head.tpe).lift
+      SqlDbValue.Function(SqlExpr.FunctionName.Least, (head +: tail).map(_.asAnyDbVal), head.tpe).lift
 
     extension (lhs: DbValue[A])
       @targetName("lessThan") override def <(rhs: DbValue[A]): DbValue[n.N[Boolean]] =
@@ -134,7 +134,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Min,
-            Seq(lhs.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal),
             lhs.unsafeAsDbValue.tpe.typedChoice.nullable
           )
           .lift
@@ -144,7 +144,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Max,
-            Seq(lhs.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal),
             lhs.unsafeAsDbValue.tpe.typedChoice.nullable
           )
           .lift
@@ -189,7 +189,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Avg,
-            Seq(lhs.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal),
             avgType(lhs.unsafeAsDbValue.tpe.typedChoice.nullable.asInstanceOf[Type[Nullable[A]]])
           )
           .lift
@@ -198,7 +198,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
         SqlDbValue
           .Function(
             SqlExpr.FunctionName.Sum,
-            Seq(lhs.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal),
             sumType(lhs.unsafeAsDbValue.tpe.typedChoice.nullable.asInstanceOf[Type[Nullable[A]]])
           )
           .lift
@@ -287,7 +287,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
       SqlDbValue.BinOp(n.castDbVal(this.liftDbValue), n.castDbVal(rhs), n.wrapBinOp(FundamentalBinOp.Neq())).lift
 
     @targetName("dbValCast") override def cast[B](tpe: CastType[B])(using n: Nullability[A]): DbValue[n.N[B]] =
-      SqlDbValue.Cast(this.unsafeAsAnyDbVal, tpe.castTypeName, n.wrapType(tpe.castTypeType)).lift
+      SqlDbValue.Cast(this.asAnyDbVal, tpe.castTypeName, n.wrapType(tpe.castTypeType)).lift
 
     @targetName("dbValAsSome") override def asSome(using ev: NotGiven[A <:< Option[?]]): DbValue[Option[A]] =
       SqlDbValue.AsSome(this.liftDbValue, ev).lift
@@ -338,7 +338,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
       SqlDbValue
         .Function(
           SqlExpr.FunctionName.NullIf,
-          Seq(this.unsafeAsAnyDbVal, arg.unsafeAsAnyDbVal),
+          Seq(this.asAnyDbVal, arg.asAnyDbVal),
           arg.tpe.typedChoice.nullable
         )
         .lift
@@ -353,7 +353,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
     def rawK[A[_[_]]: TraverseKC, B](args: A[DbValue], tpe: Type[B])(
         render: A[Const[SqlStr[Codec]]] => SqlStr[Codec]
     ): DbValue[B] =
-      val argsList: List[AnyDbValue] = args.foldMapK([X] => (v: DbValue[X]) => List(v.unsafeAsAnyDbVal))
+      val argsList: List[AnyDbValue] = args.foldMapK([X] => (v: DbValue[X]) => List(v.asAnyDbVal))
       val indicesState: State[Int, A[Const[Int]]] =
         args.traverseK([X] => (_: DbValue[X]) => State((acc: Int) => (acc + 1, acc)))
       val indices: A[Const[Int]] = indicesState.runA(0).value
@@ -363,7 +363,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
       SqlDbValue
         .Function(
           SqlExpr.FunctionName.Custom(name),
-          args.foldMapK([X] => (v: DbValue[X]) => List(v.unsafeAsAnyDbVal)),
+          args.foldMapK([X] => (v: DbValue[X]) => List(v.asAnyDbVal)),
           tpe
         )
         .lift
@@ -536,7 +536,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
       case SqlDbValue.False                => s"${prefix}_false"
     end columnName
 
-    override def unsafeAsAnyDbVal: AnyDbValue = Impl.unsafeAsAnyDbVal(this.lift)
+    override def asAnyDbVal: AnyDbValue = Impl.unsafeAsAnyDbVal(this.lift)
 
     override protected def liftDbValue: DbValue[A] = this.lift
 
@@ -579,7 +579,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long] =
         SqlDbValue
-          .Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.unsafeAsAnyDbVal), AnsiTypes.bigint.notNull)
+          .Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.asAnyDbVal), AnsiTypes.bigint.notNull)
           .lift
 
       inline def unsafeAsDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
@@ -610,7 +610,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
       SqlDbValue
         .Function(
           SqlExpr.FunctionName.Coalesce,
-          Seq(optVal.unsafeAsAnyDbVal, other.unsafeAsAnyDbVal),
+          Seq(optVal.asAnyDbVal, other.asAnyDbVal),
           other.tpe
         )
         .lift
@@ -619,7 +619,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
       SqlDbValue
         .Function(
           SqlExpr.FunctionName.Coalesce,
-          Seq(optVal.unsafeAsAnyDbVal, other.unsafeAsAnyDbVal),
+          Seq(optVal.asAnyDbVal, other.asAnyDbVal),
           other.tpe
         )
         .lift

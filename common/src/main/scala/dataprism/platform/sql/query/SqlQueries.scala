@@ -879,6 +879,18 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
 
   end SqlQueryCompanionImpl
 
+  type Impl <: SqlQueriesImpl & SqlValuesBaseImpl & SqlBaseImpl
+  trait SqlQueriesImpl {
+    def queryFunction[A[_[_]]](
+        function: SqlExpr.FunctionName,
+        arguments: Seq[AnyDbValue],
+        types: A[Type]
+    )(using FA: ApplyKC[A], FT: TraverseKC[A]): Query[A] =
+      SqlQuery
+        .SqlQueryFromStage(SqlValueSource.FromTableFunction(function, arguments, types, FA, FT).liftSqlValueSource)
+        .liftSqlQuery
+  }
+
   extension [A](query: Query[[F[_]] =>> F[A]])
     // TODO: Make use of an implicit conversion here?
     @targetName("queryAsMany") override def asMany: Many[A] = query.asDbValue.unsafeDbValAsMany

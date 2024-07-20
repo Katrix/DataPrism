@@ -187,7 +187,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
     def columnName(prefix: String): String
 
-    def unsafeAsAnyDbVal: AnyDbValue
+    def asAnyDbVal: AnyDbValue
 
     def unsafeDbValAsMany: Many[A]
   }

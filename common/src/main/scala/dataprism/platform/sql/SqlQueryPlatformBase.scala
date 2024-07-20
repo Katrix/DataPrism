@@ -43,9 +43,9 @@ trait SqlQueryPlatformBase extends QueryPlatform { platform =>
   extension [A](tpe: Type[A])
     @targetName("typeTypedChoiceNotNull") protected def typedChoice(
         using NotGiven[A <:< Option[?]]
-    ): NullabilityTypeChoice[Codec, A] = tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]]
+    ): NullabilityTypeChoice[Codec, A, tpe.Dimension] = tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A, tpe.Dimension]]
 
   extension [A](tpe: Type[Option[A]])
-    @targetName("typeTypedChoiceNullable") protected def typedChoice: NullabilityTypeChoice[Codec, A] =
-      tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]]
+    @targetName("typeTypedChoiceNullable") protected def typedChoice: NullabilityTypeChoice[Codec, A, tpe.Dimension] =
+      tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A, tpe.Dimension]]
 }

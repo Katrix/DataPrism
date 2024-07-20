@@ -4,10 +4,45 @@ import java.sql.Types
 import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
 
-import dataprism.sql.NullabilityTypeChoice
+import scala.util.Using
+
+import cats.syntax.all.*
+import dataprism.sql.{NullabilityTypeChoice, SelectedType}
 
 trait H2JdbcTypes extends JdbcAnsiTypes:
   private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
+
+  def arrayOf[A](tpe: SelectedType[JdbcCodec, A]): TypeOfN[A, Seq, tpe.Dimension] =
+    val elementCodec = tpe.codec
+
+    given Using.Releasable[java.sql.Array] with {
+      override def release(resource: java.sql.Array): Unit = resource.free()
+    }
+
+    NullabilityTypeChoice.nullableByDefaultDimensional(
+      JdbcCodec.withConnection(
+        s"${elementCodec.name}[]",
+        rm ?=>
+          (rs, i, c) =>
+            Option(rs.getArray(i))
+              .map { arr =>
+                arr.acquire
+                val arrRs = arr.getResultSet
+                Seq.unfold((arrRs.next(), 1)) { (cond, i) =>
+                  Option.when(cond)(
+                    (elementCodec.get(using rm)(arrRs, i, c), (arrRs.next(), i + 1))
+                  )
+                }
+              }
+              .traverse(_.sequence),
+        rm ?=>
+          (ps, i, v, c) => {
+            ps.setArray(i, c.createArrayOf(elementCodec.name, v.fold(null)(_.toArray[Any])).acquire)
+          }
+      ),
+      _.get,
+      tpe
+    )
 
   val uuid: TypeOf[UUID]    = tc(JdbcCodec.byClass[UUID]("UUID", 2950))
   val tinyint: TypeOf[Byte] = tc(JdbcCodec.withWasNullCheck("TINYINT", Types.TINYINT, _.getByte(_), _.setByte(_, _)))

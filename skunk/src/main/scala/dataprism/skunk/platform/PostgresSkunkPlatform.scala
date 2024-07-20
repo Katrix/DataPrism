@@ -1,11 +1,10 @@
 package dataprism.skunk.platform
 
 import scala.annotation.targetName
-
 import cats.data.State
 import dataprism.platform.MapRes
 import dataprism.platform.sql.implementations.PostgresPlatform
-import dataprism.skunk.sql.{PostgresSkunkAstRenderer, SkunkAnsiTypes}
+import dataprism.skunk.sql.{PostgresSkunkAstRenderer, SkunkAnsiTypes, SkunkTypes}
 import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}
 import perspective.*
 import skunk.data.Arr
@@ -17,8 +16,7 @@ trait PostgresSkunkPlatform extends PostgresPlatform {
   type Api <: PostgresSkunkApi
   trait PostgresSkunkApi extends PostgresApi
 
-  override type ArrayTypeArgs[_] = DummyImplicit
-  override type Codec[A]         = skunk.Codec[A]
+  override type Codec[A] = skunk.Codec[A]
   extension [A](tpe: Codec[A])
     @targetName("codecTypeName")
     override def name: String = tpe.types.head.name
@@ -26,19 +24,10 @@ trait PostgresSkunkPlatform extends PostgresPlatform {
   override lazy val sqlRenderer: PostgresSkunkAstRenderer[Codec] =
     new PostgresSkunkAstRenderer[Codec](AnsiTypes, [A] => (codec: Codec[A]) => codec.name)
 
-  override protected def arrayType[A](elemType: Type[A])(using extraArrayTypeArgs: DummyImplicit): Type[Seq[A]] =
-    NullabilityTypeChoice
-      .notNullByDefault(
-        Codec
-          .array[A](
-            a => elemType.codec.encode(a).head.get,
-            s => elemType.codec.decode(0, List(Some(s))).left.map(_.message),
-            elemType.codec.types.head
-          )
-          .imap(arr => Seq.tabulate(arr.size)(arr.get(_).get))(seq => Arr(seq*)),
-        _.opt
-      )
-      .notNull
+  override type DbArrayCompanion = SqlDbArrayCompanion
+  object DbArray extends SqlDbArrayCompanion
+
+  override def arrayOfType[A](tpe: Type[A]): Type[Seq[A]] = SkunkTypes.arrayOf(tpe)
 
   override val AnsiTypes: AnsiTypes[Codec] = SkunkAnsiTypes
 
@@ -125,6 +114,6 @@ object PostgresSkunkPlatform extends PostgresSkunkPlatform {
   override type Api = PostgresSkunkApi
   object Api extends PostgresSkunkApi
 
-  override type Impl = DefaultCompleteImpl
-  object Impl extends DefaultCompleteImpl
+  override type Impl = DefaultCompleteImpl & SqlArraysImpl
+  object Impl extends DefaultCompleteImpl, SqlArraysImpl
 }

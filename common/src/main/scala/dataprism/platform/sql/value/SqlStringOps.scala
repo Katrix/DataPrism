@@ -92,62 +92,62 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
 
   object SqlString:
     def concat[A: SqlString](v1: DbValue[A], vars: DbValue[A]*): DbValue[A] =
-      Impl.function(SqlExpr.FunctionName.Concat, (v1 +: vars).map(_.unsafeAsAnyDbVal), v1.tpe)
+      Impl.function(SqlExpr.FunctionName.Concat, (v1 +: vars).map(_.asAnyDbVal), v1.tpe)
     def concatWs[A: SqlString](sep: DbValue[A], v1: DbValue[A], vars: DbValue[A]*): DbValue[A] =
-      Impl.function(SqlExpr.FunctionName.ConcatWs, (sep +: v1 +: vars).map(_.unsafeAsAnyDbVal), v1.tpe)
+      Impl.function(SqlExpr.FunctionName.ConcatWs, (sep +: v1 +: vars).map(_.asAnyDbVal), v1.tpe)
 
     def hex(i: DbValue[Long])(using SqlStringHexCapability): DbValue[String] =
-      Impl.function(SqlExpr.FunctionName.Hex, Seq(i.unsafeAsAnyDbVal), AnsiTypes.defaultStringType)
+      Impl.function(SqlExpr.FunctionName.Hex, Seq(i.asAnyDbVal), AnsiTypes.defaultStringType)
 
     def defaultInstance[A]: SqlString[A] = new SqlString[A]:
       extension (lhs: DbValue[A])
         override def ++(rhs: DbValue[A]): DbValue[A] = Impl.binaryOp(lhs, rhs, SqlStringConcatOp())
         @targetName("repeat")
         override def *(rhs: DbValue[Int])(using SqlStringRepeatCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Repeat, Seq(lhs.unsafeAsAnyDbVal, rhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Repeat, Seq(lhs.asAnyDbVal, rhs.asAnyDbVal), lhs.tpe)
 
         override def length: DbValue[Int] =
-          Impl.function(SqlExpr.FunctionName.CharLength, Seq(lhs.unsafeAsAnyDbVal), AnsiTypes.integer)
+          Impl.function(SqlExpr.FunctionName.CharLength, Seq(lhs.asAnyDbVal), AnsiTypes.integer)
 
         override def toLowerCase: DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Lower, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Lower, Seq(lhs.asAnyDbVal), lhs.tpe)
         override def toUpperCase: DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Upper, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Upper, Seq(lhs.asAnyDbVal), lhs.tpe)
 
         override def lpad(length: DbValue[Int], content: DbValue[A])(using SqlStringLpadCapability): DbValue[A] =
           Impl.function(
             SqlExpr.FunctionName.Lpad,
-            Seq(lhs.unsafeAsAnyDbVal, length.unsafeAsAnyDbVal, content.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal, length.asAnyDbVal, content.asAnyDbVal),
             lhs.tpe
           )
         override def rpad(length: DbValue[Int], content: DbValue[A])(using SqlStringRpadCapability): DbValue[A] =
           Impl.function(
             SqlExpr.FunctionName.Rpad,
-            Seq(lhs.unsafeAsAnyDbVal, length.unsafeAsAnyDbVal, content.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal, length.asAnyDbVal, content.asAnyDbVal),
             lhs.tpe
           )
 
-        override def ltrim: DbValue[A] = Impl.function(SqlExpr.FunctionName.Ltrim, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
-        override def rtrim: DbValue[A] = Impl.function(SqlExpr.FunctionName.Rtrim, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+        override def ltrim: DbValue[A] = Impl.function(SqlExpr.FunctionName.Ltrim, Seq(lhs.asAnyDbVal), lhs.tpe)
+        override def rtrim: DbValue[A] = Impl.function(SqlExpr.FunctionName.Rtrim, Seq(lhs.asAnyDbVal), lhs.tpe)
 
         override def indexOf(a: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Int]] =
           Impl.function(
             SqlExpr.FunctionName.IndexOf,
-            Seq(lhs.unsafeAsAnyDbVal, a.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal, a.asAnyDbVal),
             n.wrapType(AnsiTypes.integer)
           )
         override def substr(from: DbValue[Int], forLength: DbValue[Int]): DbValue[A] = Impl.function(
           SqlExpr.FunctionName.Substring,
-          Seq(lhs.unsafeAsAnyDbVal, from.unsafeAsAnyDbVal, forLength.unsafeAsAnyDbVal),
+          Seq(lhs.asAnyDbVal, from.asAnyDbVal, forLength.asAnyDbVal),
           lhs.tpe
         )
 
         override def trimLeading(rhs: DbValue[A])(using SqlStringTrimLeadingCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.TrimLeading, Seq(lhs.unsafeAsAnyDbVal, rhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.TrimLeading, Seq(lhs.asAnyDbVal, rhs.asAnyDbVal), lhs.tpe)
         override def trimTrailing(rhs: DbValue[A])(using SqlStringTrimTrailingCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.TrimTrailing, Seq(lhs.unsafeAsAnyDbVal, rhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.TrimTrailing, Seq(lhs.asAnyDbVal, rhs.asAnyDbVal), lhs.tpe)
         override def trimBoth(rhs: DbValue[A]): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.TrimBoth, Seq(lhs.unsafeAsAnyDbVal, rhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.TrimBoth, Seq(lhs.asAnyDbVal, rhs.asAnyDbVal), lhs.tpe)
 
         override def like(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
           Impl.binaryOp(n.castDbVal(lhs), n.castDbVal(rhs), n.wrapBinOp(SqlStringLikeOp()))
@@ -159,33 +159,33 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
         override def startsWith(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
           Impl.function(
             SqlExpr.FunctionName.StartsWith,
-            Seq(lhs.unsafeAsAnyDbVal, rhs.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal, rhs.asAnyDbVal),
             n.wrapType(AnsiTypes.boolean)
           )
         override def endsWith(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]] =
           Impl.function(
             SqlExpr.FunctionName.EndsWith,
-            Seq(lhs.unsafeAsAnyDbVal, rhs.unsafeAsAnyDbVal),
+            Seq(lhs.asAnyDbVal, rhs.asAnyDbVal),
             n.wrapType(AnsiTypes.boolean)
           )
 
         override def left(n: DbValue[Int])(using SqlStringLeftCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Left, Seq(lhs.unsafeAsAnyDbVal, n.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Left, Seq(lhs.asAnyDbVal, n.asAnyDbVal), lhs.tpe)
         override def right(n: DbValue[Int])(using SqlStringRightCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Right, Seq(lhs.unsafeAsAnyDbVal, n.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Right, Seq(lhs.asAnyDbVal, n.asAnyDbVal), lhs.tpe)
 
         override def md5(using SqlStringMd5Capability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Md5, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Md5, Seq(lhs.asAnyDbVal), lhs.tpe)
         override def sha256(using SqlStringSha256Capability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Sha256, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Sha256, Seq(lhs.asAnyDbVal), lhs.tpe)
 
         override def replace(target: DbValue[A], replacement: DbValue[A]): DbValue[A] = Impl.function(
           SqlExpr.FunctionName.Replace,
-          Seq(lhs.unsafeAsAnyDbVal, target.unsafeAsAnyDbVal, replacement.unsafeAsAnyDbVal),
+          Seq(lhs.asAnyDbVal, target.asAnyDbVal, replacement.asAnyDbVal),
           lhs.tpe
         )
         override def reverse(using SqlStringReverseCapability): DbValue[A] =
-          Impl.function(SqlExpr.FunctionName.Reverse, Seq(lhs.unsafeAsAnyDbVal), lhs.tpe)
+          Impl.function(SqlExpr.FunctionName.Reverse, Seq(lhs.asAnyDbVal), lhs.tpe)
 
     end defaultInstance
 

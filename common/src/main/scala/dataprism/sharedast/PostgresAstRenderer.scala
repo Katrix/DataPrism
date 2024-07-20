@@ -38,6 +38,8 @@ class PostgresAstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeNam
 
       case SqlExpr.FunctionName.Hex => normal("to_hex")
 
+      case SqlExpr.FunctionName.ArrayContains => sql"(${renderExpr(args.head)} @> ARRAY[${renderExpr(args(1))}])"
+
       case _ => super.renderFunctionCall(call, args, tpe)
 
   override protected def renderBinaryOp(

@@ -36,6 +36,13 @@ trait SqlValueSources extends SqlValueSourcesBase { platform: SqlQueryPlatform =
         rhs: ValueSource[B],
         on: (A[DbValue], B[DbValue]) => DbValue[Boolean]
     ) extends SqlValueSource[[F[_]] =>> (A[Compose2[F, Nullable]], B[Compose2[F, Nullable]])]
+    case FromTableFunction(
+        function: SqlExpr.FunctionName,
+        arguments: Seq[AnyDbValue],
+        types: A[Type],
+        apply: ApplyKC[A],
+        traverseKC: TraverseKC[A]
+    )
 
     private def mapOptCompose[F[_[_]], X[_], Y[_]](fa: F[Compose2[X, Nullable]])(f: X :~>: Y)(
         using F: FunctorKC[F]
@@ -140,6 +147,7 @@ trait SqlValueSources extends SqlValueSourcesBase { platform: SqlQueryPlatform =
           }
 
         make[lt, rt]
+      case SqlValueSource.FromTableFunction(_, _, _, apply, _) => apply
     end applyKC
 
     private def fromPartJoin[A[_[_]], B[_[_]], R[_[_]]](
@@ -228,8 +236,36 @@ trait SqlValueSources extends SqlValueSourcesBase { platform: SqlQueryPlatform =
           SelectAst.From.FullOuterJoin.apply,
           (a, b) => (mapJoinNullable[l](a), mapJoinNullable[r](b))
         )
+      case SqlValueSource.FromTableFunction(function, arguments, types, apply, traverse) =>
+        given TraverseKC[A] = traverse
+        for {
+          args     <- arguments.traverse(_.ast)
+          fromName <- State[TaggedState, String](st => (st.withNewQueryNum(st.queryNum + 1), s"y${st.queryNum}"))
+          dbValsAndNames <- types.traverseK[TagState, Tuple2K[Const[String], DbValue]] {
+            [X] =>
+              (tpe: Type[X]) =>
+                State[TaggedState, (String, DbValue[X])] { st =>
+                  val columnName = s"x${st.columnNum}"
+                  (
+                    st.withNewColumnNum(st.columnNum + 1),
+                    (columnName, SqlDbValue.QueryColumn(columnName, fromName, tpe).lift)
+                  )
+              }
+          }
+
+        } yield
+          val names  = dbValsAndNames.foldMapK([X] => (t: (String, DbValue[X])) => List(t._1))
+          val dbVals = dbValsAndNames.mapK([X] => (t: (String, DbValue[X])) => t._2)
+          ValueSourceAstMetaData(SelectAst.From.FromTableFunction(function, args, fromName, names), dbVals)
+
     end fromPartAndValues
   }
+
+  trait SqlValueSourceCompanionImpl extends SqlValueSourceCompanion:
+    def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A] =
+      query match
+        case baseQuery: SqlQuery.SqlQueryFromStage[A] => baseQuery.valueSource
+        case _                                        => SqlValueSource.FromQuery(query).liftSqlValueSource
 
   extension [A[_[_]]](sqlValueSource: SqlValueSource[A]) def liftSqlValueSource: ValueSource[A]
 }

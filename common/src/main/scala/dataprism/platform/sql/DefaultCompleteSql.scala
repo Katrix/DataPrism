@@ -12,9 +12,9 @@ trait DefaultCompleteSql extends SqlQueryPlatform {
   override type AnyDbValue = DbValue[Any]
 
   type Impl <: DefaultCompleteImpl
-  trait DefaultCompleteImpl extends SqlBaseImpl, SqlDbValueImpl:
-    override def asc[A](v: DbValue[A]): Ord                       = Ord.Asc(v.unsafeAsAnyDbVal)
-    override def desc[A](v: DbValue[A]): Ord                      = Ord.Desc(v.unsafeAsAnyDbVal)
+  trait DefaultCompleteImpl extends SqlBaseImpl, SqlDbValueImpl, SqlQueriesImpl:
+    override def asc[A](v: DbValue[A]): Ord                       = Ord.Asc(v.asAnyDbVal)
+    override def desc[A](v: DbValue[A]): Ord                      = Ord.Desc(v.asAnyDbVal)
     override def unsafeAsAnyDbVal[A](v: DbValue[A]): DbValue[Any] = v.asInstanceOf[DbValue[Any]]
 
   sealed trait OrdSeq extends SqlOrdSeqBase
@@ -36,16 +36,10 @@ trait DefaultCompleteSql extends SqlQueryPlatform {
   end MultiOrdSeq
 
   type ValueSource[A[_[_]]] = SqlValueSource[A]
-  type ValueSourceCompanion = SqlValueSource.type
-  val ValueSource: ValueSourceCompanion = SqlValueSource
+  type ValueSourceCompanion = SqlValueSourceCompanionImpl
+  object ValueSource extends SqlValueSourceCompanionImpl
 
   extension [A[_[_]]](sqlValueSource: SqlValueSource[A]) def liftSqlValueSource: ValueSource[A] = sqlValueSource
-
-  extension (c: ValueSourceCompanion)
-    @targetName("valueSourceGetFromQuery") def getFromQuery[A[_[_]]](query: Query[A]): ValueSource[A] =
-      query match
-        case baseQuery: SqlQuery.SqlQueryFromStage[A] => baseQuery.valueSource
-        case _                                        => SqlValueSource.FromQuery(query)
 
   type Query[A[_[_]]]        = SqlQuery[A]
   type QueryGrouped[A[_[_]]] = SqlQueryGrouped[A]
