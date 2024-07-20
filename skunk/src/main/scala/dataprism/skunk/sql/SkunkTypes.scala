@@ -3,6 +3,7 @@ package dataprism.skunk.sql
 import java.time.{Duration, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
 
+import cats.syntax.all.*
 import dataprism.sql.{NullabilityTypeChoice, NullabilityTypeChoiceArr, NullabilityTypeChoiceNoArr, SelectedType}
 import scodec.bits.BitVector
 import skunk.Codec
@@ -19,16 +20,28 @@ object SkunkTypes {
         throw new IllegalArgumentException("Skunk types must always have only one SQL type")
       NullabilityTypeChoice.notNullByDefault(skunkCodec, _.opt)
 
-  //FIXME: This won't work for multi dimensional arrays
   def arrayOf[A](tpe: SelectedType[Codec, A]): TypeOfN[A, tpe.Dimension] =
     NullabilityTypeChoice.notNullByDefaultDimensional(
       Codec
-        .array[A](
-          a => tpe.codec.encode(a).head.get,
-          s => tpe.codec.decode(0, List(Some(s))).left.map(_.message),
+        .array[String](
+          identity,
+          Right(_),
           tpe.codec.types.head
         )
-        .imap(arr => Seq.tabulate(arr.size)(arr.get(_).get))(seq => Arr(seq*)),
+        .eimap[Seq[A]] { arr =>
+          val dim = arr.dimensions
+          if dim.isEmpty then Right(Nil)
+          else
+            val length = dim.head
+            arr
+              .flattenTo(Seq)
+              .grouped(length)
+              .map(seq => Arr(seq*).encode(identity))
+              .toSeq
+              .traverse(s => tpe.codec.decode(0, List(Some(s))).leftMap(_.message))
+        } { seq =>
+          Arr(seq.map(tpe.codec.encode(_).head.getOrElse(sys.error("Skunk does not support nulls in arrays")))*)
+        },
       _.opt,
       tpe
     )
