@@ -77,8 +77,8 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
       override def wrapUnaryOp[V, R](
           unaryOp: UnaryOp[V, R]
       )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[V, R] = unaryOp
-      override def reifyNullable(dbVal: DbValue[Nullable[A]]): DbValue[Option[A]] = dbVal.asInstanceOf[DbValue[Option[A]]]
-
+      override def reifyNullable(dbVal: DbValue[Nullable[A]]): DbValue[Option[A]] =
+        dbVal.asInstanceOf[DbValue[Option[A]]]
 
     given nullable[A <: Option[NN], NN]: Nullability.Aux[A, NN, Option] = new Nullability[A]:
       type N[B] = Option[B]
@@ -99,8 +99,8 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
       override def wrapUnaryOp[V, R](
           unaryOp: UnaryOp[V, R]
       )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]] = unaryOp.nullable
-      override def reifyNullable(dbVal: DbValue[Nullable[A]]): DbValue[Option[A]] = dbVal.asInstanceOf[DbValue[Option[A]]]
-
+      override def reifyNullable(dbVal: DbValue[Nullable[A]]): DbValue[Option[A]] =
+        dbVal.asInstanceOf[DbValue[Option[A]]]
 
   trait SqlOrderedBase[A](using val n: NullabilityOf[A]):
     def greatest(head: DbValue[A], tail: DbValue[A]*): DbValue[A]

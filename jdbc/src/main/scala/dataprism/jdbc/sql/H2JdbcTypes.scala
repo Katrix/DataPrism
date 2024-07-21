@@ -45,7 +45,7 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
               if str.endsWith(" ARRAY") then stripArrayPartOfType(str.dropRight(6))
               else str
 
-            //FIXME: Nested arrays broken
+            // FIXME: Nested arrays broken
             ps.setArray(i, c.createArrayOf(stripArrayPartOfType(elemTypeName), v.fold(null)(_.toArray[Any])).acquire)
           }
       ),

@@ -10,7 +10,7 @@ trait PostgresJdbcPlatform extends PostgresPlatform {
 
   type Api <: PostgresApi
 
-  override type Codec[A]         = JdbcCodec[A]
+  override type Codec[A] = JdbcCodec[A]
   extension [A](tpe: Codec[A])
     @targetName("codecTypeName")
     override def name: String = tpe.name
@@ -28,6 +28,6 @@ object PostgresJdbcPlatform extends PostgresJdbcPlatform {
   override type Api = PostgresApi
   object Api extends PostgresApi
 
-  override type Impl = DefaultCompleteImpl &  SqlArraysImpl
+  override type Impl = DefaultCompleteImpl & SqlArraysImpl
   object Impl extends DefaultCompleteImpl, SqlArraysImpl
 }

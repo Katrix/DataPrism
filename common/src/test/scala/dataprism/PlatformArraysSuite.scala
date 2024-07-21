@@ -28,7 +28,7 @@ trait PlatformArraysSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
   val configuredForall: PartiallyAppliedForall = forall
 
   def genNel[A](gen: Gen[A]): Gen[(A, List[A])] =
-    (gen, Gen.choose(0, 2).flatMap(s => Gen.buildableOfN[List[A], A](s, gen))).tupled //TODO: Gen.listOf(gen)
+    (gen, Gen.choose(0, 2).flatMap(s => Gen.buildableOfN[List[A], A](s, gen))).tupled // TODO: Gen.listOf(gen)
 
   def testArrays[A: Show](tpe: Type[A], gen: Gen[A]): Unit =
     typeTest("ArrayConstruction", tpe):
@@ -112,23 +112,23 @@ trait PlatformArraysSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
 
     typeTest("ArrayParam", tpe):
       configuredForall((gen, gen, gen, gen).tupled): (v1, v2, v3, v4) =>
-        val arr1Type: Type[Seq[A]]                      = platform.arrayOfType(tpe)
-        val arr2Type: Type[Seq[Seq[A]]]                 = platform.arrayOfType(arr1Type)
+        val arr1Type: Type[Seq[A]]      = platform.arrayOfType(tpe)
+        val arr2Type: Type[Seq[Seq[A]]] = platform.arrayOfType(arr1Type)
         Select(
           Query.of(
-            //Seq().as(arr1Type),
-            //Seq(v1).as(arr1Type),
-            //Seq(v1, v2).as(arr1Type),
-            Seq(Seq(v1, v2), Seq(v3, v4)).as(arr2Type),
+            // Seq().as(arr1Type),
+            // Seq(v1).as(arr1Type),
+            // Seq(v1, v2).as(arr1Type),
+            Seq(Seq(v1, v2), Seq(v3, v4)).as(arr2Type)
           )
         )
           .runOne[F]
-          .map: (/*r1, r2, r3,*/ r4) =>
+          .map: /*r1, r2, r3,*/ r4 =>
             expect.all(
-              //r1 == Seq(),
-              //r2 == Seq(v1),
-              //r3 == Seq(v1, v2),
-              r4 == Seq(Seq(v1, v2), Seq(v3, v4)),
+              // r1 == Seq(),
+              // r2 == Seq(v1),
+              // r3 == Seq(v1, v2),
+              r4 == Seq(Seq(v1, v2), Seq(v3, v4))
             )
 
   end testArrays

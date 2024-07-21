@@ -1,6 +1,7 @@
 package dataprism.skunk.platform
 
 import scala.annotation.targetName
+
 import cats.data.State
 import dataprism.platform.MapRes
 import dataprism.platform.sql.implementations.PostgresPlatform
