@@ -14,7 +14,7 @@ trait NullabilityTypeChoice[Codec[_], A, Dimension0 <: Int] extends SelectedType
   type NNA       = A
   type Dimension = Dimension0
 
-  val codec: Codec[A]                                     = notNull.codec
+  def codec: Codec[A]                                     = notNull.codec
   val choice: NullabilityTypeChoice[Codec, A, Dimension0] = this
 
 class NullabilityTypeChoiceNoArr[Codec[_], A](

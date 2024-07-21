@@ -107,7 +107,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
     testEquality[A, Id](tpe, gen)
 
   def testEqualityNullable[A: Show](tpe: Type[A], gen: Gen[A])(using NotGiven[A <:< Option[_]]): Unit =
-    testEquality[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable, Gen.option(gen))
+    testEquality[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A, tpe.Dimension]].nullable, Gen.option(gen))
 
   def testOrderByAscDesc[A: Ordering: Show](tpe: Type[A], gen: Gen[A]): Unit = typeTest("OrderByAscDesc", tpe):
     configuredForall((gen, Gen.listOf(gen)).tupled): (vh: A, vt: List[A]) =>
@@ -208,7 +208,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       convertSum: A => SqlNumeric.SumResultOf[A]
   )(using NotGiven[A <:< Option[_]], SqlNumeric[Option[A]], Numeric[Option[A]], Div[Option[A]]): Unit =
     testNumeric[A, Option](
-      tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable,
+      tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A, tpe.Dimension]].nullable,
       Gen.option(gen),
       Some(delta),
       convertSum
@@ -287,7 +287,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       cats.Order[Option[A]],
       SqlOrdered[Option[A]] { val n: Nullability.Aux[Option[A], A, Option] }
   ): Unit =
-    testOrdered[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A]].nullable, Gen.option(gen))
+    testOrdered[A, Option](tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A, tpe.Dimension]].nullable, Gen.option(gen))
 
   typeTest("BooleanOps", AnsiTypes.boolean):
     val boolean = AnsiTypes.boolean

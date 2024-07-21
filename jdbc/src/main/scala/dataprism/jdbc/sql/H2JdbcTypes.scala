@@ -4,6 +4,7 @@ import java.sql.Types
 import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
 
+import scala.annotation.tailrec
 import scala.util.Using
 
 import cats.syntax.all.*
@@ -19,25 +20,33 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
       override def release(resource: java.sql.Array): Unit = resource.free()
     }
 
+    val elemTypeName = elementCodec.name
+
     NullabilityTypeChoice.nullableByDefaultDimensional(
       JdbcCodec.withConnection(
-        s"${elementCodec.name}[]",
+        s"$elemTypeName ARRAY",
         rm ?=>
           (rs, i, c) =>
             Option(rs.getArray(i))
               .map { arr =>
                 arr.acquire
                 val arrRs = arr.getResultSet
-                Seq.unfold((arrRs.next(), 1)) { (cond, i) =>
+                Seq.unfold(arrRs.next()) { cond =>
                   Option.when(cond)(
-                    (elementCodec.get(using rm)(arrRs, i, c), (arrRs.next(), i + 1))
+                    (elementCodec.get(using rm)(arrRs, 2, c), arrRs.next())
                   )
                 }
               }
               .traverse(_.sequence),
         rm ?=>
           (ps, i, v, c) => {
-            ps.setArray(i, c.createArrayOf(elementCodec.name, v.fold(null)(_.toArray[Any])).acquire)
+            @tailrec
+            def stripArrayPartOfType(str: String): String =
+              if str.endsWith(" ARRAY") then stripArrayPartOfType(str.dropRight(6))
+              else str
+
+            //FIXME: Nested arrays broken
+            ps.setArray(i, c.createArrayOf(stripArrayPartOfType(elemTypeName), v.fold(null)(_.toArray[Any])).acquire)
           }
       ),
       _.get,

@@ -84,12 +84,13 @@ trait SqlArrays extends SqlDbValuesBase { platform =>
       @targetName("append")
       def :+(other: DbValue[A]): DbValue[Col]
 
-      @targetName("prepend")
-      def +:(other: DbValue[A]): DbValue[Col]
-
       def contains(a: DbValue[A]): DbValue[Boolean]
 
-      def drop(n: DbValue[Int]): DbValue[Col]
+      def dropRight(n: DbValue[Int]): DbValue[Col]
+
+    extension (v: DbValue[A])
+      @targetName("prepend")
+      def +:(other: DbValue[Col]): DbValue[Col]
   }
   object DbArrayLike {
     given seqIsDbArray[A]: DbArrayLike[Seq[A], A] with {
@@ -115,14 +116,15 @@ trait SqlArrays extends SqlDbValuesBase { platform =>
         @targetName("append")
         override def :+(other: DbValue[A]): DbValue[Seq[A]] = Impl.binaryOp(arr, other, ArrayConcatBinOp(arr.tpe))
 
-        @targetName("prepend")
-        override def +:(other: DbValue[A]): DbValue[Seq[A]] = Impl.binaryOp(other, arr, ArrayConcatBinOp(arr.tpe))
-
         override def contains(a: DbValue[A]): DbValue[Boolean] =
           Impl.function(SqlExpr.FunctionName.ArrayContains, Seq(arr.asAnyDbVal, a.asAnyDbVal), AnsiTypes.boolean)
 
-        override def drop(n: DbValue[Int]): DbValue[Seq[A]] =
+        override def dropRight(n: DbValue[Int]): DbValue[Seq[A]] =
           Impl.function(SqlExpr.FunctionName.TrimArray, Seq(arr.asAnyDbVal, n.asAnyDbVal), arr.tpe)
+
+      extension (v: DbValue[A])
+        @targetName("prepend")
+        override def +:(arr: DbValue[Seq[A]]): DbValue[Seq[A]] = Impl.binaryOp(v, arr, ArrayConcatBinOp(arr.tpe))
     }
   }
 

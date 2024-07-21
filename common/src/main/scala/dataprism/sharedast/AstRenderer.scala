@@ -184,7 +184,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
 
       case SqlExpr.FunctionName.Hex => normal("hex")
 
-      case SqlExpr.FunctionName.ArrayConstruction => sql"ARRAY[$rendered]"
+      case SqlExpr.FunctionName.ArrayConstruction => sql"(ARRAY[$rendered])"
       case SqlExpr.FunctionName.ArrayGet          => sql"${renderExpr(args.head)}[${renderExpr(args(1))}]"
       case SqlExpr.FunctionName.Cardinality       => normal("cardinality")
       case SqlExpr.FunctionName.ArrayContains     => normal("array_contains")
