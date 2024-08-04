@@ -49,9 +49,9 @@ trait PostgresJdbcTypes extends JdbcAnsiTypes:
               if str.endsWith("[]") then stripArrayPartOfType(str.dropRight(2))
               else str
 
-            // FIXME: Nested arrays broken
-            ps.setArray(i, c.createArrayOf(stripArrayPartOfType(elemTypeName), v.fold(null)(_.toArray[Any])).acquire)
-          }
+            ps.setArray(i, c.createArrayOf(stripArrayPartOfType(elemTypeName), v.fold(null)(_.map(elementCodec.box).toArray[AnyRef])).acquire)
+          },
+        _.map(elementCodec.box).toArray[AnyRef]
       ),
       _.get,
       tpe

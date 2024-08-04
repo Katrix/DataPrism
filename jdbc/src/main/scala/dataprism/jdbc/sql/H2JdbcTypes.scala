@@ -42,12 +42,12 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
           (ps, i, v, c) => {
             @tailrec
             def stripArrayPartOfType(str: String): String =
-              if str.endsWith(" ARRAY") then stripArrayPartOfType(str.dropRight(6))
+              if str.endsWith(" ARRAY") then stripArrayPartOfType(str.dropRight(2))
               else str
 
-            // FIXME: Nested arrays broken
-            ps.setArray(i, c.createArrayOf(stripArrayPartOfType(elemTypeName), v.fold(null)(_.toArray[Any])).acquire)
-          }
+            ps.setArray(i, c.createArrayOf(stripArrayPartOfType(elemTypeName), v.fold(null)(_.map(elementCodec.box).toArray[AnyRef])).acquire)
+          },
+        _.map(elementCodec.box).toArray[AnyRef]
       ),
       _.get,
       tpe

@@ -4,6 +4,7 @@ import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.sql.*
 import perspective.Id
+import weaver.Expectations
 
 trait PlatformValueSourceSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
     extends PlatformFunSuite[Codec0, Platform] {
@@ -30,16 +31,14 @@ trait PlatformValueSourceSuite[Codec0[_], Platform <: SqlQueryPlatform { type Co
       )
     )
 
-  dbTest("FromTable"):
-    def quoteConst(s: String) = SqlStr.const(platform.sqlRenderer.quote(s))
+  dbTest("FromTable"): db ?=>
+    def q(s: String) = SqlStr.const(platform.sqlRenderer.quote(s))
     for
-      _ <- summon[DbType].run(
-        sql"""CREATE TABLE ${quoteConst("tempTable")} (${quoteConst("i")} INTEGER, ${quoteConst(
-            "d"
-          )} DOUBLE PRECISION);"""
+      res <- db.run(
+        sql"""CREATE TABLE ${q("tempTable")} (${q("i")} INTEGER, ${q("d")} DOUBLE PRECISION);"""
       )
-      _ <- summon[DbType].run(
-        sql"""INSERT INTO ${quoteConst("tempTable")} (${quoteConst("i")}, ${quoteConst("d")}) VALUES (5, 3.14)"""
+      _ <- db.run(
+        sql"""INSERT INTO ${q("tempTable")} (${q("i")}, ${q("d")}) VALUES (5, 3.14)"""
       )
       r <- Select(Query.from(TempTable.table)).run
     yield expect.same(Seq(TempTable[Id](Some(5), Some(3.14D))), r)
