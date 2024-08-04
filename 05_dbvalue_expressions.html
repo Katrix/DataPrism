@@ -1,4 +1,4 @@
-<!DOCTYPE html><html data-githubContributorsUrl="https://api.github.com/repos/Katrix/DataPrism" data-githubContributorsFilename="docs/_docs/guide/05_dbvalue_expressions.md" data-pathToRoot=""><head><meta charset="utf-8"></meta><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"></meta><title>DbValue and Expressions</title><link rel="shortcut icon" type="image/x-icon" href="favicon.ico"></link><script type="text/javascript" src="scripts/theme.js"></script><script type="text/javascript" src="scripts/searchData.js" defer="true"></script><script type="text/javascript" src="scripts/scastieConfiguration.js" defer="true"></script><link rel="stylesheet" href="styles/theme/bundle.css"></link><link rel="stylesheet" href="styles/theme/components/bundle.css"></link><link rel="stylesheet" href="styles/theme/components/button/bundle.css"></link><link rel="stylesheet" href="styles/theme/layout/bundle.css"></link><link rel="stylesheet" href="styles/nord-light.css"></link><link rel="stylesheet" href="styles/dotty-icons.css"></link><link rel="stylesheet" href="styles/filter-bar.css"></link><link rel="stylesheet" href="styles/code-snippets.css"></link><link rel="stylesheet" href="styles/searchbar.css"></link><link rel="stylesheet" href="styles/social-links.css"></link><link rel="stylesheet" href="styles/versions-dropdown.css"></link><link rel="stylesheet" href="styles/content-contributors.css"></link><link rel="stylesheet" href="styles/fontawesome.css"></link><script type="text/javascript" src="hljs/highlight.pack.js" defer="true"></script><script type="text/javascript" src="scripts/hljs-scala3.js" defer="true"></script><script type="text/javascript" src="scripts/ux.js" defer="true"></script><script type="text/javascript" src="scripts/common/component.js" defer="true"></script><script type="text/javascript" src="scripts/common/utils.js" defer="true"></script><script type="text/javascript" src="scripts/components/FilterBar.js" defer="true"></script><script type="text/javascript" src="scripts/components/DocumentableList.js" defer="true"></script><script type="text/javascript" src="scripts/components/Input.js" defer="true"></script><script type="text/javascript" src="scripts/components/FilterGroup.js" defer="true"></script><script type="text/javascript" src="scripts/components/Filter.js" defer="true"></script><script type="text/javascript" src="scripts/scaladoc-scalajs.js" defer="true"></script><script type="text/javascript" src="scripts/contributors.js" defer="true"></script><script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js" defer="true"></script><script type="text/javascript" src="https://d3js.org/d3.v6.min.js" defer="true"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/graphlib-dot@0.6.2/dist/graphlib-dot.min.js" defer="true"></script><script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dagre-d3/0.6.1/dagre-d3.min.js" defer="true"></script><script type="text/javascript" src="https://scastie.scala-lang.org/embedded.js" defer="true"></script><script type="text/javascript" src="scripts/data.js" defer="true"></script><link rel="stylesheet" href="styles/staticsitestyles.css"></link><script>var pathToRoot = "";</script></head><body><div id=""><div id="header" class="body-small"><div class="header-container-left"><a href="" class="logo-container"><span class="project-name h300">DataPrism</span></a><span onclick="dropdownHandler(event)" class="text-button with-arrow" id="dropdown-trigger"><a><div class="projectVersion">0.0.0+70-d0c1e168-SNAPSHOT</div></a></span><div id="version-dropdown" class="dropdown-menu"></div></div><div class="header-container-right"><button id="search-toggle" class="icon-button"></button><span id="theme-toggle" class="icon-button"></span><span id="mobile-menu-toggle" class="icon-button hamburger"></span></div></div><div id="mobile-menu"><div class="mobile-menu-header body-small"><span class="mobile-menu-logo"><span class="project-name h300">DataPrism</span></span><button id="mobile-menu-close" class="icon-button close"></button></div><div class="mobile-menu-container body-medium"><input id="mobile-scaladoc-searchbar-input" class="scaladoc-searchbar-input" type="search" placeholder="Find anything"></input><span id="mobile-theme-toggle" class="mobile-menu-item mode"></span></div></div><span id="mobile-sidebar-toggle" class="floating-button"></span><div id="leftColumn" class="body-small"><div class="switcher-container"><a id="docs-nav-button" class="switcher h100 selected" href="index.html">Docs</a><a id="api-nav-button" class="switcher h100 " href="api/index.html">API</a></div><nav id="docs-nav" class="side-menu"><div class="ni n0 "><span class="nh de"><a href="01_table_definitions.html"><span>Table definitions</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="02_queries.html"><span>Queries</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="03_operations.html"><span>Operations (SELECT, INSERT, UPDATE, DELETE)</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="04_types.html"><span>Types</span></a></span></div><div class="ni n0 expanded"><span class="nh h100 selected de"><a href="#"><span>DbValue and Expressions</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="06_compiled.html"><span>Compiled queries and commands</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="07_mapres_exotic_data.html"><span>MapRes and Exotic data</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="08_transactions.html"><span>Transactions</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="09_cats_effects.html"><span>Usage with Cats effects</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="10_fs2_effects.html"><span>Usage with Fs2</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="11_skunk.html"><span>Usage with Skunk</span></a></span></div></nav></div><div id="footer" class="body-small"><div class="left-container">Generated with</div><div class="right-container"><a href="https://github.com/Katrix/DataPrism"><button class="icon-button gh"></button></a><div class="text"></div></div><div class="text-mobile"></div></div><div id="scaladoc-searchBar"></div><div id="main"><div class="breadcrumbs container"><a href="index.html">DataPrism</a>/<a href="05_dbvalue_expressions.html">DbValue and Expressions</a></div><div id="content" class="body-medium"><div><section id="dbvalue-and-expressions-1">
+<!DOCTYPE html><html data-githubContributorsUrl="https://api.github.com/repos/Katrix/DataPrism" data-githubContributorsFilename="docs/_docs/guide/05_dbvalue_expressions.md" data-pathToRoot=""><head><meta charset="utf-8"></meta><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"></meta><title>DbValue and Expressions</title><link rel="shortcut icon" type="image/x-icon" href="favicon.ico"></link><script type="text/javascript" src="scripts/theme.js"></script><script type="text/javascript" src="scripts/searchData.js" defer="true"></script><script type="text/javascript" src="scripts/scastieConfiguration.js" defer="true"></script><link rel="stylesheet" href="styles/theme/bundle.css"></link><link rel="stylesheet" href="styles/theme/components/bundle.css"></link><link rel="stylesheet" href="styles/theme/components/button/bundle.css"></link><link rel="stylesheet" href="styles/theme/layout/bundle.css"></link><link rel="stylesheet" href="styles/nord-light.css"></link><link rel="stylesheet" href="styles/dotty-icons.css"></link><link rel="stylesheet" href="styles/filter-bar.css"></link><link rel="stylesheet" href="styles/code-snippets.css"></link><link rel="stylesheet" href="styles/searchbar.css"></link><link rel="stylesheet" href="styles/social-links.css"></link><link rel="stylesheet" href="styles/versions-dropdown.css"></link><link rel="stylesheet" href="styles/content-contributors.css"></link><link rel="stylesheet" href="styles/fontawesome.css"></link><script type="text/javascript" src="hljs/highlight.pack.js" defer="true"></script><script type="text/javascript" src="scripts/hljs-scala3.js" defer="true"></script><script type="text/javascript" src="scripts/ux.js" defer="true"></script><script type="text/javascript" src="scripts/common/component.js" defer="true"></script><script type="text/javascript" src="scripts/common/utils.js" defer="true"></script><script type="text/javascript" src="scripts/components/FilterBar.js" defer="true"></script><script type="text/javascript" src="scripts/components/DocumentableList.js" defer="true"></script><script type="text/javascript" src="scripts/components/Input.js" defer="true"></script><script type="text/javascript" src="scripts/components/FilterGroup.js" defer="true"></script><script type="text/javascript" src="scripts/components/Filter.js" defer="true"></script><script type="text/javascript" src="scripts/scaladoc-scalajs.js" defer="true"></script><script type="text/javascript" src="scripts/contributors.js" defer="true"></script><script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js" defer="true"></script><script type="text/javascript" src="https://d3js.org/d3.v6.min.js" defer="true"></script><script type="text/javascript" src="https://cdn.jsdelivr.net/npm/graphlib-dot@0.6.2/dist/graphlib-dot.min.js" defer="true"></script><script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dagre-d3/0.6.1/dagre-d3.min.js" defer="true"></script><script type="text/javascript" src="https://scastie.scala-lang.org/embedded.js" defer="true"></script><script type="text/javascript" src="scripts/data.js" defer="true"></script><link rel="stylesheet" href="styles/staticsitestyles.css"></link><script>var pathToRoot = "";</script></head><body><div id=""><div id="header" class="body-small"><div class="header-container-left"><a href="" class="logo-container"><span class="project-name h300">DataPrism</span></a><span onclick="dropdownHandler(event)" class="text-button with-arrow" id="dropdown-trigger"><a><div class="projectVersion">0.0.0+76-59a6d486-SNAPSHOT</div></a></span><div id="version-dropdown" class="dropdown-menu"></div></div><div class="header-container-right"><button id="search-toggle" class="icon-button"></button><span id="theme-toggle" class="icon-button"></span><span id="mobile-menu-toggle" class="icon-button hamburger"></span></div></div><div id="mobile-menu"><div class="mobile-menu-header body-small"><span class="mobile-menu-logo"><span class="project-name h300">DataPrism</span></span><button id="mobile-menu-close" class="icon-button close"></button></div><div class="mobile-menu-container body-medium"><input id="mobile-scaladoc-searchbar-input" class="scaladoc-searchbar-input" type="search" placeholder="Find anything"></input><span id="mobile-theme-toggle" class="mobile-menu-item mode"></span></div></div><span id="mobile-sidebar-toggle" class="floating-button"></span><div id="leftColumn" class="body-small"><div class="switcher-container"><a id="docs-nav-button" class="switcher h100 selected" href="index.html">Docs</a><a id="api-nav-button" class="switcher h100 " href="api/index.html">API</a></div><nav id="docs-nav" class="side-menu"><div class="ni n0 "><span class="nh de"><a href="01_table_definitions.html"><span>Table definitions</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="02_queries.html"><span>Queries</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="03_operations.html"><span>Operations (SELECT, INSERT, UPDATE, DELETE)</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="04_types.html"><span>Types</span></a></span></div><div class="ni n0 expanded"><span class="nh h100 selected de"><a href="#"><span>DbValue and Expressions</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="06_compiled.html"><span>Compiled queries and commands</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="07_mapres_exotic_data.html"><span>MapRes and Exotic data</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="08_transactions.html"><span>Transactions</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="09_cats_effects.html"><span>Usage with Cats effects</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="10_fs2_effects.html"><span>Usage with Fs2</span></a></span></div><div class="ni n0 "><span class="nh de"><a href="11_skunk.html"><span>Usage with Skunk</span></a></span></div></nav></div><div id="footer" class="body-small"><div class="left-container">Generated with</div><div class="right-container"><a href="https://github.com/Katrix/DataPrism"><button class="icon-button gh"></button></a><div class="text"></div></div><div class="text-mobile"></div></div><div id="scaladoc-searchBar"></div><div id="main"><div class="breadcrumbs container"><a href="index.html">DataPrism</a>/<a href="05_dbvalue_expressions.html">DbValue and Expressions</a></div><div id="content" class="body-medium"><div><section id="dbvalue-and-expressions-1">
  <h1 class="h500"><a href="#dbvalue-and-expressions-1" class="anchor"></a>DbValue and Expressions</h1>
  <p>It's time to talk about <code>DbValue</code>s and expressions.</p>
 </section>
@@ -12,32 +12,219 @@
 </section>
 <section id="expressions-1">
  <h2 class="h500"><a href="#expressions-1" class="anchor"></a>Expressions</h2>
- <p>TODO</p>
+ <p>Here are some operations that can be done on expressions. This is not a comprehensive list.</p>
+</section>
+<section id="primitive-operators-and-functions-1">
+ <h3 class="h400"><a href="#primitive-operators-and-functions-1" class="anchor"></a>Primitive operators and functions</h3>
+ <p>Here are some of the operators and functions found on all db values:</p>
+ <p>All DbValues can be compared for equality. This is done using the <code>===</code> and <code>!==</code> operators.</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>
+</span><span line-number="3" class=""><span class="tooltip-container"></span>val a: DbValue[Boolean] = ???
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val b: DbValue[Boolean] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>
+</span><span line-number="6" class=""><span class="tooltip-container"></span>val eq = a === b
+</span><span line-number="7" class=""><span class="tooltip-container"></span>val neq = a !== b
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
+ <p>Casting and converting to Some. For casting you need a <code>CastType</code>. For most platforms, this is the normal types used elsewhere in DataPrism. For MySQL platforms, they are special types found at <code>MySqlJdbcTypes.castType</code>.</p>
+ <div class="snippet mono-small-block">
+  <pre><code class="language-"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>import dataprism.jdbc.sql.PostgresJdbcTypes
+</span><span line-number="3" class=""><span class="tooltip-container"></span>val a: DbValue[Boolean] = ???
+</span><span line-number="4" class=""><span class="tooltip-container"></span>
+</span><span line-number="5" class=""><span class="tooltip-container"></span>val asSome = a.asSome //Wrapping in Some
+</span><span line-number="6" class=""><span class="tooltip-container"></span>val casted = a.cast(PostgresJdbcTypes.integer)
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
 </section>
 <section id="booleans-1">
  <h3 class="h400"><a href="#booleans-1" class="anchor"></a>Booleans</h3>
+ <p>Normal boolean operations work with DbValues</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>
+</span><span line-number="3" class=""><span class="tooltip-container"></span>val a: DbValue[Boolean] = ???
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val b: DbValue[Boolean] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>
+</span><span line-number="6" class=""><span class="tooltip-container"></span>val and = a &amp;&amp; b
+</span><span line-number="7" class=""><span class="tooltip-container"></span>val or = a || b
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val not = !a
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
 </section>
 <section id="numerics-1">
  <h3 class="h400"><a href="#numerics-1" class="anchor"></a>Numerics</h3>
+ <p>Most dataprism numeric operators are found in the <code>SqlNumeric</code> typeclass</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>
+</span><span line-number="3" class=""><span class="tooltip-container"></span>val a: DbValue[Double] = ???
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val b: DbValue[Double] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>
+</span><span line-number="6" class=""><span class="tooltip-container"></span>val plus = a + b
+</span><span line-number="7" class=""><span class="tooltip-container"></span>val minus = a - b
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val times = a * b
+</span><span line-number="9" class=""><span class="tooltip-container"></span>val div = a / b
+</span><span line-number="10" class=""><span class="tooltip-container"></span>val mod = a % b
+</span><span line-number="11" class=""><span class="tooltip-container"></span>val neg = -a
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
+</section>
+<section id="math-functions-1">
+ <h3 class="h400"><a href="#math-functions-1" class="anchor"></a>Math functions</h3>
+ <p>DataPrism puts a lot of math functions in the <code>DbMath</code> object.</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>import dataprism.jdbc.sql.PostgresJdbcTypes
+</span><span line-number="3" class=""><span class="tooltip-container"></span>
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val a: DbValue[Double] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>val b: DbValue[Double] = ???
+</span><span line-number="6" class=""><span class="tooltip-container"></span>
+</span><span line-number="7" class=""><span class="tooltip-container"></span>val pow = DbMath.pow(a, b)
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val sqrt = DbMath.sqrt(a)
+</span><span line-number="9" class=""><span class="tooltip-container"></span>val ceil = DbMath.ceil(a)
+</span><span line-number="10" class=""><span class="tooltip-container"></span>val floor = DbMath.floor(a)
+</span><span line-number="11" class=""><span class="tooltip-container"></span>val log = DbMath.log(a, b)
+</span><span line-number="12" class=""><span class="tooltip-container"></span>val sign = DbMath.sign(a)
+</span><span line-number="13" class=""><span class="tooltip-container"></span>val pi = DbMath.pi(PostgresJdbcTypes.doublePrecision) //Cast type here
+</span><span line-number="14" class=""><span class="tooltip-container"></span>val random = DbMath.random(PostgresJdbcTypes.doublePrecision) //Cast type here
+</span><span line-number="15" class=""><span class="tooltip-container"></span>
+</span><span line-number="16" class=""><span class="tooltip-container"></span>val sin = DbMath.sin(a)
+</span><span line-number="17" class=""><span class="tooltip-container"></span>val cos = DbMath.cos(a)
+</span><span line-number="18" class=""><span class="tooltip-container"></span>val tan = DbMath.tan(a)
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
 </section>
 <section id="nullable-values-1">
  <h3 class="h400"><a href="#nullable-values-1" class="anchor"></a>Nullable values</h3>
+ <p>Here are operations that can be used on nullable values.</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>
+</span><span line-number="3" class=""><span class="tooltip-container"></span>val a: DbValue[Option[Double]] = ???
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val b: DbValue[Option[Double]] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>val c: DbValue[Double] = ???
+</span><span line-number="6" class=""><span class="tooltip-container"></span>
+</span><span line-number="7" class=""><span class="tooltip-container"></span>val map = a.map(v =&gt; v + c)
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val filter = a.filter(v =&gt; v &gt; c)
+</span><span line-number="9" class=""><span class="tooltip-container"></span>val flatMap = a.flatMap(_ =&gt; b)
+</span><span line-number="10" class=""><span class="tooltip-container"></span>
+</span><span line-number="11" class=""><span class="tooltip-container"></span>val isEmpty = a.isEmpty
+</span><span line-number="12" class=""><span class="tooltip-container"></span>val isDefined = a.isDefined
+</span><span line-number="13" class=""><span class="tooltip-container"></span>
+</span><span line-number="14" class=""><span class="tooltip-container"></span>val orElse = a.orElse(b)
+</span><span line-number="15" class=""><span class="tooltip-container"></span>val getOrElse = a.getOrElse(c)
+</span><span line-number="16" class=""><span class="tooltip-container"></span>
+</span><span line-number="17" class=""><span class="tooltip-container"></span>val mapN = (a, b).mapNullableN((v1, v2) =&gt; v1 + v2)
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
 </section>
 <section id="many-1">
  <h3 class="h400"><a href="#many-1" class="anchor"></a>Many</h3>
+ <p>Many is the type used to represent a group of values, usually from groupBy or having.</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>
+</span><span line-number="3" class=""><span class="tooltip-container"></span>val v: DbValue[Double] = ???
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val m1: Many[Double] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>val m2: Many[Double] = ???
+</span><span line-number="6" class=""><span class="tooltip-container"></span>
+</span><span line-number="7" class=""><span class="tooltip-container"></span>val map = m1.map(_ + v)
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val count = m2.count
+</span><span line-number="9" class=""><span class="tooltip-container"></span>
+</span><span line-number="10" class=""><span class="tooltip-container"></span>val mapN = (m1, m2).mapManyN((a, b) =&gt; a + b)
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
 </section>
 <section id="string-operations-1">
  <h3 class="h400"><a href="#string-operations-1" class="anchor"></a>String operations</h3>
+ <p>Here are some SQL string operations. These are found in the <code>SqlString</code> typeclass.</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>import dataprism.jdbc.sql.PostgresJdbcTypes
+</span><span line-number="3" class=""><span class="tooltip-container"></span>
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val a: DbValue[String] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>val b: DbValue[String] = ???
+</span><span line-number="6" class=""><span class="tooltip-container"></span>val c: DbValue[String] = ???
+</span><span line-number="7" class=""><span class="tooltip-container"></span>
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val concat = a ++ b
+</span><span line-number="9" class=""><span class="tooltip-container"></span>val repeat = a * 5.as(PostgresJdbcTypes.integer)
+</span><span line-number="10" class=""><span class="tooltip-container"></span>val length = a.length
+</span><span line-number="11" class=""><span class="tooltip-container"></span>val lower = a.toLowerCase
+</span><span line-number="12" class=""><span class="tooltip-container"></span>val upper = a.toUpperCase
+</span><span line-number="13" class=""><span class="tooltip-container"></span>val like = a.like(b)
+</span><span line-number="14" class=""><span class="tooltip-container"></span>val startsWith = a.startsWith(b)
+</span><span line-number="15" class=""><span class="tooltip-container"></span>val endsWith = a.endsWith(b)
+</span><span line-number="16" class=""><span class="tooltip-container"></span>val replace = a.replace(b, c)
+</span><span line-number="17" class=""><span class="tooltip-container"></span>
+</span><span line-number="18" class=""><span class="tooltip-container"></span>val concat2 = SqlString.concat(a, b)
+</span><span line-number="19" class=""><span class="tooltip-container"></span>val concatWs = SqlString.concatWs(" ".as(PostgresJdbcTypes.text), a, b)
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
 </section>
 <section id="in-1">
  <h3 class="h400"><a href="#in-1" class="anchor"></a>In</h3>
+ <p>SQL IN looks like this.</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>import dataprism.jdbc.sql.PostgresJdbcTypes
+</span><span line-number="3" class=""><span class="tooltip-container"></span>
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val a: DbValue[Boolean] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>val b: DbValue[Boolean] = ???
+</span><span line-number="6" class=""><span class="tooltip-container"></span>val c: DbValue[Boolean] = ???
+</span><span line-number="7" class=""><span class="tooltip-container"></span>
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val in1 = a.in(b, c)
+</span><span line-number="9" class=""><span class="tooltip-container"></span>val in2 = a.notIn(b, c)
+</span><span line-number="10" class=""><span class="tooltip-container"></span>val in3 = a.in(Query.of(b))
+</span><span line-number="11" class=""><span class="tooltip-container"></span>val in4 = a.notIn(Query.of(b))
+</span><span line-number="12" class=""><span class="tooltip-container"></span>val in5 = a.inAs(Seq(true, false), PostgresJdbcTypes.boolean)
+</span><span line-number="13" class=""><span class="tooltip-container"></span>val in6 = a.notInAs(Seq(true, false), PostgresJdbcTypes.boolean)
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
 </section>
 <section id="case-1">
  <h3 class="h400"><a href="#case-1" class="anchor"></a>Case</h3>
+ <p>DataPrism supports case both as many if checks, and as a pattern match like operator.</p>
+ <div class="snippet mono-small-block" scala-snippet="" runnable="">
+  <pre><code class="language-scala"><span line-number="1" class=""><span class="tooltip-container"></span>import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
+</span><span line-number="2" class=""><span class="tooltip-container"></span>
+</span><span line-number="3" class=""><span class="tooltip-container"></span>val v: DbValue[Double] = ???
+</span><span line-number="4" class=""><span class="tooltip-container"></span>val w1: DbValue[Double] = ???
+</span><span line-number="5" class=""><span class="tooltip-container"></span>val w2: DbValue[Double] = ???
+</span><span line-number="6" class=""><span class="tooltip-container"></span>
+</span><span line-number="7" class=""><span class="tooltip-container"></span>val t1: DbValue[Int] = ???
+</span><span line-number="8" class=""><span class="tooltip-container"></span>val t2: DbValue[Int] = ???
+</span><span line-number="9" class=""><span class="tooltip-container"></span>val t3: DbValue[Int] = ???
+</span><span line-number="10" class=""><span class="tooltip-container"></span>
+</span><span line-number="11" class=""><span class="tooltip-container"></span>Case(v)
+</span><span line-number="12" class=""><span class="tooltip-container"></span>  .when(w1)(t1)
+</span><span line-number="13" class=""><span class="tooltip-container"></span>  .when(w2)(t2)
+</span><span line-number="14" class=""><span class="tooltip-container"></span>  .otherwise(t3)
+</span><span line-number="15" class=""><span class="tooltip-container"></span>
+</span><span line-number="16" class=""><span class="tooltip-container"></span>Case
+</span><span line-number="17" class=""><span class="tooltip-container"></span>  .when(v === w1)(t1)
+</span><span line-number="18" class=""><span class="tooltip-container"></span>  .when(v === w2)(t2)
+</span><span line-number="19" class=""><span class="tooltip-container"></span>  .otherwise(t3)
+</span></code></pre>
+  <div class="buttons"></div>
+ </div>
+</section>
+<section id="custom-sql-1">
+ <h3 class="h400"><a href="#custom-sql-1" class="anchor"></a>Custom SQL</h3>
+ <p>Custom SQL can be created using the functions <code>DbValue.raw</code> and <code>DbValue.rawK</code>.</p>
 </section>
 <section id="custom-sql-functions-1">
  <h3 class="h400"><a href="#custom-sql-functions-1" class="anchor"></a>Custom SQL functions</h3>
-</section>
-<section id="custom-sql-strings-1">
- <h3 class="h400"><a href="#custom-sql-strings-1" class="anchor"></a>Custom SQL strings</h3>
-</section></div><div id="toc" class="body-small"><div id="toc-container"><span class="toc-title h200">In this article</span><nav class="toc-nav"><ul class="toc-list"><li><a href="#dbvalue-and-expressions-1">DbValue and Expressions</a><ul><li><a href="#nullability-1">Nullability</a></li><li><a href="#prepared-statement-arguments-1">Prepared statement arguments</a></li><li><a href="#expressions-1">Expressions</a><ul><li><a href="#booleans-1">Booleans</a></li><li><a href="#numerics-1">Numerics</a></li><li><a href="#nullable-values-1">Nullable values</a></li><li><a href="#many-1">Many</a></li><li><a href="#string-operations-1">String operations</a></li><li><a href="#in-1">In</a></li><li><a href="#case-1">Case</a></li><li><a href="#custom-sql-functions-1">Custom SQL functions</a></li><li><a href="#custom-sql-strings-1">Custom SQL strings</a></li></ul></li></ul></li></ul></nav></div></div></div><div id="footer" class="body-small mobile-footer"><div class="left-container">Generated with</div><div class="right-container"><a href="https://github.com/Katrix/DataPrism"><button class="icon-button gh"></button></a><div class="text"></div></div><div class="text-mobile"></div></div></div></div></body></html>
+ <p>When a custom SQL function is needed, there exists helpers called <code>DbValue.function</code> and <code>DbValue.functionK</code> to help create these functions.</p>
+</section></div><div id="toc" class="body-small"><div id="toc-container"><span class="toc-title h200">In this article</span><nav class="toc-nav"><ul class="toc-list"><li><a href="#dbvalue-and-expressions-1">DbValue and Expressions</a><ul><li><a href="#nullability-1">Nullability</a></li><li><a href="#prepared-statement-arguments-1">Prepared statement arguments</a></li><li><a href="#expressions-1">Expressions</a><ul><li><a href="#primitive-operators-and-functions-1">Primitive operators and functions</a></li><li><a href="#booleans-1">Booleans</a></li><li><a href="#numerics-1">Numerics</a></li><li><a href="#math-functions-1">Math functions</a></li><li><a href="#nullable-values-1">Nullable values</a></li><li><a href="#many-1">Many</a></li><li><a href="#string-operations-1">String operations</a></li><li><a href="#in-1">In</a></li><li><a href="#case-1">Case</a></li><li><a href="#custom-sql-1">Custom SQL</a></li><li><a href="#custom-sql-functions-1">Custom SQL functions</a></li></ul></li></ul></li></ul></nav></div></div></div><div id="footer" class="body-small mobile-footer"><div class="left-container">Generated with</div><div class="right-container"><a href="https://github.com/Katrix/DataPrism"><button class="icon-button gh"></button></a><div class="text"></div></div><div class="text-mobile"></div></div></div></div></body></html>
