@@ -133,14 +133,8 @@ traditional `groupBy` function, as a `groupMap` function maps better to DataPris
 The second function does the aggregation given both the extracted value, and the values of the
 query, which are now wrapped in `Many`. Here are some examples:
 
-Arrays are currently out of commission.
-
 ```scala 3 sc-compile-with:User.scala
-/*
 import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
-
-//Needed for arrayAgg currently
-import dataprism.jdbc.sql.PostgresJdbcTypes.ArrayMapping.given_ArrayMapping_A
 
 val q: Query[UserK] = Query.from(UserK.table)
 
@@ -154,7 +148,6 @@ val q2: Query[[F[_]] =>> (F[Option[String]], F[String], F[Seq[String]])] =
     (t: (DbValue[Option[String]], DbValue[String]), v: UserK[Many]) =>
       (t._1, t._2, v.email.arrayAgg)
   )
-*/
 ```
 
 Note how you don't have to directly return a column from the grouping function. For example, in `q3`
@@ -173,8 +166,8 @@ want flatMap for a database which does not support `LATERAL`, create your own pl
 import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
 
 //TODO: Does not compile for some reason. Fix MapRes
-//val q1: Query[[F[_]] =>> (UserK[F], UserK[F])] =
-//  Query.from(UserK.table).flatMap(u1 => Query.from(UserK.table).map(u2 => (u1, u2)))
+val q1: Query[[F[_]] =>> (UserK[F], UserK[F])] =
+  Query.from(UserK.table).flatMap(u1 => Query.from(UserK.table).map(u2 => (u1, u2)))
 
 val q2: Query[UserK] = for
   u <- Query.from(UserK.table)
@@ -190,14 +183,8 @@ and similar. The HKD used to define a table is not special. Any HKD (or not even
 with `perspective.ApplyKC` and `perspective.TraverseKC` instances can be used as a result type in
 functions like `map`. Here's one example:
 
-Arrays are currently out of commission.
-
 ```scala 3 sc-compile-with:User.scala
-/*
 import dataprism.jdbc.platform.PostgresJdbcPlatform.Api.{*, given}
-
-//Needed for arrayAgg currently
-import dataprism.jdbc.sql.PostgresJdbcTypes.ArrayMapping.given_ArrayMapping_A
 
 case class UsersWithEmailK[F[_]](email: F[String], usernames: F[Seq[String]])
 
@@ -209,7 +196,6 @@ val q1: Query[UsersWithEmailK] =
   Query.from(UserK.table).groupMap((v: UserK[DbValue]) => v.email)(
     (email: DbValue[String], v: UserK[Many]) => UsersWithEmailK(email, v.username.arrayAgg)
   )
-*/
 ```
 
 For more info, see [MapRes and Exotic data](07_mapres_exotic_data.md)

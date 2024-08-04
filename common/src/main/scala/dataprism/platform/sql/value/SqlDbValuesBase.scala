@@ -254,7 +254,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
       // TODO: Check that the return type is indeed Long on all platforms
       def count: DbValue[Long]
 
-      inline def unsafeAsDbValue: DbValue[A]
+      def unsafeAsDbValue: DbValue[A]
 
       def map[B](f: DbValue[A] => DbValue[B]): Many[B]
   }
@@ -283,7 +283,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
   val Case: CaseCompanion
   type CaseCompanion <: SqlCaseCompanion
 
-  trait SqlCaseCompanion {
+  trait  SqlCaseCompanion {
     def apply[A](v: DbValue[A]): ValueCase0[A]
     def when[A](whenCond: DbValue[Boolean])(thenV: DbValue[A]): ConditionCase[A]
   }

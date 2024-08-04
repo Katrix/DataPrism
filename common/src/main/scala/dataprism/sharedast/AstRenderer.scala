@@ -190,6 +190,7 @@ class AstRenderer[Codec[_]](ansiTypes: AnsiTypes[Codec], getCodecTypeName: [A] =
       case SqlExpr.FunctionName.ArrayContains     => normal("array_contains")
       case SqlExpr.FunctionName.TrimArray         => normal("trim_array")
       case SqlExpr.FunctionName.Unnest            => normal("unnest")
+      case SqlExpr.FunctionName.ArrayAgg          => normal("array_agg")
 
       case SqlExpr.FunctionName.Custom(f) => normal(f)
 

@@ -582,7 +582,7 @@ trait SqlDbValues extends SqlDbValuesBase { platform: SqlQueryPlatform =>
           .Function(SqlExpr.FunctionName.Count, Seq(many.unsafeAsDbValue.asAnyDbVal), AnsiTypes.bigint.notNull)
           .lift
 
-      inline def unsafeAsDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
+      def unsafeAsDbValue: DbValue[A] = many.asInstanceOf[DbValue[A]]
 
       def map[B](f: DbValue[A] => DbValue[B]): Many[B] = f(many.asInstanceOf[DbValue[A]]).asInstanceOf[DbValue[Any]]
   }

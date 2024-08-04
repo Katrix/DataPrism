@@ -892,8 +892,5 @@ trait SqlQueries extends SqlQueriesBase { platform: SqlQueryPlatform =>
   }
 
   extension [A](query: Query[[F[_]] =>> F[A]])
-    // TODO: Make use of an implicit conversion here?
-    @targetName("queryAsMany") override def asMany: Many[A] = query.asDbValue.unsafeDbValAsMany
-
     @targetName("queryAsDbValue") override def asDbValue: DbValue[A] = SqlDbValue.SubSelect(query).lift
 }

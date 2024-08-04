@@ -130,13 +130,10 @@ trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
   end SqlQueryCompanion
 
   extension [A](query: Query[[F[_]] =>> F[A]])
-    // TODO: Make use of an implicit conversion here?
-    @targetName("queryAsMany") def asMany: Many[A]
-
     @targetName("queryAsDbValue") def asDbValue: DbValue[A]
 
   type Api <: SqlQueryApi & SqlDbValueApi & QueryApi
   trait SqlQueryApi {
-    export platform.{asDbValue, asMany}
+    export platform.asDbValue
   }
 }

@@ -17,8 +17,8 @@ object MyPlatform extends PostgresJdbcPlatform, Fs2SqlPlatform {
   override type Api = PostgresApi & Fs2Api
   object Api extends PostgresApi, Fs2Api
 
-  override type Impl = DefaultCompleteImpl
-  object Impl extends DefaultCompleteImpl
+  override type Impl = DefaultCompleteImpl & SqlArraysImpl
+  object Impl extends DefaultCompleteImpl, SqlArraysImpl
 }
 ```
 

@@ -166,6 +166,7 @@ object SqlExpr {
     case ArrayContains
     case TrimArray
     case Unnest
+    case ArrayAgg
 
     case Custom(f: String)
 

@@ -128,6 +128,12 @@ trait SqlArrays extends SqlDbValuesBase { platform =>
     }
   }
 
+  extension [A](many: Many[A])
+    // TODO: Check that the return type is indeed Long on all platforms
+    @targetName("sqlArrayArrayAgg") def arrayAgg: DbValue[Seq[A]] =
+      val v = Many.unsafeAsDbValue(many)
+      Impl.function(SqlExpr.FunctionName.ArrayAgg, Seq(v.asAnyDbVal), arrayOfType(v.tpe))
+
   type Impl <: SqlArraysImpl & SqlValuesBaseImpl & SqlBaseImpl
   trait SqlArraysImpl {
     def queryFunction[A[_[_]]: ApplyKC: TraverseKC](
@@ -141,6 +147,7 @@ trait SqlArrays extends SqlDbValuesBase { platform =>
   trait SqlArraysApi {
     export platform.DbArrayLike
     export platform.DbArrayLike.given
+    export platform.arrayAgg
 
     type DbArrayCompanion = platform.DbArrayCompanion
     inline def DbArray: DbArrayCompanion = platform.DbArray
