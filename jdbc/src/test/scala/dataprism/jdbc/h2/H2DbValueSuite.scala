@@ -10,18 +10,18 @@ object H2DbValueSuite extends H2FunSuite, PlatformDbValueSuite[JdbcCodec, H2Jdbc
 
   import spire.implicits.*
   testBitwiseOps[Long, perspective.Id](platform, platform.AnsiTypes.bigint, Gen.choose(-10000, 10000), _.toInt)
-  testBitwiseOps[Long, Option](
+  testBitwiseOps[Long, H2JdbcPlatform.Nullable](
     platform,
     platform.AnsiTypes.bigint.nullable,
-    Gen.option(Gen.choose(-10000, 10000)),
+    sqlNullGen(Gen.choose(-10000, 10000)),
     _.toInt
   )
 
   testBitwiseOps[Byte, perspective.Id](platform, H2JdbcTypes.tinyint, Gen.choose(Byte.MinValue, Byte.MaxValue), _.toInt)
-  testBitwiseOps[Byte, Option](
+  testBitwiseOps[Byte, H2JdbcPlatform.Nullable](
     platform,
     H2JdbcTypes.tinyint.nullable,
-    Gen.option(Gen.choose(Byte.MinValue, Byte.MaxValue)),
+    sqlNullGen(Gen.choose(Byte.MinValue, Byte.MaxValue)),
     _.toInt
   )
 }

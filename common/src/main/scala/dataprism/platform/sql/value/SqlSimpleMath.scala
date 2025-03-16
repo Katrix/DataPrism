@@ -3,6 +3,7 @@ package dataprism.platform.sql.value
 import scala.util.NotGiven
 
 import dataprism.sharedast.SqlExpr
+import dataprism.sql.SqlNull
 
 trait SqlSimpleMath extends SqlDbValuesBase {
 
@@ -47,9 +48,9 @@ trait SqlSimpleMath extends SqlDbValuesBase {
     def sign[A: SqlNumeric](a: DbValue[A]): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Sign, Seq(a.asAnyDbVal), a.tpe)
 
-    def pi[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[?]]): DbValue[A] =
+    def pi[A: SqlNumeric](tpe: CastType[A])(using NotGiven[SqlNull <:< A]): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Pi, Nil, tpe.castTypeType).cast(tpe)
 
-    def random[A: SqlNumeric](tpe: CastType[A])(using NotGiven[A <:< Option[?]]): DbValue[A] =
+    def random[A: SqlNumeric](tpe: CastType[A])(using NotGiven[SqlNull <:< A]): DbValue[A] =
       Impl.function(SqlExpr.FunctionName.Random, Nil, tpe.castTypeType).cast(tpe)
 }

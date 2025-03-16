@@ -3,6 +3,7 @@ package dataprism.platform.sql.implementations
 import dataprism.platform.sql.value.{SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations}
 import dataprism.sharedast.{SqlExpr, SqliteAstRenderer}
+import dataprism.sql.SqlNull
 
 trait SqlitePlatform
     extends DefaultCompleteSql,
@@ -54,12 +55,12 @@ trait SqlitePlatform
       f: MapUpdateReturning[Table, From, Res]
   ): (Table, From) => Res = (a, _) => f(a)
 
-  given bitwiseByte: SqlBitwise[Byte]              = SqlBitwise.defaultInstance
-  given bitwiseOptByte: SqlBitwise[Option[Byte]]   = SqlBitwise.defaultInstance
-  given bitwiseShort: SqlBitwise[Short]            = SqlBitwise.defaultInstance
-  given bitwiseOptShort: SqlBitwise[Option[Short]] = SqlBitwise.defaultInstance
-  given bitwiseInt: SqlBitwise[Int]                = SqlBitwise.defaultInstance
-  given bitwiseOptInt: SqlBitwise[Option[Int]]     = SqlBitwise.defaultInstance
+  given bitwiseByte: SqlBitwise[Byte]                = SqlBitwise.defaultInstance
+  given bitwiseOptByte: SqlBitwise[Byte | SqlNull]   = SqlBitwise.defaultInstance
+  given bitwiseShort: SqlBitwise[Short]              = SqlBitwise.defaultInstance
+  given bitwiseOptShort: SqlBitwise[Short | SqlNull] = SqlBitwise.defaultInstance
+  given bitwiseInt: SqlBitwise[Int]                  = SqlBitwise.defaultInstance
+  given bitwiseOptInt: SqlBitwise[Int | SqlNull]     = SqlBitwise.defaultInstance
 
   type OperationCompanion = SqlOperationCompanion
   object Operation extends SqlOperationCompanionImpl

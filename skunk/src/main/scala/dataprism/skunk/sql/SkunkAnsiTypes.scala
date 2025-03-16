@@ -3,7 +3,7 @@ package dataprism.skunk.sql
 import java.sql.{Date, Time, Timestamp}
 import java.time.ZoneOffset
 
-import dataprism.sql.{AnsiTypes, NullabilityTypeChoice}
+import dataprism.sql.{AnsiTypes, NullabilityTypeChoice, SqlNull}
 import skunk.Codec
 import skunk.codec.all
 
@@ -12,7 +12,12 @@ object SkunkAnsiTypes extends AnsiTypes[Codec] {
     def wrap: TypeOf[A] =
       if skunkCodec.types.length != 1 then
         throw new IllegalArgumentException("Skunk types must always have only one SQL type")
-      NullabilityTypeChoice.notNullByDefault(skunkCodec, _.opt)
+
+      import dataprism.sql.sqlNullSyntax.*
+      NullabilityTypeChoice.notNullByDefault(
+        skunkCodec,
+        _.opt.imap[A | SqlNull](_.getOrElse(SqlNull))(_.toOption)
+      )
 
   override val smallint: TypeOf[Short] = all.int2.wrap
 

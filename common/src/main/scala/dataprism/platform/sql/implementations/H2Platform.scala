@@ -3,6 +3,7 @@ package dataprism.platform.sql.implementations
 import dataprism.platform.sql.value.{SqlArrays, SqlBitwiseOps, SqlHyperbolicTrigFunctions, SqlTrigFunctions}
 import dataprism.platform.sql.{DefaultCompleteSql, DefaultSqlOperations, SqlMergeOperations}
 import dataprism.sharedast.H2AstRenderer
+import dataprism.sql.SqlNull
 
 trait H2Platform
     extends DefaultCompleteSql,
@@ -58,12 +59,12 @@ trait H2Platform
       f: MapUpdateReturning[Table, From, Res]
   ): (Table, From) => Res = f
 
-  given bitwiseByte: SqlBitwise[Byte]              = SqlBitwise.defaultInstance
-  given bitwiseOptByte: SqlBitwise[Option[Byte]]   = SqlBitwise.defaultInstance
-  given bitwiseShort: SqlBitwise[Short]            = SqlBitwise.defaultInstance
-  given bitwiseOptShort: SqlBitwise[Option[Short]] = SqlBitwise.defaultInstance
-  given bitwiseInt: SqlBitwise[Int]                = SqlBitwise.defaultInstance
-  given bitwiseOptInt: SqlBitwise[Option[Int]]     = SqlBitwise.defaultInstance
+  given bitwiseByte: SqlBitwise[Byte]                = SqlBitwise.defaultInstance
+  given bitwiseOptByte: SqlBitwise[Byte | SqlNull]   = SqlBitwise.defaultInstance
+  given bitwiseShort: SqlBitwise[Short]              = SqlBitwise.defaultInstance
+  given bitwiseOptShort: SqlBitwise[Short | SqlNull] = SqlBitwise.defaultInstance
+  given bitwiseInt: SqlBitwise[Int]                  = SqlBitwise.defaultInstance
+  given bitwiseOptInt: SqlBitwise[Int | SqlNull]     = SqlBitwise.defaultInstance
 
   type OperationCompanion = SqlOperationCompanion & SqlMergeOperationsCompanion
   object Operation extends SqlOperationCompanionImpl, SqlMergeOperationsCompanion

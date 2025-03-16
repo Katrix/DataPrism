@@ -40,7 +40,7 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
         .groupMap(_._1)((v, t) => (v, t._2.sum))
         .orderBy(_._1.asc)
     ).run.map: r =>
-      expect.same(Seq((2, Some(5L)), (3, Some(3L)), (5, Some(4L))), r)
+      expect.same(Seq((2, 5L), (3, 3L), (5, 4L)), r)
 
   dbTest("GroupByHaving"):
     Select(
@@ -54,7 +54,7 @@ trait PlatformQuerySuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A]
         }
         .orderBy(_._1.asc)
     ).run.map: r =>
-      expect.same(Set((2, Some(5L)), (5, Some(4L))), r.toSet)
+      expect.same(Set((2, 5L), (5, 4L)), r.toSet)
 
   dbTest("Distinct"):
     Select(Query.values(integer.forgetNNA)(5, 3, 5, 2).distinct).run.map: r =>

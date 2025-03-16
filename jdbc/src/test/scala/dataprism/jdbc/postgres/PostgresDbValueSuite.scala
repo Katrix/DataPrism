@@ -12,18 +12,18 @@ object PostgresDbValueSuite extends PostgresFunSuite, PlatformDbValueSuite[JdbcC
 
   import spire.implicits.*
   testBitwiseOps[Long, perspective.Id](platform, platform.AnsiTypes.bigint, Gen.choose(-10000, 10000), _.toInt)
-  testBitwiseOps[Long, Option](
+  testBitwiseOps[Long, PostgresJdbcPlatform.Nullable](
     platform,
     platform.AnsiTypes.bigint.nullable,
-    Gen.option(Gen.choose(-10000, 10000)),
+    sqlNullGen(Gen.choose(-10000, 10000)),
     _.toInt
   )
 
   testBitwiseOps[Short, perspective.Id](platform, platform.AnsiTypes.smallint, Gen.choose(-10000, 10000), _.toInt)
-  testBitwiseOps[Short, Option](
+  testBitwiseOps[Short, PostgresJdbcPlatform.Nullable](
     platform,
     platform.AnsiTypes.smallint.nullable,
-    Gen.option(Gen.choose(-10000, 10000)),
+    sqlNullGen(Gen.choose(-10000.toShort, 10000.toShort)),
     _.toInt
   )
 }

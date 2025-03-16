@@ -3,6 +3,7 @@ package dataprism.platform.sql.value
 import scala.annotation.targetName
 
 import dataprism.sharedast.SqlExpr
+import dataprism.sql.SqlNull
 
 trait SqlStringOps extends SqlDbValuesBase { platform =>
 
@@ -189,8 +190,8 @@ trait SqlStringOps extends SqlDbValuesBase { platform =>
 
     end defaultInstance
 
-    given SqlString[String]         = defaultInstance
-    given SqlString[Option[String]] = defaultInstance
+    given SqlString[String]           = defaultInstance
+    given SqlString[String | SqlNull] = defaultInstance
 
   type Api <: SqlStringApi & SqlDbValueApi & QueryApi
   trait SqlStringApi {

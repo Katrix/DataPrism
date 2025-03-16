@@ -8,10 +8,10 @@ import scala.annotation.tailrec
 import scala.util.Using
 
 import cats.syntax.all.*
-import dataprism.sql.{NullabilityTypeChoice, SelectedType}
+import dataprism.sql.{NullabilityTypeChoice, SelectedType, SqlNull}
 
 trait H2JdbcTypes extends JdbcAnsiTypes:
-  private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
+  private def tc[A](codec: JdbcCodec[A | SqlNull]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
   def arrayOf[A](tpe: SelectedType[JdbcCodec, A]): TypeOfN[A, Seq, tpe.Dimension] =
     val elementCodec = tpe.codec
@@ -26,18 +26,21 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
       JdbcCodec.withConnection(
         s"$elemTypeName ARRAY",
         rm ?=>
-          (rs, i, c) =>
-            Option(rs.getArray(i))
-              .map { arr =>
-                arr.acquire
-                val arrRs = arr.getResultSet
-                Seq.unfold(arrRs.next()) { cond =>
+          (rs, i, c) => {
+            val ao = rs.getArray(i)
+            if ao == null then Right(SqlNull)
+            else {
+              ao.acquire
+              val arrRs = ao.getResultSet
+              Seq
+                .unfold(arrRs.next()) { cond =>
                   Option.when(cond)(
                     (elementCodec.get(using rm)(arrRs, 2, c), arrRs.next())
                   )
                 }
-              }
-              .traverse(_.sequence),
+                .sequence
+            }
+          },
         rm ?=>
           (ps, i, v, c) => {
             @tailrec
@@ -45,7 +48,15 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
               if str.endsWith(" ARRAY") then stripArrayPartOfType(str.dropRight(2))
               else str
 
-            ps.setArray(i, c.createArrayOf(stripArrayPartOfType(elemTypeName), v.fold(null)(_.map(elementCodec.box).toArray[AnyRef])).acquire)
+            import dataprism.sql.sqlNullSyntax.*
+
+            ps.setArray(
+              i,
+              c.createArrayOf(
+                stripArrayPartOfType(elemTypeName),
+                v.fold(null)(_.asInstanceOf[Seq[A]].map(elementCodec.box).toArray[AnyRef])
+              ).acquire
+            )
           },
         _.map(elementCodec.box).toArray[AnyRef]
       ),

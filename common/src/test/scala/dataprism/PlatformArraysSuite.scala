@@ -5,6 +5,7 @@ import cats.effect.IO
 import cats.syntax.all.*
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.platform.sql.value.SqlArrays
+import dataprism.sql.SqlNull
 import org.scalacheck.Gen
 import org.scalacheck.cats.implicits.*
 import weaver.{Expectations, Log, SourceLocation}
@@ -140,9 +141,7 @@ trait PlatformArraysSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
 
   end testArrays
 
-  def testArrayUnnest[A: Show](tpe: Type[A], gen: Gen[A], opV: A => A, opDb: DbValue[A] => DbValue[A])(
-      using n: Nullability[A]
-  ): Unit =
+  def testArrayUnnest[A: Show](tpe: Type[A], gen: Gen[A], opV: A => A, opDb: DbValue[A] => DbValue[A]): Unit =
     typeLogTest("ArrayUnnest1", tpe): log =>
       given Log[IO] = log
       configuredForall(genNel(gen)): (v, vs) =>
@@ -150,11 +149,11 @@ trait PlatformArraysSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
           Select(
             DbArray
               .unnest(DbArray.of(v.as(tpe), vs.map(v => v.as(tpe))*))
-              .map((v: DbValue[Nullable[A]]) => n.reifyNullable(v).map(opDb))
+              .map((v: DbValue[Nullable[A]]) => v.map(opDb))
           )
         ).flatMap(_.run[F])
           .map: ret =>
-            expect(ret == (v +: vs).map(opV).map(Some(_)))
+            expect(ret == (v +: vs).map(opV))
 
     typeLogTest("ArrayUnnest2", tpe): log =>
       given Log[IO] = log
@@ -167,11 +166,14 @@ trait PlatformArraysSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A
                   DbArray.of(v1.as(tpe), vs1.map(v => v.as(tpe))*),
                   DbArray.of(v2.as(tpe), vs2.map(v => v.as(tpe))*)
                 )
-                .map((v1: DbValue[Nullable[A]], v2: DbValue[Nullable[A]]) =>
-                  (n.reifyNullable(v1).map(opDb), n.reifyNullable(v2).map(opDb))
-                )
+                .map((v1: DbValue[Nullable[A]], v2: DbValue[Nullable[A]]) => (v1.map(opDb), v2.map(opDb)))
             )
           ).flatMap(_.run[F])
             .map: ret =>
-              expect(ret == (v1 +: vs1).map(opV).padZip((v2 +: vs2).map(opV)))
+              expect(
+                ret == (v1 +: vs1)
+                  .map(opV)
+                  .padZip((v2 +: vs2).map(opV))
+                  .map((a, b) => (a.getOrElse(SqlNull), b.getOrElse(SqlNull)))
+              )
 }

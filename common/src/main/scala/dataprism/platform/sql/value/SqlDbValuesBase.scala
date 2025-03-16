@@ -6,7 +6,7 @@ import scala.util.NotGiven
 import dataprism.platform.MapRes
 import dataprism.platform.sql.SqlQueryPlatformBase
 import dataprism.sharedast.{SelectAst, SqlExpr}
-import dataprism.sql.SqlStr
+import dataprism.sql.{SqlNull, SqlStr}
 import perspective.*
 
 trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
@@ -18,7 +18,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
     def tpe(v: DbValue[V]): Type[R]
 
-    def nullable(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]] =
+    def nullable(using NotGiven[SqlNull <:< V], NotGiven[SqlNull <:< R]): UnaryOp[V | SqlNull, R | SqlNull] =
       Impl.nullableUnaryOp(this)
   }
 
@@ -30,88 +30,88 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
     def tpe(lhs: DbValue[LHS], rhs: DbValue[RHS]): Type[R]
 
     def nullable(
-        using NotGiven[LHS <:< Option[?]],
-        NotGiven[RHS <:< Option[?]],
-        NotGiven[R <:< Option[?]]
-    ): BinOp[Option[LHS], Option[RHS], Option[R]] = Impl.nullableBinOp(this)
-  }
-
-  type NullabilityOf[A] <: Nullability[A] = A match {
-    case Option[b] => Nullability.Aux[A, b, Option]
-    case _         => Nullability.Aux[A, A, Id]
+        using NotGiven[SqlNull <:< LHS],
+        NotGiven[SqlNull <:< RHS],
+        NotGiven[SqlNull <:< R]
+    ): BinOp[LHS | SqlNull, RHS | SqlNull, R | SqlNull] = Impl.nullableBinOp(this)
   }
 
   trait Nullability[A] extends NullabilityBase[A]:
     def wrapDbVal[B](dbVal: DbValue[B]): DbValue[N[B]]
-    def wrapType[B](tpe: Type[B]): Type[N[B]]
+    def wrapType[B](tpe: Type[B])(using NotGiven[SqlNull <:< B]): Type[N[B]]
     def wrapBinOp[LHS, RHS, R](binOp: BinOp[LHS, RHS, R])(
-        using NotGiven[LHS <:< Option[?]],
-        NotGiven[RHS <:< Option[?]],
-        NotGiven[R <:< Option[?]]
+        using NotGiven[SqlNull <:< LHS],
+        NotGiven[SqlNull <:< RHS],
+        NotGiven[SqlNull <:< R]
     ): BinOp[N[LHS], N[RHS], N[R]]
     def wrapUnaryOp[V, R](
         unaryOp: UnaryOp[V, R]
-    )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[N[V], N[R]]
+    )(using NotGiven[SqlNull <:< V], NotGiven[SqlNull <:< R]): UnaryOp[N[V], N[R]]
     def castDbVal(dbVal: DbValue[A]): DbValue[N[A]] = dbVal.asInstanceOf[DbValue[N[A]]]
-    def reifyNullable(dbVal: DbValue[Nullable[A]]): DbValue[Option[A]]
 
   object Nullability:
     type Aux[A, NNA0, N0[_]] = Nullability[A] { type N[B] = N0[B]; type NNA = NNA0 }
 
-    given notNull[A](using NotGiven[A <:< Option[?]]): Nullability.Aux[A, A, Id] = new Nullability[A]:
+    given notNull[A](using NotGiven[SqlNull <:< A]): Nullability.Aux[A, A, Id] = new Nullability[A]:
       type N[B] = B
       type NNA  = A
 
       override def isNullable: Boolean = false
 
-      override def wrapOption[B](n: B): Option[B]                 = Some(n)
-      override def nullableToOption[B](n: Nullable[B]): Option[B] = n.asInstanceOf[Option[B]]
+      override def wrapOption[B](n: B): Option[B] = Some(n)
+      override def nullableToOption[B](n: Nullable[B]): Option[B] = {
+        import dataprism.sql.sqlNullSyntax.*
+        n.toOption
+      }
 
-      override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[B] = dbVal
-      override def wrapType[B](tpe: Type[B]): Type[B]          = tpe.typedChoice.notNull
+      override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[B]                       = dbVal
+      override def wrapType[B](tpe: Type[B])(using NotGiven[SqlNull <:< B]): Type[B] = tpe.notNullChoice.notNull
       override def wrapBinOp[LHS, RHS, R](binOp: BinOp[LHS, RHS, R])(
-          using NotGiven[LHS <:< Option[?]],
-          NotGiven[RHS <:< Option[?]],
-          NotGiven[R <:< Option[?]]
+          using NotGiven[SqlNull <:< LHS],
+          NotGiven[SqlNull <:< RHS],
+          NotGiven[SqlNull <:< R]
       ): BinOp[LHS, RHS, R] = binOp
       override def wrapUnaryOp[V, R](
           unaryOp: UnaryOp[V, R]
-      )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[V, R] = unaryOp
-      override def reifyNullable(dbVal: DbValue[Nullable[A]]): DbValue[Option[A]] =
-        dbVal.asInstanceOf[DbValue[Option[A]]]
+      )(using NotGiven[SqlNull <:< V], NotGiven[SqlNull <:< R]): UnaryOp[V, R] = unaryOp
 
-    given nullable[A <: Option[NN], NN]: Nullability.Aux[A, NN, Option] = new Nullability[A]:
-      type N[B] = Option[B]
+    given nullable[A >: (SqlNull | NN), NN]: Nullability.Aux[A, NN, Nullable] = new Nullability[A]:
+      type N[B] = B | SqlNull
       type NNA  = NN
 
       override def isNullable: Boolean = true
 
-      override def wrapOption[B](n: Option[B]): Option[B]                 = n
-      override def nullableToOption[B](n: Nullable[Option[B]]): Option[B] = n
+      override def wrapOption[B](n: B | SqlNull): Option[B] = {
+        import dataprism.sql.sqlNullSyntax.*
+        n.toOption
+      }
+      override def nullableToOption[B](n: Nullable[B | SqlNull]): Option[B] = {
+        import dataprism.sql.sqlNullSyntax.*
+        n.toOption
+      }
 
-      override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[Option[B]] = dbVal.asSome
-      override def wrapType[B](tpe: Type[B]): Type[Option[B]]          = tpe.typedChoice.nullable
+      override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[B | SqlNull] = dbVal.asSome
+      override def wrapType[B](tpe: Type[B])(using NotGiven[SqlNull <:< B]): Type[B | SqlNull] =
+        tpe.notNullChoice.nullable
       override def wrapBinOp[LHS, RHS, R](binOp: BinOp[LHS, RHS, R])(
-          using NotGiven[LHS <:< Option[?]],
-          NotGiven[RHS <:< Option[?]],
-          NotGiven[R <:< Option[?]]
-      ): BinOp[Option[LHS], Option[RHS], Option[R]] = binOp.nullable
+          using NotGiven[SqlNull <:< LHS],
+          NotGiven[SqlNull <:< RHS],
+          NotGiven[SqlNull <:< R]
+      ): BinOp[LHS | SqlNull, RHS | SqlNull, R | SqlNull] = binOp.nullable
       override def wrapUnaryOp[V, R](
           unaryOp: UnaryOp[V, R]
-      )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]] = unaryOp.nullable
-      override def reifyNullable(dbVal: DbValue[Nullable[A]]): DbValue[Option[A]] =
-        dbVal.asInstanceOf[DbValue[Option[A]]]
+      )(using NotGiven[SqlNull <:< V], NotGiven[SqlNull <:< R]): UnaryOp[V | SqlNull, R | SqlNull] = unaryOp.nullable
 
-  trait SqlOrderedBase[A](using val n: NullabilityOf[A]):
+  trait SqlOrderedBase[A]:
     def greatest(head: DbValue[A], tail: DbValue[A]*): DbValue[A]
 
     def least(head: DbValue[A], tail: DbValue[A]*): DbValue[A]
 
     extension (lhs: DbValue[A])
-      @targetName("lessThan") def <(rhs: DbValue[A]): DbValue[n.N[Boolean]]
-      @targetName("lessOrEqual") def <=(rhs: DbValue[A]): DbValue[n.N[Boolean]]
-      @targetName("greaterOrEqual") def >=(rhs: DbValue[A]): DbValue[n.N[Boolean]]
-      @targetName("greatherThan") def >(rhs: DbValue[A]): DbValue[n.N[Boolean]]
+      @targetName("lessThan") def <(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
+      @targetName("lessOrEqual") def <=(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
+      @targetName("greaterOrEqual") def >=(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
+      @targetName("greatherThan") def >(rhs: DbValue[A])(using n: Nullability[A]): DbValue[n.N[Boolean]]
 
       @targetName("leastExtension") def least(rhss: DbValue[A]*): DbValue[A]       = this.least(lhs, rhss*)
       @targetName("greatestExtension") def greatest(rhss: DbValue[A]*): DbValue[A] = this.greatest(lhs, rhss*)
@@ -125,7 +125,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
       @targetName("plus") def +(rhs: DbValue[A]): DbValue[A]
       @targetName("minus") def -(rhs: DbValue[A]): DbValue[A]
       @targetName("times") def *(rhs: DbValue[A]): DbValue[A]
-      @targetName("divide") def /(rhs: DbValue[A]): DbValue[Nullable[A]]
+      @targetName("divide") def /(rhs: DbValue[A]): DbValue[A | SqlNull]
       @targetName("remainder") def %(rhs: DbValue[A]): DbValue[A]
       @targetName("negation") def unary_- : DbValue[A]
 
@@ -138,17 +138,17 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
   type SqlIntegral[A] <: SqlNumeric[A] & SqlIntegralBase[A]
 
   given sqlNumericShort: SqlIntegral[Short]
-  given sqlNumericOptShort: SqlIntegral[Option[Short]]
+  given sqlNumericOptShort: SqlIntegral[Short | SqlNull]
   given sqlNumericInt: SqlIntegral[Int]
-  given sqlNumericOptInt: SqlIntegral[Option[Int]]
+  given sqlNumericOptInt: SqlIntegral[Int | SqlNull]
   given sqlNumericLong: SqlIntegral[Long]
-  given sqlNumericOptLong: SqlIntegral[Option[Long]]
+  given sqlNumericOptLong: SqlIntegral[Long | SqlNull]
   given sqlNumericFloat: SqlFractional[Float]
-  given sqlNumericOptFloat: SqlFractional[Option[Float]]
+  given sqlNumericOptFloat: SqlFractional[Float | SqlNull]
   given sqlNumericDouble: SqlFractional[Double]
-  given sqlNumericOptDouble: SqlFractional[Option[Double]]
+  given sqlNumericOptDouble: SqlFractional[Double | SqlNull]
   given sqlNumericBigDecimal: SqlFractional[BigDecimal]
-  given sqlNumericOptBigDecimal: SqlFractional[Option[BigDecimal]]
+  given sqlNumericOptBigDecimal: SqlFractional[BigDecimal | SqlNull]
 
   type DbMath
   val DbMath: DbMath
@@ -162,7 +162,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
     @targetName("dbValCast") def cast[B](tpe: CastType[B])(using n: Nullability[A]): DbValue[n.N[B]]
 
-    @targetName("dbValAsSome") def asSome(using ev: NotGiven[A <:< Option[?]]): DbValue[Option[A]]
+    @targetName("dbValAsSome") def asSome: DbValue[A | SqlNull]
 
     @targetName("dbValInValues") def in(head: DbValue[A], tail: DbValue[A]*)(
         using n: Nullability[A]
@@ -217,16 +217,14 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
     inline def function[T, B](name: String, tpe: Type[B])(args: T)(using mr: MapRes[DbValue, T]): DbValue[B] =
       functionK(name, tpe)(mr.toK(args))(using mr.traverseKC)
 
-    def nullV[A](tpe: Type[A])(using ev: NotGiven[A <:< Option[?]]): DbValue[Option[A]]
+    def nullV[A](tpe: Type[A]): DbValue[A | SqlNull]
 
     def trueV: DbValue[Boolean]
 
     def falseV: DbValue[Boolean]
   }
 
-  extension [A](v: A)
-    @targetName("valueAs") def as(tpe: Type[A]): DbValue[A]
-    @targetName("valueAsNullable") def asNullable(tpe: Type[A])(using NotGiven[A <:< Option[?]]): DbValue[Option[A]]
+  extension [A](v: A) @targetName("valueAs") def as(tpe: Type[A]): DbValue[A]
 
   trait SqlOrdSeqBase extends OrdSeqBase {
     def ast: TagState[Seq[SelectAst.OrderExpr[Codec]]]
@@ -244,7 +242,7 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
   type SqlLogic[A] <: SqlLogicBase[A]
 
   given booleanSqlLogic: SqlLogic[Boolean]
-  given booleanOptSqlLogic: SqlLogic[Option[Boolean]]
+  given booleanOptSqlLogic: SqlLogic[Boolean | SqlNull]
 
   type Many[A]
   val Many: ManyCompanion
@@ -261,29 +259,29 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
   extension [T](t: T)(using mr: MapRes[Many, T]) def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B]
 
-  extension [A](optVal: DbValue[Option[A]])(using ev: NotGiven[A <:< Option[?]])
+  extension [A](optVal: DbValue[A | SqlNull])(using NotGiven[SqlNull <:< A])
     @targetName("dbValOptgetUnsafe") def unsafeGet: DbValue[A]
 
-    @targetName("dbValOptMap") def map[B](f: DbValue[A] => DbValue[B]): DbValue[Option[B]]
+    @targetName("dbValOptMap") def map[B](f: DbValue[A] => DbValue[B]): DbValue[B | SqlNull]
 
-    @targetName("dbValOptFilter") def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[Option[A]]
+    @targetName("dbValOptFilter") def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[A | SqlNull]
 
-    @targetName("dbValOptFlatMap") def flatMap[B](f: DbValue[A] => DbValue[Option[B]]): DbValue[Option[B]]
+    @targetName("dbValOptFlatMap") def flatMap[B](f: DbValue[A] => DbValue[B | SqlNull]): DbValue[B | SqlNull]
 
     @targetName("dbValOptIsEmpty") def isEmpty: DbValue[Boolean]
     @targetName("dbValOptIsDefined") def isDefined: DbValue[Boolean]
 
-    @targetName("dbValOptOrElse") def orElse(other: DbValue[Option[A]]): DbValue[Option[A]]
+    @targetName("dbValOptOrElse") def orElse(other: DbValue[A | SqlNull]): DbValue[A | SqlNull]
 
     @targetName("dbValOptGetOrElse") def getOrElse(other: DbValue[A]): DbValue[A]
 
-  extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Option], T])
-    def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[Option[B]]
+  extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Nullable], T])
+    def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[B | SqlNull]
 
   val Case: CaseCompanion
   type CaseCompanion <: SqlCaseCompanion
 
-  trait  SqlCaseCompanion {
+  trait SqlCaseCompanion {
     def apply[A](v: DbValue[A]): ValueCase0[A]
     def when[A](whenCond: DbValue[Boolean])(thenV: DbValue[A]): ConditionCase[A]
   }
@@ -308,12 +306,12 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
     def nullableUnaryOp[V, R](
         op: UnaryOp[V, R]
-    )(using NotGiven[V <:< Option[?]], NotGiven[R <:< Option[?]]): UnaryOp[Option[V], Option[R]]
+    )(using NotGiven[SqlNull <:< V], NotGiven[SqlNull <:< R]): UnaryOp[V | SqlNull, R | SqlNull]
     def nullableBinOp[LHS, RHS, R](op: BinOp[LHS, RHS, R])(
-        using NotGiven[LHS <:< Option[?]],
-        NotGiven[RHS <:< Option[?]],
-        NotGiven[R <:< Option[?]]
-    ): BinOp[Option[LHS], Option[RHS], Option[R]]
+        using NotGiven[SqlNull <:< LHS],
+        NotGiven[SqlNull <:< RHS],
+        NotGiven[SqlNull <:< R]
+    ): BinOp[LHS | SqlNull, RHS | SqlNull, R | SqlNull]
   }
 
   type Api <: SqlDbValueApi & QueryApi
@@ -321,7 +319,6 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
   trait SqlDbValueApi {
     export platform.{
       ConditionCase,
-      NullabilityOf,
       SqlFractional,
       SqlIntegral,
       SqlLogic,
@@ -350,38 +347,36 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
 
     inline def Case: platform.CaseCompanion = platform.Case
 
-    extension [A](v: A)
-      @targetName("valueAs") inline def as(tpe: Type[A]): DbValue[A] = platform.as(v)(tpe)
-      @targetName("valueAsNullable") inline def asNullable(tpe: Type[A])(
-          using NotGiven[A <:< Option[?]]
-      ): DbValue[Option[A]] = platform.asNullable(v)(tpe)
+    extension [A](v: A) @targetName("valueAs") inline def as(tpe: Type[A]): DbValue[A] = platform.as(v)(tpe)
 
     extension [T](t: T)(using mr: MapRes[Many, T])
       inline def mapManyN[B](f: mr.K[DbValue] => DbValue[B]): Many[B] = platform.mapManyN(t)(f)
 
-    extension [A](optVal: DbValue[Option[A]])(using ev: NotGiven[A <:< Option[?]])
+    extension [A](optVal: DbValue[A | SqlNull])(using NotGiven[SqlNull <:< A])
       @targetName("dbValOptgetUnsafe") inline def unsafeGet: DbValue[A] = platform.unsafeGet(optVal)
 
-      @targetName("dbValOptMap") inline def map[B](f: DbValue[A] => DbValue[B]): DbValue[Option[B]] =
+      @targetName("dbValOptMap") inline def map[B](f: DbValue[A] => DbValue[B]): DbValue[B | SqlNull] =
         platform.map(optVal)(f)
 
-      @targetName("dbValOptFilter") inline def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[Option[A]] =
+      @targetName("dbValOptFilter") inline def filter(f: DbValue[A] => DbValue[Boolean]): DbValue[A | SqlNull] =
         platform.filter(optVal)(f)
 
-      @targetName("dbValOptFlatMap") inline def flatMap[B](f: DbValue[A] => DbValue[Option[B]]): DbValue[Option[B]] =
+      @targetName("dbValOptFlatMap") inline def flatMap[B](
+          f: DbValue[A] => DbValue[B | SqlNull]
+      ): DbValue[B | SqlNull] =
         platform.flatMap(optVal)(f)
 
       @targetName("dbValOptIsEmpty") inline def isEmpty: DbValue[Boolean]     = platform.isEmpty(optVal)
       @targetName("dbValOptIsDefined") inline def isDefined: DbValue[Boolean] = platform.isDefined(optVal)
 
-      @targetName("dbValOptOrElse") inline def orElse(other: DbValue[Option[A]]): DbValue[Option[A]] =
+      @targetName("dbValOptOrElse") inline def orElse(other: DbValue[A | SqlNull]): DbValue[A | SqlNull] =
         platform.orElse(optVal)(other)
 
       @targetName("dbValOptGetOrElse") inline def getOrElse(other: DbValue[A]): DbValue[A] =
         platform.getOrElse(optVal)(other)
 
-    extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Option], T])
-      inline def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[Option[B]] = platform.mapNullableN(t)(f)
+    extension [T](t: T)(using mr: MapRes[Compose2[DbValue, Nullable], T])
+      inline def mapNullableN[B](f: mr.K[DbValue] => DbValue[B]): DbValue[B | SqlNull] = platform.mapNullableN(t)(f)
   }
 
 }

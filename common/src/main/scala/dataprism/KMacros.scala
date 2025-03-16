@@ -1,6 +1,6 @@
 package dataprism
 
-import scala.annotation.unused
+import scala.annotation.{nowarn, unused}
 import scala.compiletime.{constValue, erasedValue, summonInline}
 import scala.deriving.Mirror
 import scala.quoted.Quotes
@@ -113,6 +113,7 @@ object KMacros {
     (0 until length).map(i => f[Any](i, instances(i).asInstanceOf[Instance[IdFC[Any]]]))
   }
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def function1Impl[F[_[_]] <: Product, A[_], Z[_], Instance[_[_[_]]]](
       fa: F[A]
   )(f: [X] => (Int, A[X], Instance[IdFC[X]]) => Z[X])(using m: MirrorProductK[F]): Seq[Z[Any]] =
@@ -120,6 +121,7 @@ object KMacros {
       [X] => (i: Int, instance: Instance[IdFC[X]]) => f[X](i, fa.productElement(i).asInstanceOf[A[X]], instance)
     )
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def function2Impl[F[_[_]] <: Product, A[_], B[_], Z[_], Instance[_[_[_]]]](
       fa: F[A],
       fb: F[B]
@@ -130,6 +132,7 @@ object KMacros {
           f[X](i, fa.productElement(i).asInstanceOf[A[X]], fb.productElement(i).asInstanceOf[B[X]], instance)
     )
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def mapKImpl[F[_[_]] <: Product, A[_], B[_]](fa: F[A], f: A :~>: B)(using m: MirrorProductK[F]): F[B] =
     m.fromProduct(
       Tuple.fromArray(
@@ -139,6 +142,7 @@ object KMacros {
       )
     ).asInstanceOf[F[B]]
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def map2KImpl[F[_[_]] <: Product, A[_], B[_], Z[_]](
       fa: F[A],
       fb: F[B],
@@ -152,6 +156,7 @@ object KMacros {
       )
     ).asInstanceOf[F[Z]]
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def pureKImpl[F[_[_]] <: Product, A[_]](a: ValueK[A])(using m: MirrorProductK[F]): F[A] =
     val size = constValue[Tuple.Size[m.MirroredElemLabels]]
     m.fromProduct(
@@ -162,6 +167,7 @@ object KMacros {
       )
     ).asInstanceOf[F[A]]
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def foldLeftKImpl[F[_[_]] <: Product, A[_], B](fa: F[A], b: B, f: B => A :~>#: B)(
       using m: MirrorProductK[F]
   ): B =
@@ -170,6 +176,7 @@ object KMacros {
     )
     fs.foldLeft(b)((b, f) => f(b))
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def foldRightKImpl[F[_[_]] <: Product, A[_], B](fa: F[A], b: B, f: A :~>#: (B => B))(
       using m: MirrorProductK[F]
   ): B =
@@ -178,6 +185,7 @@ object KMacros {
     )
     fs.foldRight(b)((f, b) => f(b))
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def traverseKImpl[F[_[_]] <: Product, A[_], G[_]: Applicative, B[_]](
       fa: F[A],
       f: A :~>: Compose2[G, B]
@@ -187,6 +195,7 @@ object KMacros {
     )
     vs.sequence[G, B[Any]].map(s => m.fromProduct(Tuple.fromArray(s.toArray)).asInstanceOf[F[B]])
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def cosequenceKImpl[F[_[_]] <: Product, G[_]: Functor, A[_]](gfa: G[F[A]])(
       using m: MirrorProductK[F]
   ): F[Compose2[G, A]] =
@@ -201,6 +210,7 @@ object KMacros {
       )
     ).asInstanceOf[F[Compose2[G, A]]]
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def tabulateKImpl[F[_[_]] <: Product, A[_], Size <: Int](f: (Finite[Size], Any) :#~>: A)(
       using m: MirrorProductK[F],
       notZero: NotZero[Size] =:= true
@@ -216,6 +226,7 @@ object KMacros {
       )
     ).asInstanceOf[F[A]]
 
+  @nowarn("msg=New anonymous class definition will be duplicated at each inline site")
   private inline def indexKImpl[F[_[_]] <: Product, A[_], ThisSize <: Int, X](
       fa: F[A],
       i: (Finite[ThisSize], Any)
@@ -224,19 +235,23 @@ object KMacros {
     val instance  = instances(i._1.value).asInstanceOf[RepresentableKC[IdFC[Any]]]
     instance.indexK(fa.productElement(i._1.value).asInstanceOf[A[Any]])(i._2.asInstanceOf[instance.RepresentationK[X]])
 
-  inline def deriveFunctorKC[F[_[_]] <: Product](using m: MirrorProductK[F]): FunctorKC[F] = new FunctorKC[F] {
-    extension [A[_], C](fa: F[A]) def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
-  }
+  inline def deriveFunctorKC[F[_[_]] <: Product](using m: MirrorProductK[F]): FunctorKC[F] =
+    class Derived extends FunctorKC[F] {
+      extension [A[_], C](fa: F[A]) def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
+    }
+    new Derived
 
-  inline def deriveApplyKC[F[_[_]] <: Product](using m: MirrorProductK[F]): ApplyKC[F] = new ApplyKC[F] {
-    extension [A[_], C](fa: F[A]) def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
+  inline def deriveApplyKC[F[_[_]] <: Product](using m: MirrorProductK[F]): ApplyKC[F] =
+    class Derived extends ApplyKC[F] {
+      extension [A[_], C](fa: F[A]) def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
 
-    extension [A[_], C](fa: F[A])
-      def map2K[B[_], Z[_]](fb: F[B])(f: [X] => (A[X], B[X]) => Z[X]): F[Z] = map2KImpl(fa, fb, f)
-  }
+      extension [A[_], C](fa: F[A])
+        def map2K[B[_], Z[_]](fb: F[B])(f: [X] => (A[X], B[X]) => Z[X]): F[Z] = map2KImpl(fa, fb, f)
+    }
+    new Derived
 
   inline def deriveApplicativeKC[F[_[_]] <: Product](using m: MirrorProductK[F]): ApplicativeKC[F] =
-    new ApplicativeKC[F] {
+    class Derived extends ApplicativeKC[F] {
       extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
 
       extension [A[_], C](fa: F[A])
@@ -246,40 +261,46 @@ object KMacros {
         def pure[C]: F[A] =
           pureKImpl(a)
     }
+    new Derived
 
-  inline def deriveFoldableKC[F[_[_]] <: Product](using m: MirrorProductK[F]): FoldableKC[F] = new FoldableKC[F] {
-    extension [A[_], C](fa: F[A])
-      def foldLeftK[B](b: B)(f: B => A :~>#: B): B = foldLeftKImpl(fa, b, f)
+  inline def deriveFoldableKC[F[_[_]] <: Product](using m: MirrorProductK[F]): FoldableKC[F] =
+    class Derived extends FoldableKC[F] {
+      extension [A[_], C](fa: F[A])
+        def foldLeftK[B](b: B)(f: B => A :~>#: B): B = foldLeftKImpl(fa, b, f)
 
-      def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = foldRightKImpl(fa, b, f)
-  }
+        def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = foldRightKImpl(fa, b, f)
+    }
+    new Derived
 
-  inline def deriveTraverseKC[F[_[_]] <: Product](using m: MirrorProductK[F]): TraverseKC[F] = new TraverseKC[F] {
-    extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
+  inline def deriveTraverseKC[F[_[_]] <: Product](using m: MirrorProductK[F]): TraverseKC[F] =
+    class Derived extends TraverseKC[F] {
+      extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
 
-    extension [A[_], C](fa: F[A])
-      def foldLeftK[B](b: B)(f: B => A :~>#: B): B = foldLeftKImpl(fa, b, f)
+      extension [A[_], C](fa: F[A])
+        def foldLeftK[B](b: B)(f: B => A :~>#: B): B = foldLeftKImpl(fa, b, f)
 
-      def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = foldRightKImpl(fa, b, f)
+        def foldRightK[B](b: B)(f: A :~>#: (B => B)): B = foldRightKImpl(fa, b, f)
 
-    extension [A[_], C](fa: F[A])
-      def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[F[B]] =
-        traverseKImpl(fa, f)
-  }
+      extension [A[_], C](fa: F[A])
+        def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[F[B]] =
+          traverseKImpl(fa, f)
+    }
+    new Derived
 
   inline def deriveDistributiveKC[F[_[_]] <: Product](using m: MirrorProductK[F]): DistributiveKC[F] =
-    new DistributiveKC[F] {
+    class Derived extends DistributiveKC[F] {
       extension [G[_]: Functor, A[_], C](gfa: G[F[A]])
         override def cosequenceK: F[Compose2[G, A]]                            = cosequenceKImpl(gfa)
       extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
     }
+    new Derived
 
   // TODO: Improve representation type
   inline def deriveRepresentableKC[F[_[_]] <: Product](
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
   ): RepresentableKC.Aux[F, [A] =>> (Finite[Tuple.Size[m.MirroredElemLabels]], Any)] =
-    new RepresentableKC[F] {
+    class Derived extends RepresentableKC[F] {
       type RepresentationK[_] = (Finite[Tuple.Size[m.MirroredElemLabels]], Any)
 
       def tabulateK[A[_], C](f: RepresentationK :~>: A): F[A] = tabulateKImpl(f)
@@ -296,6 +317,7 @@ object KMacros {
         override def pure[C]: F[A] =
           pureKImpl(a)
     }
+    new Derived
 
   type RepresentableTraverseKC[F[_[_]]] = RepresentableKC[F] & TraverseKC[F]
 
@@ -304,7 +326,7 @@ object KMacros {
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
   ): RepresentableKC.Aux[F, [A] =>> (Finite[Tuple.Size[m.MirroredElemLabels]], Any)] & TraverseKC[F] =
-    new RepresentableKC[F] with TraverseKC[F] {
+    class Derived extends RepresentableKC[F], TraverseKC[F] {
       type RepresentationK[_] = (Finite[Tuple.Size[m.MirroredElemLabels]], Any)
 
       def tabulateK[A[_], C](f: RepresentationK :~>: A): F[A] = tabulateKImpl(f)
@@ -329,6 +351,7 @@ object KMacros {
         def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[F[B]] =
           traverseKImpl(fa, f)
     }
+    new Derived
 
   type ApplyTraverseKC[F[_[_]]] = ApplyKC[F] & TraverseKC[F]
 
@@ -336,7 +359,7 @@ object KMacros {
       using m: MirrorProductK[F],
       @unused notZero: NotZero[Tuple.Size[m.MirroredElemLabels]] =:= true
   ): ApplyKC[F] & TraverseKC[F] =
-    new ApplyKC[F] with TraverseKC[F] {
+    class Derived extends ApplyKC[F], TraverseKC[F] {
       extension [A[_], C](fa: F[A]) override def mapK[B[_]](f: A :~>: B): F[B] = mapKImpl(fa, f)
 
       extension [A[_], C](fa: F[A])
@@ -350,4 +373,5 @@ object KMacros {
         def traverseK[G[_]: Applicative, B[_]](f: A :~>: Compose2[G, B]): G[F[B]] =
           traverseKImpl(fa, f)
     }
+    new Derived
 }

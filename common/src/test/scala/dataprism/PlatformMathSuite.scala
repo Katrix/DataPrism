@@ -11,7 +11,7 @@ import weaver.{Expectations, Log, SourceLocation}
 
 trait PlatformMathSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] = Codec0[A] }]
     extends PlatformFunSuite[Codec0, Platform],
-      WithOptionalMath:
+      WithOptionalInstances:
   import platform.Api.*
   import platform.{AnsiTypes, name}
 

@@ -129,8 +129,7 @@ trait SqlQueriesBase extends SqlQueryPlatformBase, SqlDbValuesBase { platform =>
       Query.valuesKBatch(table.columns.mapK([Z] => (col: Column[Codec, Z]) => col.tpe), value, values*)
   end SqlQueryCompanion
 
-  extension [A](query: Query[[F[_]] =>> F[A]])
-    @targetName("queryAsDbValue") def asDbValue: DbValue[A]
+  extension [A](query: Query[[F[_]] =>> F[A]]) @targetName("queryAsDbValue") def asDbValue: DbValue[A]
 
   type Api <: SqlQueryApi & SqlDbValueApi & QueryApi
   trait SqlQueryApi {

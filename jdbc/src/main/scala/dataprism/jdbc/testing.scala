@@ -178,6 +178,8 @@ object Testing {
     val home     = HomeK[Id](homeOwner, homeName, Instant.now(), Instant.now(), 5, 10, 15, 20, 25, worldUuid)
     val resident = ResidentK[Id](homeOwner, homeName, residentId, Instant.now())
 
+    5.as(PostgresJdbcTypes.integer.nullable)
+
     /*
     Select(Query.from(HomeK.table).filter(_.owner === uuid.as(DbType.uuid))).run
 

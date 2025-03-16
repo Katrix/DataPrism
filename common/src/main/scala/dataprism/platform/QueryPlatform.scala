@@ -3,6 +3,7 @@ package dataprism.platform
 import scala.annotation.targetName
 
 import cats.Applicative
+import dataprism.sql.SqlNull
 import perspective.*
 import perspective.derivation.{ProductK, ProductKPar}
 
@@ -43,10 +44,7 @@ trait QueryPlatform { platform =>
 
   type Many[A]
 
-  type Nullable[A] <: Option[?] = A match {
-    case Option[b] => Option[b]
-    case _         => Option[A]
-  }
+  type Nullable[A] = A | SqlNull
 
   type InnerJoin[A[_[_]], B[_[_]]] = [F[_]] =>> (A[F], B[F])
   type LeftJoin[A[_[_]], B[_[_]]]  = [F[_]] =>> (A[F], B[Compose2[F, Nullable]])

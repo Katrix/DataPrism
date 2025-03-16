@@ -9,7 +9,7 @@ import cats.syntax.all.*
 //noinspection ApparentResultTypeRefinement
 trait NullabilityTypeChoice[Codec[_], A, Dimension0 <: Int] extends SelectedType[Codec, A]:
   def notNull: SelectedType[Codec, A] { type NNA = A; type Dimension = Dimension0 }
-  def nullable: SelectedType[Codec, Option[A]] { type NNA = A; type Dimension = Dimension0 }
+  def nullable: SelectedType[Codec, A | SqlNull] { type NNA = A; type Dimension = Dimension0 }
 
   type NNA       = A
   type Dimension = Dimension0
@@ -19,7 +19,7 @@ trait NullabilityTypeChoice[Codec[_], A, Dimension0 <: Int] extends SelectedType
 
 class NullabilityTypeChoiceNoArr[Codec[_], A](
     notNullCodec: Codec[A],
-    nullableCodec: Codec[Option[A]]
+    nullableCodec: Codec[A | SqlNull]
 ) extends NullabilityTypeChoice[Codec, A, 0]:
   self =>
 
@@ -31,17 +31,18 @@ class NullabilityTypeChoiceNoArr[Codec[_], A](
   override def elementType(using ev: (0 > 0) =:= true): SelectedType[Codec, Nothing] { type Dimension = -1 + 0 } =
     sys.error("impossible")
 
-  def imap[B, NewElement](
+  def imap[B](
       f: A => B
-  )(g: B => A)(using NotGiven[B <:< Option[?]], Invariant[Codec]): NullabilityTypeChoiceNoArr[Codec, B] =
+  )(g: B => A)(using NotGiven[SqlNull <:< B], Invariant[Codec]): NullabilityTypeChoiceNoArr[Codec, B] =
+    import dataprism.sql.sqlNullSyntax.*
     NullabilityTypeChoiceNoArr(
       notNullCodec.imap(f)(g),
-      nullableCodec.imap(_.map(f))(_.map(g))
+      nullableCodec.imap[B | SqlNull](_.map(f))(_.map(g))
     )
 
 class NullabilityTypeChoiceArr[Codec[_], Arr[_], A, DimensionE <: Int](
     notNullCodec: Codec[Arr[A]],
-    nullableCodec: Codec[Option[Arr[A]]],
+    nullableCodec: Codec[Arr[A] | SqlNull],
     element: SelectedType[Codec, A] { type Dimension = DimensionE }
 ) extends NullabilityTypeChoice[Codec, Arr[A], 1 + DimensionE]:
   self =>
@@ -57,20 +58,20 @@ class NullabilityTypeChoiceArr[Codec[_], Arr[_], A, DimensionE <: Int](
 
 object NullabilityTypeChoice:
   def nullableByDefault[Codec[_], A](
-      codec: Codec[Option[A]],
-      get: Codec[Option[A]] => Codec[A]
+      codec: Codec[A | SqlNull],
+      get: Codec[A | SqlNull] => Codec[A]
   ): NullabilityTypeChoiceNoArr[Codec, A] =
     NullabilityTypeChoiceNoArr(get(codec), codec)
 
   def notNullByDefault[Codec[_], A](
       codec: Codec[A],
-      nullable: Codec[A] => Codec[Option[A]]
+      nullable: Codec[A] => Codec[A | SqlNull]
   ): NullabilityTypeChoiceNoArr[Codec, A] =
     NullabilityTypeChoiceNoArr(codec, nullable(codec))
 
   def nullableByDefaultDimensional[Codec[_], Arr[_], A, ElemDimension <: Int](
-      codec: Codec[Option[Arr[A]]],
-      get: Codec[Option[Arr[A]]] => Codec[Arr[A]],
+      codec: Codec[Arr[A] | SqlNull],
+      get: Codec[Arr[A] | SqlNull] => Codec[Arr[A]],
       element: SelectedType[Codec, A] {
         type Dimension = ElemDimension
       }
@@ -79,7 +80,7 @@ object NullabilityTypeChoice:
 
   def notNullByDefaultDimensional[Codec[_], Arr[_], A, ElemDimension <: Int](
       codec: Codec[Arr[A]],
-      nullable: Codec[Arr[A]] => Codec[Option[Arr[A]]],
+      nullable: Codec[Arr[A]] => Codec[Arr[A] | SqlNull],
       element: SelectedType[Codec, A] {
         type Dimension = ElemDimension
       }
@@ -115,9 +116,9 @@ case class NotNullType[Codec[_], A](
   } = sys.error("impossible")
 
 case class NullableType[Codec[_], A](
-    codec: Codec[Option[A]],
+    codec: Codec[A | SqlNull],
     choice: NullabilityTypeChoice[Codec, A, 0]
-) extends SelectedType[Codec, Option[A]]:
+) extends SelectedType[Codec, A | SqlNull]:
   type NNA                = A
   override type Element   = Nothing
   override type Dimension = 0
@@ -149,12 +150,12 @@ case class NotNullArrayType[Codec[_], Arr[_], A, DimensionE <: Int](
   ]
 
 case class NullableArrayType[Codec[_], Arr[_], A, DimensionE <: Int](
-    codec: Codec[Option[Arr[A]]],
+    codec: Codec[Arr[A] | SqlNull],
     choice: NullabilityTypeChoice[Codec, Arr[A], 1 + DimensionE],
     element: SelectedType[Codec, A] {
       type Dimension = DimensionE
     }
-) extends SelectedType[Codec, Option[Arr[A]]]:
+) extends SelectedType[Codec, Arr[A] | SqlNull]:
   self =>
   type NNA       = Arr[A]
   type Element   = A

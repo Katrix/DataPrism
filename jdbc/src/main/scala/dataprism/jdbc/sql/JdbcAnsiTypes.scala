@@ -5,10 +5,10 @@ import java.sql.{Connection, Date, PreparedStatement, ResultSet, Time, Timestamp
 import scala.annotation.unused
 import scala.reflect.ClassTag
 
-import dataprism.sql.{AnsiTypes, NullabilityTypeChoice, SelectedType}
+import dataprism.sql.{AnsiTypes, NullabilityTypeChoice, SelectedType, SqlNull}
 
 trait JdbcAnsiTypes extends AnsiTypes[JdbcCodec]:
-  private def tc[A](codec: JdbcCodec[Option[A]]): TypeOf[A] =
+  private def tc[A](codec: JdbcCodec[A | SqlNull]): TypeOf[A] =
     NullabilityTypeChoice.nullableByDefault(codec, _.get)
 
   private def withWasNullCheck[B](

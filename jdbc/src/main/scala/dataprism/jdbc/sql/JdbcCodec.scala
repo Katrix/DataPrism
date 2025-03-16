@@ -3,9 +3,10 @@ package dataprism.jdbc.sql
 import java.sql.{Connection, PreparedStatement, ResultSet}
 
 import scala.reflect.ClassTag
+import scala.util.NotGiven
 
 import cats.Invariant
-import dataprism.sql.ResourceManager
+import dataprism.sql.{ResourceManager, SqlNull}
 
 class JdbcCodec[A] private (
     val name: String,
@@ -20,7 +21,10 @@ class JdbcCodec[A] private (
   def eimap[B](f: A => Either[String, B])(g: B => A): JdbcCodec[B] =
     JdbcCodec(name, (a, b, c) => this.get(a, b, c).flatMap(f), (a, b, c, d) => this.set(a, b, g(c), d), b => box(g(b)))
 
-  def get[B](using ev: A =:= Option[B]): JdbcCodec[B] = imap[B](_.get)(v => ev.flip(Some(v)))
+  def get[B](using ev1: A <:< (B | SqlNull), ev2: NotGiven[B <:< SqlNull], ev3: B <:< A): JdbcCodec[B] = {
+    import dataprism.sql.sqlNullSyntax.*
+    imap[B](a => ev1(a).fold(throw new Exception("Unexpected null value"))(identity))(b => ev3(b))
+  }
 
 object JdbcCodec {
   given Invariant[JdbcCodec] with
@@ -28,18 +32,26 @@ object JdbcCodec {
 
   def simple[A](
       name: String,
-      get: (ResultSet, Int) => Option[A],
-      set: (PreparedStatement, Int, Option[A]) => Unit,
+      get: (ResultSet, Int) => A | SqlNull,
+      set: (PreparedStatement, Int, A | SqlNull) => Unit,
       box: A => AnyRef = (_: A).asInstanceOf[AnyRef]
-  ): JdbcCodec[Option[A]] =
-    JdbcCodec(name, (a, b, _) => Right(get(a, b)), (a, b, c, _) => set(a, b, c), _.map(box).orNull)
+  ): JdbcCodec[A | SqlNull] =
+    import dataprism.sql.sqlNullSyntax.*
+    JdbcCodec(
+      name,
+      (a, b, _) => Right(get(a, b)),
+      (a, b, c, _) => set(a, b, c),
+      a => a.map(box)
+    )
 
-  def byClass[A <: AnyRef](name: String, sqlType: Int)(using c: ClassTag[A]): JdbcCodec[Option[A]] =
+  def byClass[A <: AnyRef](name: String, sqlType: Int)(using c: ClassTag[A]): JdbcCodec[A | SqlNull] = {
+    import dataprism.sql.sqlNullSyntax.*
     simple[A](
       name,
-      (a, b) => Option(a.getObject(b, c.runtimeClass.asInstanceOf[Class[A]])),
+      (a, b) => Option(a.getObject(b, c.runtimeClass.asInstanceOf[Class[A]])).getOrElse(SqlNull),
       (a, b, c) => a.setObject(b, c.orNull, sqlType)
     )
+  }
 
   def withWasNullCheck[A](
       name: String,
@@ -47,29 +59,41 @@ object JdbcCodec {
       get: (ResultSet, Int) => A,
       set: (PreparedStatement, Int, A) => Unit,
       box: A => AnyRef = (_: A).asInstanceOf[AnyRef]
-  ): JdbcCodec[Option[A]] = simple(
-    name,
-    (rs, i) => {
-      val r       = get(rs, i)
-      val wasNull = rs.wasNull() || r == null // Seems to sometimes lie...
-      if wasNull then None else Some(r)
-    },
-    (ps, i, vo) => vo.fold(ps.setNull(i, sqlType, name))(v => set(ps, i, v)),
-    box
-  )
+  ): JdbcCodec[A | SqlNull] = {
+    import dataprism.sql.sqlNullSyntax.*
+    simple(
+      name,
+      (rs, i) => {
+        val r       = get(rs, i)
+        val wasNull = rs.wasNull() || r == null // Seems to sometimes lie...
+        if wasNull then SqlNull else r
+      },
+      (ps, i, vo) => vo.fold(ps.setNull(i, sqlType, name))(v => set(ps, i, v)),
+      box
+    )
+  }
 
   def failable[A](
       name: String,
-      get: (ResultSet, Int) => Either[String, Option[A]],
-      set: (PreparedStatement, Int, Option[A]) => Unit,
+      get: (ResultSet, Int) => Either[String, A | SqlNull],
+      set: (PreparedStatement, Int, A | SqlNull) => Unit,
       box: A => AnyRef = (_: A).asInstanceOf[AnyRef]
-  ): JdbcCodec[Option[A]] =
-    JdbcCodec(name, (a, b, _) => get(a, b), (a, b, c, _) => set(a, b, c), _.map(box).orNull)
+  ): JdbcCodec[A | SqlNull] = {
+    import dataprism.sql.sqlNullSyntax.*
+    JdbcCodec(
+      name,
+      (a, b, _) => get(a, b),
+      (a, b, c, _) => set(a, b, c),
+      _.map(box)
+    )
+  }
 
   def withConnection[A](
       name: String,
-      get: ResourceManager ?=> (ResultSet, Int, Connection) => Either[String, Option[A]],
-      set: ResourceManager ?=> (PreparedStatement, Int, Option[A], Connection) => Unit,
+      get: ResourceManager ?=> (ResultSet, Int, Connection) => Either[String, A | SqlNull],
+      set: ResourceManager ?=> (PreparedStatement, Int, A | SqlNull, Connection) => Unit,
       box: A => AnyRef = (_: A).asInstanceOf[AnyRef]
-  ): JdbcCodec[Option[A]] = JdbcCodec(name, get, set, _.map(box).orNull)
+  ): JdbcCodec[A | SqlNull] =
+    import dataprism.sql.sqlNullSyntax.*
+    JdbcCodec(name, get, set, _.map(box))
 }

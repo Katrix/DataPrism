@@ -1,7 +1,7 @@
 lazy val commonSettings = Seq(
-  scalaVersion := "3.3.2",
+  scalaVersion := "3.3.5",
   resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
-  scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked")
+  scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked" /*, "-explain"*/ )
 )
 
 inThisBuild(

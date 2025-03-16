@@ -30,10 +30,10 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
   )
 
   val originalTestTableValues: Seq[TestTable[Id]] = Seq(
-    TestTable(1, "foo", Some(3), None),
-    TestTable(2, "bar", Some(5.19), Some(2.1F)),
-    TestTable(3, "baz", None, Some(56F)),
-    TestTable(4, "quox", None, None)
+    TestTable(1, "foo", 3, SqlNull),
+    TestTable(2, "bar", 5.19, 2.1F),
+    TestTable(3, "baz", SqlNull, 56F),
+    TestTable(4, "quox", SqlNull, SqlNull)
   )
 
   def makeTestTable(name: String)(using db: DbType): F[Table[Codec0, TestTable]] =
@@ -115,13 +115,13 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
         }
 
   testWithTable("InsertValues"): table =>
-    val v  = TestTable[Id](5, "next", None, None)
-    val vs = Seq(TestTable[Id](6, "next2", None, None))
+    val v  = TestTable[Id](5, "next", SqlNull, SqlNull)
+    val vs = Seq(TestTable[Id](6, "next2", SqlNull, SqlNull))
     Insert.into(table).values(v, vs*).run.map(_ => originalTestTableValues ++ (v +: vs))
 
   testWithTable("InsertValuesBatch"): table =>
-    val v  = TestTable[Id](5, "next", None, None)
-    val vs = Seq(TestTable[Id](6, "next2", None, None))
+    val v  = TestTable[Id](5, "next", SqlNull, SqlNull)
+    val vs = Seq(TestTable[Id](6, "next2", SqlNull, SqlNull))
     Insert.into(table).valuesBatch(v, vs*).run.map(_ => originalTestTableValues ++ (v +: vs))
 
   testWithTable("InsertSomeValues"): table =>
@@ -129,7 +129,7 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
       .into(table)
       .valuesInColumns(t => (t.a, t.b))((5, "next"))
       .run
-      .map(_ => originalTestTableValues :+ TestTable[Id](5, "next", None, None))
+      .map(_ => originalTestTableValues :+ TestTable[Id](5, "next", SqlNull, SqlNull))
 
   testWithTable("InsertQuery"): table =>
     Insert
@@ -145,7 +145,7 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
         )
       )
       .run
-      .map(_ => originalTestTableValues :+ TestTable[Id](5, "next", None, None))
+      .map(_ => originalTestTableValues :+ TestTable[Id](5, "next", SqlNull, SqlNull))
 
   def doTestInsertReturning()(using platform.InsertReturningCapability): Unit = testWithTable("InsertQueryReturning"):
     table =>
@@ -169,10 +169,10 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
     table =>
       Insert
         .into(table)
-        .values(TestTable[Id](1, "next", None, None))
+        .values(TestTable[Id](1, "next", SqlNull, SqlNull))
         .onConflictUpdate(v => NonEmptyList.of(v.a))
         .run
-        .map(_ => originalTestTableValues.map(v => if v.a == 1 then TestTable(1, "next", None, None) else v))
+        .map(_ => originalTestTableValues.map(v => if v.a == 1 then TestTable(1, "next", SqlNull, SqlNull) else v))
 
   def doTestInsertOnConflictReturning()(
       using platform.InsertOnConflictCapability,
@@ -180,7 +180,7 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
   ): Unit = testWithTable("InsertOnConflictReturning"): table =>
     Insert
       .into(table)
-      .values(TestTable[Id](1, "next", None, None))
+      .values(TestTable[Id](1, "next", SqlNull, SqlNull))
       .onConflictUpdate(v => NonEmptyList.of(v.a))
       .returning(identity)
       .run
@@ -194,7 +194,7 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
         TestTable(5.as(integer), "next".as(varchar(254)), DbValue.nullV(doublePrecision), DbValue.nullV(real))
       )
       .run
-      .map(_ => originalTestTableValues.map(v => if v.a == 1 then TestTable(5, "next", None, None) else v))
+      .map(_ => originalTestTableValues.map(v => if v.a == 1 then TestTable(5, "next", SqlNull, SqlNull) else v))
 
   testWithTable("UpdateSome"): table =>
     Update
@@ -302,8 +302,8 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
         .run
         .map(_ => originalTestTableValues.map(t => if t.a == 1 then t.copy(b = "baz") else t))
 
-    val newV1 = TestTable[Id](5, "newfoo", Some(9.9), Some(-1))
-    val newV2 = TestTable[Id](6, "newbar", None, Some(-1.9F))
+    val newV1 = TestTable[Id](5, "newfoo", 9.9, -1F)
+    val newV2 = TestTable[Id](6, "newbar", SqlNull, -1.9F)
 
     testWithTable("MergeInsert"): table =>
       Merge
@@ -343,7 +343,7 @@ trait PlatformOperationSuite[Codec0[_], Platform <: SqlQueryPlatform { type Code
         .map(_ => originalTestTableValues.map(t => if t.a == 1 then newV2.copy[Id](a = 1) else t) :+ newV1)
 }
 object PlatformOperationSuite:
-  case class TestTable[F[_]](a: F[Int], b: F[String], c: F[Option[Double]], d: F[Option[Float]])
+  case class TestTable[F[_]](a: F[Int], b: F[String], c: F[Double | SqlNull], d: F[Float | SqlNull])
   object TestTable:
     given KMacros.ApplyTraverseKC[TestTable] = KMacros.deriveApplyTraverseKC[TestTable]
     given DistributiveKC[TestTable]          = KMacros.deriveDistributiveKC[TestTable]

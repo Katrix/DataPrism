@@ -19,7 +19,7 @@ trait PlatformValueSourceSuite[Codec0[_], Platform <: SqlQueryPlatform { type Co
       .map: r =>
         expect.same(Seq(5, 3), r)
 
-  case class TempTable[G[_]](i: G[Option[Int]], d: G[Option[Double]])
+  case class TempTable[G[_]](i: G[Int | SqlNull], d: G[Double | SqlNull])
   object TempTable:
     given KMacros.ApplyTraverseKC[TempTable] = KMacros.deriveApplyTraverseKC[TempTable]
 
@@ -41,7 +41,7 @@ trait PlatformValueSourceSuite[Codec0[_], Platform <: SqlQueryPlatform { type Co
         sql"""INSERT INTO ${q("tempTable")} (${q("i")}, ${q("d")}) VALUES (5, 3.14)"""
       )
       r <- Select(Query.from(TempTable.table)).run
-    yield expect.same(Seq(TempTable[Id](Some(5), Some(3.14D))), r)
+    yield expect.same(Seq(TempTable[Id](5, 3.14D)), r)
 
   dbTest("InnerJoin"):
     Select(testQuery.join(testQuery)(_ === _))
@@ -59,19 +59,19 @@ trait PlatformValueSourceSuite[Codec0[_], Platform <: SqlQueryPlatform { type Co
     Select(testQuery.leftJoin(testQuery)(_ === _))
       .run[F]
       .map: r =>
-        expect.same(Seq((5, Some(5)), (3, Some(3))), r)
+        expect.same(Seq((5, 5), (3, 3)), r)
 
   dbTest("RightJoin"):
     Select(testQuery.rightJoin(testQuery)(_ === _))
       .run[F]
       .map: r =>
-        expect.same(Seq((Some(5), 5), (Some(3), 3)), r)
+        expect.same(Seq((5, 5), (3, 3)), r)
 
   def doTestFullJoin()(using platform.FullJoinCapability): Unit =
     dbTest("FullJoin"):
       Select(testQuery.fullJoin(testQuery)(_ === _))
         .run[F]
         .map: r =>
-          expect.same(Seq((Some(5), Some(5)), (Some(3), Some(3))), r)
+          expect.same(Seq((5, 5), (3, 3)), r)
 
 }
