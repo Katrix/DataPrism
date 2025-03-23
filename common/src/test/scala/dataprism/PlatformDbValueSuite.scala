@@ -10,7 +10,7 @@ import cats.{Apply, Show}
 import dataprism.PlatformFunSuite.DbToTest
 import dataprism.platform.sql.SqlQueryPlatform
 import dataprism.platform.sql.value.SqlBitwiseOps
-import dataprism.sql.{NullabilityTypeChoice, SqlNull}
+import dataprism.sql.{NullabilityTypeChoice, Nullable, SqlNull}
 import org.scalacheck.cats.implicits.*
 import org.scalacheck.{Arbitrary, Gen}
 import perspective.Id
@@ -35,7 +35,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
   def testEquality[A, N[_]: Apply](
       tpe: Type[N[A]],
       gen: Gen[N[A]]
-  )(using N: Nullability.Aux[N[A], A, N])(using Show[N[A]]): Unit =
+  )(using N: Nullability.Aux[N[A], N])(using Show[N[A]]): Unit =
     typeTest("Equality", tpe):
       configuredForall((gen, gen).tupled): (a: N[A], b: N[A]) =>
         Select(
@@ -107,7 +107,6 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
     testEquality[A, Id](tpe, gen)
 
   def testEqualityNullable[A: Show](tpe: Type[A], gen: Gen[A])(using NotGiven[SqlNull <:< A]): Unit =
-    import dataprism.sql.sqlNullSyntax.given
     testEquality[A, Nullable](
       tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A, tpe.Dimension]].nullable,
       sqlNullGen(gen)
@@ -144,7 +143,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       SqlNumericSumAverage[N[A], SumResult, AvgResult],
       Show[N[A]]
   )(
-      using N: Nullability.Aux[N[A], A, N]
+      using N: Nullability.Aux[N[A], N]
   ): Unit =
     import Numeric.Implicits.*
     import Ordering.Implicits.*
@@ -176,8 +175,6 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
               expect(((a * b) - abMul).abs <= delta),
               expect(((b * a) - baMul).abs <= delta),
               expect {
-                import dataprism.sql.sqlNullSyntax.*
-
                 val lhs            = if b == Numeric[N[A]].zero then None else N.wrapOption(a / b)
                 val rhs: Option[A] = N.nullableToOption(abDiv)
 
@@ -186,8 +183,6 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
                   .getOrElse(lhs.isEmpty && rhs.isEmpty)
               },
               expect {
-                import dataprism.sql.sqlNullSyntax.*
-
                 val lhs            = if a == Numeric[N[A]].zero then None else N.wrapOption(b / a)
                 val rhs: Option[A] = N.nullableToOption(baDiv)
 
@@ -241,7 +236,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       Ordering[N[A]],
       SqlOrdered[N[A]],
       Show[N[A]]
-  )(using N: Nullability.Aux[N[A], A, N]): Unit =
+  )(using N: Nullability.Aux[N[A], N]): Unit =
     import Ordering.Implicits.*
     typeTest("Ordered", tpe):
       configuredForall((gen, gen).tupled): (a: N[A], b: N[A]) =>
@@ -274,14 +269,12 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
           _             <- log.debug(s"Got max=${maxMin._1} min=${maxMin._2}")
           _             <- log.debug(s"Got greatest=${greatestLeast._1} least=${greatestLeast._2}")
         yield
-          import dataprism.sql.sqlNullSyntax.*
-
           val (max, min)        = maxMin
           val (greatest, least) = greatestLeast
           val someVs            = vs.toList.flatMap(N.wrapOption(_))
           Seq(
-            expect.same(someVs.maxOption, max.toOption),
-            expect.same(someVs.minOption, min.toOption),
+            expect.same(someVs.maxOption, Nullable.syntax(max).toOption),
+            expect.same(someVs.minOption, Nullable.syntax(min).toOption),
             expect.same(
               if leastGreatestBubbleNulls && someVs.length != vs.length then None
               else N.wrapOption(vs.toList.filter(_ != SqlNull).max),
@@ -306,7 +299,6 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
       cats.Order[Nullable[A]],
       SqlOrdered[Nullable[A]]
   ): Unit =
-    import dataprism.sql.sqlNullSyntax.given
     testOrdered[A, Nullable](
       tpe.choice.asInstanceOf[NullabilityTypeChoice[Codec, A, tpe.Dimension]].nullable,
       sqlNullGen(gen)
@@ -338,10 +330,10 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
         )
       ).runOne[F]
         .map: (abOr, baOr, abAnd, baAnd, aNot, bNot, abnOr, banOr, abnAnd, banAnd, anNot, bnNot) =>
-          import dataprism.sql.sqlNullSyntax.{*, given}
           import cats.syntax.all.*
 
-          def sqlNullWhen[A](cond: Boolean)(v: A) = if cond then v else SqlNull
+          def sqlNullWhen[A](cond: Boolean)(v: A)(using NotGiven[SqlNull <:< A]): Nullable.NullableSyntax[A] =
+            Nullable.unsafeSyntax(if cond then v else SqlNull)
 
           Seq(
             expect.same(a || b, abOr),
@@ -351,18 +343,28 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
             expect.same(!a, aNot),
             expect.same(!b, bNot),
             //
-            expect.same(sqlNullWhen(an.contains(true) || bn.contains(true))(true).orElse(an.map2(bn)(_ || _)), abnOr),
-            expect.same(sqlNullWhen(an.contains(true) || bn.contains(true))(true).orElse(bn.map2(an)(_ || _)), banOr),
             expect.same(
-              sqlNullWhen(an.contains(false) || bn.contains(false))(false).orElse(an.map2(bn)(_ && _)),
+              sqlNullWhen(Nullable.syntax(an).contains(true) || Nullable.syntax(bn).contains(true))(true)
+                .orElse(Nullable.syntax(an).map2(Nullable.syntax(bn))(_ || _)),
+              abnOr
+            ),
+            expect.same(
+              sqlNullWhen(Nullable.syntax(an).contains(true) || Nullable.syntax(bn).contains(true))(true)
+                .orElse(Nullable.syntax(bn).map2(Nullable.syntax(an))(_ || _)),
+              banOr
+            ),
+            expect.same(
+              sqlNullWhen(Nullable.syntax(an).contains(false) || Nullable.syntax(bn).contains(false))(false)
+                .orElse(Nullable.syntax(an).map2(Nullable.syntax(bn))(_ && _)),
               abnAnd
             ),
             expect.same(
-              sqlNullWhen(an.contains(false) || bn.contains(false))(false).orElse(bn.map2(an)(_ && _)),
+              sqlNullWhen(Nullable.syntax(an).contains(false) || Nullable.syntax(bn).contains(false))(false)
+                .orElse(Nullable.syntax(bn).map2(Nullable.syntax(an))(_ && _)),
               banAnd
             ),
-            expect.same(an.map(!_), anNot),
-            expect.same(bn.map(!_), bnNot)
+            expect.same(Nullable.syntax(an).map(!_), anNot),
+            expect.same(Nullable.syntax(bn).map(!_), bnNot)
           ).combineAll
 
   def testNullOps[A: Show](t: Type[A | SqlNull], gen: Gen[A]): Unit = typeTest("NullOps", t):
@@ -385,16 +387,17 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
         )
       ).runOne[F]
         .map: (r1, r2, r3, r4, r5, r6, r7, r8) =>
-          import dataprism.sql.sqlNullSyntax.{*, given}
+          val o123 = (Nullable.syntax(o1), Nullable.syntax(o2), Nullable.syntax(o3))
+
           Seq(
             expect.same(o1, r1),
             expect.same(o1, r2),
-            expect.same(o1.flatMap(_ => o2), r3),
+            expect.same(Nullable.syntax(o1).flatMap(_ => Nullable.syntax(o2)), r3),
             expect.same(o1, r4),
             expect.same(SqlNull, r5),
-            expect.same((o1, o2, o3).mapN((n1, _, _) => n1), r6),
-            expect.same((o1, o2, o3).mapN((_, n2, _) => n2), r7),
-            expect.same((o1, o2, o3).mapN((_, _, n3) => n3), r8)
+            expect.same(o123.mapN((n1, _, _) => n1), r6),
+            expect.same(o123.mapN((_, n2, _) => n2), r7),
+            expect.same(o123.mapN((_, _, n3) => n3), r8)
           ).combineAll
 
   dbTest("CaseBoolean"):
@@ -421,7 +424,7 @@ trait PlatformDbValueSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[
   )(
       using show: Show[N[A]],
       bw: bitwisePlatform.Api.SqlBitwise[N[A]],
-      N: bitwisePlatform.Nullability.Aux[N[A], A, N],
+      N: bitwisePlatform.Nullability.Aux[N[A], N],
       bool: algebra.lattice.Bool[A]
   ): Unit = typeTest("BitwiseOps", tpe):
     import bitwisePlatform.Api.*

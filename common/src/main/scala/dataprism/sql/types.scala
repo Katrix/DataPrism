@@ -34,10 +34,9 @@ class NullabilityTypeChoiceNoArr[Codec[_], A](
   def imap[B](
       f: A => B
   )(g: B => A)(using NotGiven[SqlNull <:< B], Invariant[Codec]): NullabilityTypeChoiceNoArr[Codec, B] =
-    import dataprism.sql.sqlNullSyntax.*
     NullabilityTypeChoiceNoArr(
       notNullCodec.imap(f)(g),
-      nullableCodec.imap[B | SqlNull](_.map(f))(_.map(g))
+      nullableCodec.imap[B | SqlNull](v => Nullable.syntax(v).map(f).orSqlNull)(v => Nullable.syntax(v).map(g).orSqlNull)
     )
 
 class NullabilityTypeChoiceArr[Codec[_], Arr[_], A, DimensionE <: Int](

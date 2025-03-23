@@ -3,12 +3,10 @@ package dataprism.jdbc.sql
 import java.sql.Types
 import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
-
 import scala.annotation.tailrec
 import scala.util.Using
-
 import cats.syntax.all.*
-import dataprism.sql.{NullabilityTypeChoice, SelectedType, SqlNull}
+import dataprism.sql.{NullabilityTypeChoice, Nullable, SelectedType, SqlNull}
 
 trait H2JdbcTypes extends JdbcAnsiTypes:
   private def tc[A](codec: JdbcCodec[A | SqlNull]): TypeOf[A] = NullabilityTypeChoice.nullableByDefault(codec, _.get)
@@ -48,13 +46,11 @@ trait H2JdbcTypes extends JdbcAnsiTypes:
               if str.endsWith(" ARRAY") then stripArrayPartOfType(str.dropRight(2))
               else str
 
-            import dataprism.sql.sqlNullSyntax.*
-
             ps.setArray(
               i,
               c.createArrayOf(
                 stripArrayPartOfType(elemTypeName),
-                v.fold(null)(_.asInstanceOf[Seq[A]].map(elementCodec.box).toArray[AnyRef])
+                Nullable.syntax(v).fold(null)(_.asInstanceOf[Seq[A]].map(elementCodec.box).toArray[AnyRef])
               ).acquire
             )
           },

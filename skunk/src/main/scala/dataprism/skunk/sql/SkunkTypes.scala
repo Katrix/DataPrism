@@ -2,15 +2,8 @@ package dataprism.skunk.sql
 
 import java.time.{Duration, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime}
 import java.util.UUID
-
 import cats.syntax.all.*
-import dataprism.sql.{
-  NullabilityTypeChoice,
-  NullabilityTypeChoiceArr,
-  NullabilityTypeChoiceNoArr,
-  SelectedType,
-  SqlNull
-}
+import dataprism.sql.{NullabilityTypeChoice, NullabilityTypeChoiceArr, NullabilityTypeChoiceNoArr, Nullable, SelectedType, SqlNull}
 import scodec.bits.BitVector
 import skunk.Codec
 import skunk.codec.all
@@ -24,10 +17,9 @@ object SkunkTypes {
     def wrap: TypeOf[A] =
       if skunkCodec.types.length != 1 then
         throw new IllegalArgumentException("Skunk types must always have only one SQL type")
-      import dataprism.sql.sqlNullSyntax.*
       NullabilityTypeChoice.notNullByDefault(
         skunkCodec,
-        _.opt.imap[A | SqlNull](_.getOrElse(SqlNull))(_.toOption)
+        _.opt.imap[A | SqlNull](_.getOrElse(SqlNull))(v => Nullable.syntax(v).toOption)
       )
 
   private val escapeRegex = """[{}"\\\s]|NULL""".r.unanchored
@@ -130,7 +122,6 @@ object SkunkTypes {
 
   def arrayOf[A](tpe: SelectedType[Codec, A]): TypeOfN[A, tpe.Dimension] =
     val headType = tpe.codec.types.head
-    import dataprism.sql.sqlNullSyntax.*
     NullabilityTypeChoice.notNullByDefaultDimensional(
       Codec
         .simple(
@@ -138,7 +129,7 @@ object SkunkTypes {
           str => decodeArray(tpe.codec, str, from = 0, decodeData = true).map(_._1),
           if headType.componentTypes.nonEmpty then headType else Type("_" + headType.name, List(headType))
         ),
-      _.opt.imap[Seq[A] | SqlNull](_.getOrElse(SqlNull))(_.toOption),
+      _.opt.imap[Seq[A] | SqlNull](_.getOrElse(SqlNull))(v => Nullable.syntax(v).toOption),
       tpe
     )
 

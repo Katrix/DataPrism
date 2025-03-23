@@ -18,7 +18,6 @@ trait QueryPlatform { platform =>
 
   type Nullability[A] <: NullabilityBase[A]
   trait NullabilityBase[A]:
-    type NNA
     type N[_]
 
     def wrapOption[B](n: N[B]): Option[B]

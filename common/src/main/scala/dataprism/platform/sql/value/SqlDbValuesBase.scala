@@ -2,11 +2,10 @@ package dataprism.platform.sql.value
 
 import scala.annotation.targetName
 import scala.util.NotGiven
-
 import dataprism.platform.MapRes
 import dataprism.platform.sql.SqlQueryPlatformBase
 import dataprism.sharedast.{SelectAst, SqlExpr}
-import dataprism.sql.{SqlNull, SqlStr}
+import dataprism.sql.{Nullable, SqlNull, SqlStr}
 import perspective.*
 
 trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
@@ -50,19 +49,15 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
     def castDbVal(dbVal: DbValue[A]): DbValue[N[A]] = dbVal.asInstanceOf[DbValue[N[A]]]
 
   object Nullability:
-    type Aux[A, NNA0, N0[_]] = Nullability[A] { type N[B] = N0[B]; type NNA = NNA0 }
+    type Aux[A, N0[_]] = Nullability[A] { type N[B] = N0[B] }
 
-    given notNull[A](using NotGiven[SqlNull <:< A]): Nullability.Aux[A, A, Id] = new Nullability[A]:
+    given notNull[A](using NotGiven[SqlNull <:< A]): Nullability.Aux[A, Id] = new Nullability[A]:
       type N[B] = B
-      type NNA  = A
 
       override def isNullable: Boolean = false
 
       override def wrapOption[B](n: B): Option[B] = Some(n)
-      override def nullableToOption[B](n: Nullable[B]): Option[B] = {
-        import dataprism.sql.sqlNullSyntax.*
-        n.toOption
-      }
+      override def nullableToOption[B](n: Nullable[B]): Option[B] = Nullable.syntax(n).toOption
 
       override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[B]                       = dbVal
       override def wrapType[B](tpe: Type[B])(using NotGiven[SqlNull <:< B]): Type[B] = tpe.notNullChoice.notNull
@@ -75,20 +70,13 @@ trait SqlDbValuesBase extends SqlQueryPlatformBase { platform =>
           unaryOp: UnaryOp[V, R]
       )(using NotGiven[SqlNull <:< V], NotGiven[SqlNull <:< R]): UnaryOp[V, R] = unaryOp
 
-    given nullable[A >: (SqlNull | NN), NN]: Nullability.Aux[A, NN, Nullable] = new Nullability[A]:
+    given nullable[A >: SqlNull]: Nullability.Aux[A, Nullable] = new Nullability[A]:
       type N[B] = B | SqlNull
-      type NNA  = NN
 
       override def isNullable: Boolean = true
 
-      override def wrapOption[B](n: B | SqlNull): Option[B] = {
-        import dataprism.sql.sqlNullSyntax.*
-        n.toOption
-      }
-      override def nullableToOption[B](n: Nullable[B | SqlNull]): Option[B] = {
-        import dataprism.sql.sqlNullSyntax.*
-        n.toOption
-      }
+      override def wrapOption[B](n: B | SqlNull): Option[B] = Nullable.syntax(n).toOption
+      override def nullableToOption[B](n: Nullable[B | SqlNull]): Option[B] = Nullable.syntax(n).toOption
 
       override def wrapDbVal[B](dbVal: DbValue[B]): DbValue[B | SqlNull] = dbVal.asSome
       override def wrapType[B](tpe: Type[B])(using NotGiven[SqlNull <:< B]): Type[B | SqlNull] =

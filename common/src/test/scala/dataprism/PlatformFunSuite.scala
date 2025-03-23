@@ -4,7 +4,7 @@ import cats.Show
 import cats.effect.{IO, Resource}
 import dataprism.PlatformFunSuite.DbToTest
 import dataprism.platform.sql.SqlQueryPlatform
-import dataprism.sql.{Db, SqlNull}
+import dataprism.sql.{Db, Nullable, SqlNull}
 import org.scalacheck.{Arbitrary, Gen}
 import weaver.scalacheck.Checkers
 import weaver.{Expectations, IOSuite, Log, TestName}
@@ -24,8 +24,7 @@ trait PlatformFunSuite[Codec0[_], Platform <: SqlQueryPlatform { type Codec[A] =
   given [A](using a: Arbitrary[A]): Arbitrary[A | SqlNull] = Arbitrary(sqlNullGen(a.arbitrary))
 
   given [A](using s: Show[A]): Show[A | SqlNull] = {
-    import dataprism.sql.sqlNullSyntax.*
-    Show.show(_.fold("SqlNull")(s.show))
+    Show.show(v => Nullable.syntax(v).fold("SqlNull")(s.show))
   }
 
   def dbTest(name: TestName)(run: DbType ?=> IO[Expectations]): Unit = test(name): db =>
